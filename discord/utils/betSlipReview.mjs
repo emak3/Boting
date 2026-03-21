@@ -18,6 +18,7 @@ import {
 } from './raceCommandHub.mjs';
 import {
   formatBetSlipItemBlock,
+  historyRaceHeadingLine,
   slipItemDescriptionForSelect,
 } from './betPurchaseEmbed.mjs';
 import {
@@ -44,7 +45,10 @@ function fmtBp(n) {
 
 function slipItemSelectOptions(items) {
   return items.slice(0, 25).map((it, i) => {
-    const title = stripDiscordCustomEmojiMarkup(it.raceTitle || 'レース').slice(0, 70);
+    const title = stripDiscordCustomEmojiMarkup(historyRaceHeadingLine(it)).slice(
+      0,
+      70,
+    );
     const label = `${i + 1}. ${title}`.slice(0, 100);
     const desc = stripDiscordCustomEmojiMarkup(
       slipItemDescriptionForSelect(it),

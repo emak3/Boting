@@ -21,6 +21,8 @@ export const RACE_CARD_V2_FLAGS = MessageFlags.IsComponentsV2;
 export const RACE_CARD_ACCENT_BLUE = 0x0099ff;
 /** レース結果・払戻 Container のアクセント */
 export const RACE_RESULT_ACCENT_RED = 0xed4245;
+/** 購入サマリー・完了・エラー案内など、本文のみの V2 パネル（まとめ購入確認と同系の緑帯） */
+export const V2_TEXT_PANEL_ACCENT = 0x2ecc71;
 
 function horseBlock(horse) {
   const place = horse.placeOddsMin ? ` / 複勝〜${horse.placeOddsMin}` : '';
@@ -181,20 +183,27 @@ export function buildRaceResultV2Payload({
 }
 
 /**
- * 出馬表なし（購入サマリー等）の Components V2 本文 + 操作行
- * @param {{ headline: string, actionRows?: import('discord.js').ActionRowBuilder[], extraFlags?: number }} opts
+ * 出馬表なし（購入サマリー・購入完了等）の Components V2: Container + 操作行
+ * @param {{ headline: string, actionRows?: import('discord.js').ActionRowBuilder[], extraFlags?: number, accentColor?: number }} opts
  */
 export function buildTextAndRowsV2Payload({
   headline,
   actionRows = [],
   extraFlags = 0,
+  accentColor = V2_TEXT_PANEL_ACCENT,
 }) {
   const rows = actionRows.filter(Boolean);
-  const text = String(headline || '').slice(0, V2_TEXT_TOTAL_MAX);
+  const raw = String(headline || '').trimEnd().slice(0, V2_TEXT_TOTAL_MAX);
+  const container = new ContainerBuilder().setAccentColor(accentColor);
+  if (raw.trim()) {
+    appendChunkedToContainer(container, raw);
+  } else {
+    container.addTextDisplayComponents((td) => td.setContent('—'));
+  }
   return {
     content: null,
     embeds: [],
-    components: [new TextDisplayBuilder().setContent(text), ...rows],
+    components: [container, ...rows],
     flags: MessageFlags.IsComponentsV2 | extraFlags,
   };
 }

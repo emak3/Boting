@@ -23,6 +23,7 @@ import {
 } from '../utils/raceCommandHub.mjs';
 import { buildRacePurchaseHistoryV2Payload } from '../utils/racePurchaseHistoryUi.mjs';
 import { editReplyOpenBetSlipReview } from '../utils/betSlipOpenReview.mjs';
+import { normalizeScheduleVenueDisplayName } from '../utils/netkeibaJraVenueCode.mjs';
 
 function venueSelectRow(scheduleKind, kaisaiDate, currentGroup, venues) {
   const menu = new StringSelectMenuBuilder()
@@ -140,6 +141,14 @@ async function runRaceIdFlow(interaction, raceId) {
       flowPatch.source = meta.source;
     } else if (result.netkeibaOrigin) {
       flowPatch.source = result.netkeibaOrigin;
+    }
+    if (meta?.scheduleKaisaiId) {
+      flowPatch.kaisaiDate = meta.kaisaiDateYmd;
+      flowPatch.kaisaiId = meta.scheduleKaisaiId;
+      flowPatch.currentGroup = meta.currentGroup ?? null;
+      flowPatch.venueTitle = normalizeScheduleVenueDisplayName(
+        (meta.venueTitle || '').replace(/\s+/g, ' ').trim(),
+      );
     }
     setBetFlow(interaction.user.id, raceId, flowPatch);
     const saleCtx = {

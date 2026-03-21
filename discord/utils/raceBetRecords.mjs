@@ -64,6 +64,10 @@ export async function tryConfirmRacePurchase(userId, items) {
     normalized.push({
       raceId,
       raceTitle: it.raceTitle != null ? String(it.raceTitle).slice(0, 200) : '',
+      venueTitle:
+        it.venueTitle != null && String(it.venueTitle).trim()
+          ? String(it.venueTitle).replace(/\s+/g, ' ').trim().slice(0, 40)
+          : '',
       betType: it.betType != null ? String(it.betType) : '',
       selectionLine: it.selectionLine != null ? String(it.selectionLine).slice(0, 500) : '',
       points,
@@ -115,6 +119,7 @@ export async function tryConfirmRacePurchase(userId, items) {
         settledAt: null,
       };
       if (row.trifukuFormation) docBody.trifukuFormation = row.trifukuFormation;
+      if (row.venueTitle) docBody.venueTitle = row.venueTitle;
       tx.set(docRef, docBody);
     }
 

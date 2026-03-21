@@ -295,6 +295,20 @@ export default async function betFlowButtons(interaction) {
     const parts = customId.split('|');
     const pk = parts[1];
     const pg = parseInt(parts[2], 10);
+    let meetingFilter = 'all';
+    if (parts.length >= 4 && parts[3] !== undefined && parts[3] !== '') {
+      meetingFilter = parts[3];
+    }
+    if (
+      meetingFilter !== 'all' &&
+      !/^\d{10}$/.test(String(meetingFilter))
+    ) {
+      await interaction.reply({
+        content: '❌ 開催の指定が無効です。',
+        ephemeral: true,
+      });
+      return;
+    }
     if (!/^\d{8}$/.test(String(pk || '')) || !Number.isFinite(pg) || pg < 0) {
       await interaction.reply({
         content: '❌ ページ指定が無効です。',
@@ -308,6 +322,7 @@ export default async function betFlowButtons(interaction) {
         userId,
         periodKey: pk,
         page: pg,
+        meetingFilter,
         extraFlags: MessageFlags.Ephemeral,
       });
       await interaction.editReply(payload);
@@ -638,6 +653,7 @@ export default async function betFlowButtons(interaction) {
       points: flow.purchase.points,
       selectionLine: flow.purchase.selectionLine,
       raceTitle: flow.result?.raceInfo?.title,
+      venueTitle: flow.venueTitle != null ? String(flow.venueTitle) : '',
       oddsOfficialTime: flow.result?.oddsOfficialTime,
       isResult: !!flow.result?.isResult,
       netkeibaOrigin: origin,

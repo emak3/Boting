@@ -11,7 +11,8 @@ import {
   formatSlipPickDisplayLines,
   BET_TYPE_LABEL,
   parseSelectionBetKindLabel,
-  slipRaceTitleLine,
+  historyRaceHeadingLine,
+  venuePrefixForHistoryBet,
 } from './betPurchaseEmbed.mjs';
 import { V2_SINGLE_CHUNK, V2_TEXT_TOTAL_MAX } from './raceCardDisplay.mjs';
 import { buildRaceHubBackButtonRow } from './raceCommandHub.mjs';
@@ -22,6 +23,7 @@ export const RACE_HISTORY_PAGE_PREFIX = 'race_bet_history_pg';
 export const HISTORY_BETS_PER_PAGE = 10;
 
 const HISTORY_ACCENT = 0x9b59b6;
+const HISTORY_BTN_LABEL_MAX = 80;
 
 /** 式別のフル表記（例: 馬連（通常）、馬単（1着ながし）） */
 function fullKindLabel(bet) {
@@ -188,10 +190,7 @@ function buildHistoryRaceTextChunks(slice) {
     if (rid !== currentRid) {
       flushRace();
       currentRid = rid;
-      const title = slipRaceTitleLine({
-        raceId: rid,
-        raceTitle: bet.raceTitle,
-      });
+      const title = historyRaceHeadingLine(bet);
       raceHead = `**${title}**`;
     }
     entries.push(formatBetEntryForHistory(bet));
@@ -200,38 +199,140 @@ function buildHistoryRaceTextChunks(slice) {
   return chunks;
 }
 
-function historyPaginationRow(periodKey, page, totalPages) {
-  if (totalPages <= 1) return null;
-  const safePrev = Math.max(0, page - 1);
-  const safeNext = Math.min(totalPages - 1, page + 1);
-  return new ActionRowBuilder().addComponents(
-    new ButtonBuilder()
-      .setCustomId(`${RACE_HISTORY_PAGE_PREFIX}|${periodKey}|${safePrev}`)
-      .setLabel('前へ')
-      .setStyle(ButtonStyle.Secondary)
-      .setDisabled(page <= 0),
-    new ButtonBuilder()
-      .setCustomId(`${RACE_HISTORY_PAGE_PREFIX}|${periodKey}|${safeNext}`)
-      .setLabel('次へ')
-      .setStyle(ButtonStyle.Secondary)
-      .setDisabled(page >= totalPages - 1),
-  );
+/**
+ * 同日次帯内の開催キー（race_id 先頭10桁）ごとに 1 代表買い目でボタンラベルを作る
+ * @param {object[]} bets
+ * @returns {{ key: string, label: string }[]}
+ */
+function meetingFilterOptionsFromBets(bets) {
+  const byKey = new Map();
+  for (const b of bets) {
+    const rid = String(b.raceId || '');
+    if (!/^\d{12}$/.test(rid)) continue;
+    const key = rid.slice(0, 10);
+    if (!byKey.has(key)) byKey.set(key, b);
+  }
+  const raw = [...byKey.entries()]
+    .map(([key, b]) => ({
+      key,
+      label: venuePrefixForHistoryBet(b) || `開催(${key.slice(-2)})`,
+    }))
+    .sort((a, b) => a.key.localeCompare(b.key));
+
+  const labelCount = new Map();
+  for (const o of raw) {
+    labelCount.set(o.label, (labelCount.get(o.label) || 0) + 1);
+  }
+  return raw.map((o) => {
+    let label = o.label;
+    if (labelCount.get(o.label) > 1) {
+      const suffix = `·${o.key.slice(-2)}`;
+      label = `${o.label.slice(0, Math.max(1, HISTORY_BTN_LABEL_MAX - suffix.length))}${suffix}`;
+    }
+    return { key: o.key, label: label.slice(0, HISTORY_BTN_LABEL_MAX) };
+  });
 }
 
 /**
- * @param {{ userId: string, periodKey?: string, page?: number, extraFlags?: number }} opts
+ * @param {{ periodKey: string, page: number, totalPages: number, meetingFilter: string, meetings: { key: string, label: string }[] }} opts
+ * @returns {import('discord.js').ActionRowBuilder[]}
+ */
+function historyFilterAndPaginationRows({
+  periodKey,
+  page,
+  totalPages,
+  meetingFilter,
+  meetings,
+}) {
+  const rows = [];
+  const showNav = totalPages > 1;
+  const showMeetings = meetings.length >= 2;
+  if (!showNav && !showMeetings) return rows;
+
+  const navId = (pg) =>
+    `${RACE_HISTORY_PAGE_PREFIX}|${periodKey}|${pg}|${meetingFilter}`;
+  const venueId = (key) =>
+    `${RACE_HISTORY_PAGE_PREFIX}|${periodKey}|0|${key}`;
+
+  const navBtns = showNav
+    ? [
+        new ButtonBuilder()
+          .setCustomId(navId(Math.max(0, page - 1)))
+          .setLabel('前へ')
+          .setStyle(ButtonStyle.Secondary)
+          .setDisabled(page <= 0),
+        new ButtonBuilder()
+          .setCustomId(navId(Math.min(totalPages - 1, page + 1)))
+          .setLabel('次へ')
+          .setStyle(ButtonStyle.Secondary)
+          .setDisabled(page >= totalPages - 1),
+      ]
+    : [];
+
+  const allBtn =
+    showMeetings && meetingFilter !== 'all'
+      ? new ButtonBuilder()
+          .setCustomId(`${RACE_HISTORY_PAGE_PREFIX}|${periodKey}|0|all`)
+          .setLabel('すべて')
+          .setStyle(ButtonStyle.Primary)
+      : null;
+
+  const venueBtn = (m) =>
+    new ButtonBuilder()
+      .setCustomId(venueId(m.key))
+      .setLabel(m.label)
+      .setStyle(meetingFilter === m.key ? ButtonStyle.Success : ButtonStyle.Secondary);
+
+  if (showMeetings) {
+    const head = [...navBtns];
+    if (allBtn) head.push(allBtn);
+    const room = Math.max(0, 5 - head.length);
+    const firstVenues = meetings.slice(0, room);
+    const rest = meetings.slice(room);
+    const firstRow = [...head, ...firstVenues.map(venueBtn)];
+    if (firstRow.length) rows.push(new ActionRowBuilder().addComponents(...firstRow));
+    for (let i = 0; i < rest.length; i += 5) {
+      const chunk = rest.slice(i, i + 5).map(venueBtn);
+      rows.push(new ActionRowBuilder().addComponents(...chunk));
+    }
+  } else if (navBtns.length) {
+    rows.push(new ActionRowBuilder().addComponents(...navBtns));
+  }
+
+  return rows;
+}
+
+/**
+ * @param {{ userId: string, periodKey?: string, page?: number, meetingFilter?: string, extraFlags?: number }} opts
  */
 export async function buildRacePurchaseHistoryV2Payload({
   userId,
   periodKey = getCurrentDailyPeriodKey(),
   page = 0,
+  meetingFilter = 'all',
   extraFlags = 0,
 }) {
-  const [bets, bpBalance] = await Promise.all([
+  const [allBets, bpBalance] = await Promise.all([
     fetchUserRaceBetsForDailyPeriod(userId, periodKey),
     getBalance(userId),
   ]);
   const ymd = `${periodKey.slice(0, 4)}-${periodKey.slice(4, 6)}-${periodKey.slice(6, 8)}`;
+
+  const meetings = meetingFilterOptionsFromBets(allBets);
+  const meetingKeys = new Set(meetings.map((m) => m.key));
+  let filterKey = String(meetingFilter || 'all').trim();
+  if (filterKey !== 'all' && !meetingKeys.has(filterKey)) {
+    filterKey = 'all';
+  }
+
+  const bets =
+    filterKey === 'all'
+      ? allBets
+      : allBets.filter(
+          (b) =>
+            /^\d{12}$/.test(String(b.raceId || '')) &&
+            String(b.raceId).slice(0, 10) === filterKey,
+        );
 
   let hits = 0;
   let misses = 0;
@@ -273,6 +374,17 @@ export async function buildRacePurchaseHistoryV2Payload({
     `的中 **${hits}** 件　不的中 **${misses}** 件　未決着 **${pending}** 件`,
     `回収率 **${returnRateStr}**（払い戻し **${totalRefundBp}** bp ÷ 投資 **${totalInvestBp}** bp）`,
   ];
+  if (filterKey !== 'all') {
+    const labelHit = bets.find(
+      (b) => String(b.raceId || '').slice(0, 10) === filterKey,
+    );
+    const vn = labelHit
+      ? venuePrefixForHistoryBet(labelHit) || meetings.find((m) => m.key === filterKey)?.label
+      : meetings.find((m) => m.key === filterKey)?.label;
+    if (vn) {
+      summaryLines.push('', `*表示中の開催: **${vn}***`);
+    }
+  }
   if (totalPages > 1) {
     summaryLines.push(
       '',
@@ -284,8 +396,10 @@ export async function buildRacePurchaseHistoryV2Payload({
   appendChunkedText(container, summaryLines.join('\n'));
   container.addSeparatorComponents((s) => s);
 
-  if (!bets.length) {
+  if (!allBets.length) {
     appendChunkedText(container, '*この日次帯での購入はまだありません。*');
+  } else if (!bets.length) {
+    appendChunkedText(container, '*この開催に該当する購入はありません。*');
   } else {
     const raceChunks = buildHistoryRaceTextChunks(slice);
     for (let i = 0; i < raceChunks.length; i++) {
@@ -296,9 +410,15 @@ export async function buildRacePurchaseHistoryV2Payload({
     }
   }
 
-  const row = historyPaginationRow(periodKey, safePage, totalPages);
+  const filterRows = historyFilterAndPaginationRows({
+    periodKey,
+    page: safePage,
+    totalPages,
+    meetingFilter: filterKey,
+    meetings,
+  });
   const hubBack = buildRaceHubBackButtonRow();
-  const components = row ? [container, row, hubBack] : [container, hubBack];
+  const components = [container, ...filterRows, hubBack];
 
   const flags = MessageFlags.IsComponentsV2 | extraFlags;
   return {

@@ -69,6 +69,7 @@ export function slipItemFromLiveFlow(flow, raceId) {
     points: flow.purchase.points,
     selectionLine: flow.purchase.selectionLine,
     raceTitle: flow.result?.raceInfo?.title,
+    venueTitle: flow.venueTitle != null ? String(flow.venueTitle) : '',
     oddsOfficialTime: flow.result?.oddsOfficialTime,
     isResult: !!flow.result?.isResult,
     netkeibaOrigin: origin,

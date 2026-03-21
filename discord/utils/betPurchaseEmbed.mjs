@@ -1,5 +1,9 @@
 import { netkeibaResultUrl, netkeibaOriginFromFlow } from './netkeibaUrls.mjs';
 import {
+  jraVenueShortFromRaceId,
+  normalizeScheduleVenueDisplayName,
+} from './netkeibaJraVenueCode.mjs';
+import {
   formatHorseNumsCommaEmoji,
   formatNumsWithWakuUmaEmoji,
   formatWakurenNumsCommaEmoji,
@@ -52,10 +56,10 @@ export function buildBetPurchaseV2Headline({ flow }) {
 
 /**
  * 複数買い目をまとめた確認文（Components V2 用）
- * @param {{ items: Array<{ raceId: string, unitYen: number, points: number, selectionLine: string, raceTitle?: string, oddsOfficialTime?: string, isResult?: boolean, netkeibaOrigin?: string }> }} opts
+ * @param {{ items: Array<{ raceId: string, unitYen: number, points: number, selectionLine: string, raceTitle?: string, venueTitle?: string, oddsOfficialTime?: string, isResult?: boolean, netkeibaOrigin?: string }> }} opts
  */
 export function buildBetSlipBatchV2Headline({ items }) {
-  const lines = ['**まとめて購入内容（仮）**', ''];
+  const lines = ['**まとめて購入内容**', ''];
   let grandPoints = 0;
   let grandYen = 0;
 
@@ -64,7 +68,6 @@ export function buildBetSlipBatchV2Headline({ items }) {
     const unitYen = it.unitYen ?? 100;
     const points = it.points ?? 0;
     const selectionLine = it.selectionLine ?? '（選択なし）';
-    const raceTitle = it.raceTitle || 'レース';
     const raceId = it.raceId;
     const origin = it.netkeibaOrigin === 'nar' ? 'nar' : 'jra';
     const resultUrl =
@@ -73,7 +76,7 @@ export function buildBetSlipBatchV2Headline({ items }) {
     grandPoints += points;
     grandYen += subtotal;
 
-    lines.push(`**${i + 1}.** ${raceTitle}`);
+    lines.push(`**${i + 1}.** ${historyRaceHeadingLine(it)}`);
     if (it.oddsOfficialTime) lines.push(`オッズ時刻: ${it.oddsOfficialTime}`);
     if (resultUrl) lines.push(`結果: ${resultUrl}`);
     lines.push(selectionLine);
@@ -111,6 +114,34 @@ export function slipRaceTitleLine(it) {
     }
   }
   return title;
+}
+
+/** 購入履歴用: スケジュールから取れた開催場名、なければ JRA は race_id から推定 */
+export function venuePrefixForHistoryBet(bet) {
+  const raw = String(bet?.venueTitle || '').replace(/\s+/g, ' ').trim();
+  if (raw) {
+    const normalized = normalizeScheduleVenueDisplayName(raw).replace(
+      /競馬場\s*$/u,
+      '',
+    ).trim();
+    const fallback = raw.replace(/競馬場\s*$/u, '').trim();
+    return normalized || fallback || raw;
+  }
+  const rid = String(bet?.raceId || '');
+  if (bet?.netkeibaOrigin === 'nar') return '';
+  return jraVenueShortFromRaceId(rid);
+}
+
+/** 購入履歴のレース見出し（例: 中山4R 4歳以上未勝利） */
+export function historyRaceHeadingLine(bet) {
+  const core = slipRaceTitleLine({
+    raceId: bet.raceId,
+    raceTitle: bet.raceTitle,
+  });
+  const v = venuePrefixForHistoryBet(bet);
+  if (!v) return core;
+  if (core.startsWith(v)) return core;
+  return `${v}${core}`;
 }
 
 function isWakurenSlip(it) {
@@ -708,7 +739,7 @@ export function slipItemDescriptionForSelect(it) {
 
 /**
  * 買い目1件分（Container 内 Text Display 用）
- * @param {{ unitYen?: number, points?: number, selectionLine?: string, raceTitle?: string, raceId?: string, oddsOfficialTime?: string, isResult?: boolean, netkeibaOrigin?: string, betType?: string, tickets?: Array<{ kind: string, nums: string[] }>, horseNumToFrame?: Record<string, string> }} it
+ * @param {{ unitYen?: number, points?: number, selectionLine?: string, raceTitle?: string, venueTitle?: string, raceId?: string, oddsOfficialTime?: string, isResult?: boolean, netkeibaOrigin?: string, betType?: string, tickets?: Array<{ kind: string, nums: string[] }>, horseNumToFrame?: Record<string, string> }} it
  * @param {number} i 0 始まりインデックス
  */
 export function formatBetSlipItemBlock(it, i) {
@@ -727,7 +758,7 @@ export function formatBetSlipItemBlock(it, i) {
   const pickBlock = formatSlipPickDisplayLines(it);
 
   const lines = [
-    `**${i + 1}.** ${slipRaceTitleLine(it)}`,
+    `**${i + 1}.** ${historyRaceHeadingLine(it)}`,
     pickBlock || `${label}：（チケット情報がありません）`,
   ];
   if (it.oddsOfficialTime) lines.push(`オッズ時刻: ${it.oddsOfficialTime}`);
@@ -754,7 +785,7 @@ export function buildBetPurchaseEmbed({ flow }) {
 
   return {
     color: 0x2ecc71,
-    title: '購入内容（仮）',
+    title: '購入内容',
     description: [
       `レース: ${raceTitle}`,
       oddsTime ? `オッズ時刻: ${oddsTime}` : null,

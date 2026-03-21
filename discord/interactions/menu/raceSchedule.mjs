@@ -20,6 +20,7 @@ import {
   fetchNarVenuesForDate,
 } from '../../../cheerio/netkeibaSchedule.mjs';
 import { netkeibaResultUrl, netkeibaOriginFromFlow } from '../../utils/netkeibaUrls.mjs';
+import { normalizeScheduleVenueDisplayName } from '../../utils/netkeibaJraVenueCode.mjs';
 import {
   buildRaceCardV2Payload,
   buildRaceResultV2Payload,
@@ -1071,6 +1072,7 @@ export default async function raceScheduleMenu(interaction) {
       let raceMeta = null;
       let salesStatus = null;
       let metaFallback = null;
+      let scheduleVenueTitle = '';
       let isResult =
         raceResultFlagStore.get(`${userId}|${raceId}`) ?? isResultFlag === '1';
 
@@ -1087,12 +1089,20 @@ export default async function raceScheduleMenu(interaction) {
             );
             const venue = parseNarRaceListSubToVenue(html, lastVenue.kaisaiDate);
             raceMeta = venue?.races.find((x) => x.raceId === raceId) || null;
+            scheduleVenueTitle = normalizeScheduleVenueDisplayName(
+              (venue?.title || '').replace(/\s+/g, ' ').trim(),
+            );
           } else {
             const html = await fetchRaceListSub(
               lastVenue.kaisaiDate,
               lastVenue.currentGroup,
             );
             const { venues } = parseRaceListSub(html, lastVenue.kaisaiDate);
+            scheduleVenueTitle = normalizeScheduleVenueDisplayName(
+              (
+                venues.find((x) => x.kaisaiId === lastVenue.kaisaiId)?.title || ''
+              ).replace(/\s+/g, ' ').trim(),
+            );
             const races = filterVenueRaces(venues, lastVenue.kaisaiId);
             raceMeta = races.find((x) => x.raceId === raceId) || null;
           }
@@ -1122,6 +1132,7 @@ export default async function raceScheduleMenu(interaction) {
             currentGroup: lastVenue.currentGroup ?? null,
             kaisaiId: lastVenue.kaisaiId,
             source: lastVenue.source ?? 'jra',
+            venueTitle: scheduleVenueTitle || '',
           }
         : metaFallback?.scheduleKaisaiId
           ? {
@@ -1129,6 +1140,9 @@ export default async function raceScheduleMenu(interaction) {
               currentGroup: metaFallback.currentGroup ?? null,
               kaisaiId: metaFallback.scheduleKaisaiId,
               source: metaFallback.source,
+              venueTitle: normalizeScheduleVenueDisplayName(
+                (metaFallback.venueTitle || '').replace(/\s+/g, ' ').trim(),
+              ),
             }
           : {};
 

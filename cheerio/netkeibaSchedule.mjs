@@ -190,6 +190,7 @@ export async function findRaceMetaForToday(raceId) {
           source: 'jra',
           scheduleKaisaiId: v.kaisaiId,
           currentGroup,
+          venueTitle: (v.title || '').replace(/\s+/g, ' ').trim(),
         };
       }
     }
@@ -207,6 +208,7 @@ export async function findRaceMetaForToday(raceId) {
           source: 'nar',
           scheduleKaisaiId: v.kaisaiId,
           currentGroup: null,
+          venueTitle: (v.title || '').replace(/\s+/g, ' ').trim(),
         };
       }
     }

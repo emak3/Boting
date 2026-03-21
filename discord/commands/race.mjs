@@ -10,6 +10,7 @@ import {
 import NetkeibaScraper from '../../cheerio/netkeibaScraper.mjs';
 import { fetchTodayVenuesAndRaces } from '../../cheerio/netkeibaSchedule.mjs';
 import { buildRaceCardEmbed } from '../utils/raceCardEmbed.mjs';
+import { setBetFlow } from '../utils/betFlowStore.mjs';
 
 function venueSelectRow(kaisaiDate, currentGroup, venues) {
   const menu = new StringSelectMenuBuilder()
@@ -23,6 +24,34 @@ function venueSelectRow(kaisaiDate, currentGroup, venues) {
           .setDescription(`全${v.races.length}レース`.slice(0, 100)),
       ),
     );
+  return new ActionRowBuilder().addComponents(menu);
+}
+
+function betTypeSelectRow(raceId) {
+  const BET_TYPES = [
+    { id: 'win', label: '単勝' },
+    { id: 'place', label: '複勝' },
+    { id: 'win_place', label: '単勝+複勝' },
+    { id: 'frame_pair', label: '枠連' },
+    { id: 'horse_pair', label: '馬連' },
+    { id: 'wide', label: 'ワイド' },
+    { id: 'umatan', label: '馬単' },
+    { id: 'trifuku', label: '3連複' },
+    { id: 'tritan', label: '3連単' },
+  ];
+
+  const menu = new StringSelectMenuBuilder()
+    .setCustomId(`race_bet_type|${raceId}`)
+    .setPlaceholder('賭ける方式を選択')
+    .addOptions(
+      BET_TYPES.map((t) =>
+        new StringSelectMenuOptionBuilder()
+          .setLabel(t.label)
+          .setValue(t.id)
+          .setDescription('選択後に馬番/枠番を指定します'),
+      ),
+    );
+
   return new ActionRowBuilder().addComponents(menu);
 }
 
@@ -54,8 +83,11 @@ const commandObject = {
       const scraper = new NetkeibaScraper();
       try {
         const result = await scraper.scrapeRaceCard(raceId);
+        result.raceId = raceId;
+        setBetFlow(interaction.user.id, raceId, { result });
         await interaction.editReply({
           embeds: [buildRaceCardEmbed(result)],
+          components: [betTypeSelectRow(raceId)],
         });
       } catch (error) {
         console.error('Race command error:', error);

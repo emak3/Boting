@@ -1,8 +1,14 @@
 /** @param {{ raceInfo?: object, horses: object[], totalHorses: number, oddsOfficialTime?: string }} result */
 export function buildRaceCardEmbed(result) {
+  const raceId = result?.raceId;
+  const isResult = !!result?.isResult;
+  const resultUrl = raceId
+    ? `https://race.netkeiba.com/race/result.html?race_id=${raceId}`
+    : null;
+
   const embed = {
-    color: 0x0099ff,
-    title: `🐎 ${result.raceInfo?.title || 'レース情報'}`,
+    color: isResult ? 0xf1c40f : 0x0099ff,
+    title: `${isResult ? '🏁' : '🐎'} ${result.raceInfo?.title || 'レース情報'}`,
     description: `**日程:** ${result.raceInfo?.date || 'N/A'}\n**コース:** ${result.raceInfo?.course || 'N/A'}`,
     fields: result.horses.slice(0, 18).map((horse) => {
       const place = horse.placeOddsMin ? ` / 複勝〜${horse.placeOddsMin}` : '';
@@ -14,7 +20,14 @@ export function buildRaceCardEmbed(result) {
       };
     }),
     footer: {
-      text: `全${result.totalHorses}頭${result.oddsOfficialTime ? ` | オッズ時刻 ${result.oddsOfficialTime}` : ''}`,
+      text: [
+        `全${result.totalHorses}頭${
+          result.oddsOfficialTime ? ` | オッズ時刻 ${result.oddsOfficialTime}` : ''
+        }`,
+        isResult && resultUrl ? `結果: ${resultUrl}` : null,
+      ]
+        .filter(Boolean)
+        .join(' | '),
     },
   };
 

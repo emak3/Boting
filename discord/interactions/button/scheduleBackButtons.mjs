@@ -1,0 +1,149 @@
+import {
+  ActionRowBuilder,
+  ButtonBuilder,
+  ButtonStyle,
+  StringSelectMenuBuilder,
+  StringSelectMenuOptionBuilder,
+} from 'discord.js';
+import {
+  fetchRaceListSub,
+  parseRaceListSub,
+  filterVenueRaces,
+  getRaceSalesStatus,
+} from '../../../cheerio/netkeibaSchedule.mjs';
+import { getBetFlow } from '../../utils/betFlowStore.mjs';
+
+const VENUE_BACK_PREFIX = 'race_sched_back_to_venue|';
+const RACE_LIST_BACK_PREFIX = 'race_sched_back_to_race_list|';
+
+function venueSelectRow(kaisaiDateYmd, currentGroup, venues) {
+  const menu = new StringSelectMenuBuilder()
+    .setCustomId('race_menu_venue')
+    .setPlaceholder('開催場を選択')
+    .addOptions(
+      venues.slice(0, 25).map((v) =>
+        new StringSelectMenuOptionBuilder()
+          .setLabel(v.title.slice(0, 100))
+          .setValue(`${kaisaiDateYmd}|${currentGroup}|${v.kaisaiId}`)
+          .setDescription(`全${v.races.length}レース`.slice(0, 100)),
+      ),
+    );
+  return new ActionRowBuilder().addComponents(menu);
+}
+
+function raceSelectRow(kaisaiDateYmd, races) {
+  const menu = new StringSelectMenuBuilder()
+    .setCustomId('race_menu_race')
+    .setPlaceholder('レースを選択（出馬表を表示）')
+    .addOptions(
+      races.slice(0, 25).map((r) => {
+        const st = getRaceSalesStatus(r, kaisaiDateYmd);
+        const label = `${r.roundLabel} ${r.timeText}`.replace(/\s+/g, ' ').trim().slice(0, 100);
+        const desc = `${st.shortLabel} · ${r.title}`.slice(0, 100);
+        return new StringSelectMenuOptionBuilder()
+          .setLabel(label || r.raceId)
+          .setValue(`${r.raceId}|${r.isResult ? 1 : 0}`)
+          .setDescription(desc);
+      }),
+    );
+  return new ActionRowBuilder().addComponents(menu);
+}
+
+function scheduleBackToVenueButtonRow(kaisaiDateYmd, currentGroup) {
+  return new ActionRowBuilder().addComponents(
+    new ButtonBuilder()
+      .setCustomId(`race_sched_back_to_venue|${kaisaiDateYmd}|${currentGroup}`)
+      .setLabel('開催場へ')
+      .setStyle(ButtonStyle.Secondary),
+  );
+}
+
+export default async function scheduleBackButtons(interaction) {
+  if (!interaction.isButton()) return;
+  const customId = interaction.customId;
+
+  const isVenueBack = customId.startsWith(VENUE_BACK_PREFIX);
+  const isRaceListBack = customId.startsWith(RACE_LIST_BACK_PREFIX);
+  if (!isVenueBack && !isRaceListBack) return;
+
+  await interaction.deferUpdate();
+
+  try {
+    if (isVenueBack) {
+      const [, kaisaiDateYmd, currentGroup] = customId.split('|');
+      if (!kaisaiDateYmd || !currentGroup) {
+        await interaction.editReply({ content: '❌ 戻れません。', embeds: [], components: [] });
+        return;
+      }
+
+      const html = await fetchRaceListSub(kaisaiDateYmd, currentGroup);
+      const { venues } = parseRaceListSub(html, kaisaiDateYmd);
+      const row = venueSelectRow(kaisaiDateYmd, currentGroup, venues);
+
+      await interaction.editReply({
+        content:
+          '開催場を選ぶと、その場のレース一覧（発走時刻・発売状態）が表示されます。続けてレースを選ぶと出馬表を表示します。',
+        embeds: [],
+        components: [row],
+      });
+      return;
+    }
+
+    // RACE_LIST_BACK_PREFIX
+    const [, raceId] = customId.split('|');
+    if (!raceId) {
+      await interaction.editReply({ content: '❌ 戻れません。', embeds: [], components: [] });
+      return;
+    }
+
+    const flow = getBetFlow(interaction.user.id, raceId);
+    const kaisaiDateYmd = flow?.kaisaiDate;
+    const currentGroup = flow?.currentGroup;
+    const kaisaiId = flow?.kaisaiId;
+
+    if (!kaisaiDateYmd || !currentGroup || !kaisaiId) {
+      await interaction.editReply({
+        content: '❌ 戻れません（開催情報が見つかりません）。もう一度 /race から試してください。',
+        embeds: [],
+        components: [],
+      });
+      return;
+    }
+
+    const html = await fetchRaceListSub(kaisaiDateYmd, currentGroup);
+    const { venues } = parseRaceListSub(html, kaisaiDateYmd);
+    const races = filterVenueRaces(venues, kaisaiId);
+
+    const lines = races.map((r) => {
+      const st = getRaceSalesStatus(r, kaisaiDateYmd);
+      return `**${r.roundLabel}** ${r.timeText} — ${r.title}\n└ ${st.detail}`;
+    });
+
+    let description = lines.join('\n\n');
+    if (description.length > 4090) description = `${description.slice(0, 4087)}…`;
+
+    const embed = {
+      color: 0x0099ff,
+      title: '🏇 レース一覧',
+      description,
+      footer: { text: `開催日 ${kaisaiDateYmd}（日本時間）` },
+    };
+
+    await interaction.editReply({
+      content: '',
+      embeds: [embed],
+      components: [
+        raceSelectRow(kaisaiDateYmd, races),
+        scheduleBackToVenueButtonRow(kaisaiDateYmd, currentGroup),
+      ],
+    });
+  } catch (e) {
+    console.error(e);
+    await interaction.editReply({
+      content: `❌ 戻る処理に失敗: ${e.message}`,
+      embeds: [],
+      components: [],
+    });
+  }
+}
+

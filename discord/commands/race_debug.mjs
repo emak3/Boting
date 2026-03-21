@@ -6,9 +6,8 @@ import {
 import {
   setDebugSalesBypass,
   isDebugSalesBypassEnabled,
+  canUseDebugCommands,
 } from '../utils/raceDebugBypass.mjs';
-
-const ALLOWED_USER_ID = '864735082732322867';
 
 const commandObject = {
   command: new SlashCommandBuilder()
@@ -22,7 +21,7 @@ const commandObject = {
     .setContexts(InteractionContextType.Guild),
 
   async execute(interaction) {
-    if (interaction.user.id !== ALLOWED_USER_ID) {
+    if (!canUseDebugCommands(interaction.user.id)) {
       await interaction.reply({
         content: '❌ このコマンドは使用できません。',
         flags: MessageFlags.Ephemeral,

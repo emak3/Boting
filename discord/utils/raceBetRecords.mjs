@@ -1,8 +1,9 @@
-import { FieldValue } from 'firebase-admin/firestore';
+import { FieldValue, Timestamp } from 'firebase-admin/firestore';
 import { getAdminFirestore } from '../../utils/firebaseAdmin.mjs';
 import {
   appendLedgerTx,
   getCurrentDailyPeriodKey,
+  getJstDailyPeriodWindowBounds,
   normBalance,
 } from './userPointsStore.mjs';
 import { sumRefundBpForTickets } from './raceBetPayout.mjs';
@@ -39,6 +40,27 @@ export async function tryConfirmRacePurchase(userId, items) {
     }
     const c = points * unitYen;
     total += c;
+    const h2f =
+      it.horseNumToFrame && typeof it.horseNumToFrame === 'object'
+        ? Object.fromEntries(
+            Object.entries(it.horseNumToFrame).map(([k, v]) => [
+              String(k),
+              String(v ?? ''),
+            ]),
+          )
+        : {};
+    let trifukuFormation = null;
+    if (
+      it.trifukuFormation &&
+      typeof it.trifukuFormation === 'object' &&
+      Array.isArray(it.trifukuFormation.a)
+    ) {
+      trifukuFormation = {
+        a: it.trifukuFormation.a.map(String),
+        b: (it.trifukuFormation.b || []).map(String),
+        c: (it.trifukuFormation.c || []).map(String),
+      };
+    }
     normalized.push({
       raceId,
       raceTitle: it.raceTitle != null ? String(it.raceTitle).slice(0, 200) : '',
@@ -49,6 +71,8 @@ export async function tryConfirmRacePurchase(userId, items) {
       costBp: c,
       tickets,
       netkeibaOrigin: it.netkeibaOrigin === 'nar' ? 'nar' : 'jra',
+      horseNumToFrame: h2f,
+      trifukuFormation,
     });
   }
 
@@ -73,7 +97,7 @@ export async function tryConfirmRacePurchase(userId, items) {
 
     for (const row of normalized) {
       const docRef = db.collection(COLLECTION).doc();
-      tx.set(docRef, {
+      const docBody = {
         userId,
         raceId: row.raceId,
         raceTitle: row.raceTitle,
@@ -84,11 +108,14 @@ export async function tryConfirmRacePurchase(userId, items) {
         costBp: row.costBp,
         tickets: row.tickets,
         netkeibaOrigin: row.netkeibaOrigin,
+        horseNumToFrame: row.horseNumToFrame || {},
         status: 'open',
         refundBp: 0,
         purchasedAt: FieldValue.serverTimestamp(),
         settledAt: null,
-      });
+      };
+      if (row.trifukuFormation) docBody.trifukuFormation = row.trifukuFormation;
+      tx.set(docRef, docBody);
     }
 
     return { ok: true, balance: newBal, spent: total, count: normalized.length };
@@ -159,4 +186,24 @@ export async function settleOpenRaceBetsForUser(userId, raceId, parsedResult) {
       balance: newBal,
     };
   });
+}
+
+/**
+ * 指定ユーザーの競馬購入を日次帯（JST 8:00〜翌 8:00）で取得（購入時刻順）
+ * 複合インデックス: raceBets userId + purchasedAt
+ */
+export async function fetchUserRaceBetsForDailyPeriod(
+  userId,
+  periodKey = getCurrentDailyPeriodKey(),
+) {
+  const { start, end } = getJstDailyPeriodWindowBounds(periodKey);
+  const db = getAdminFirestore();
+  const q = db
+    .collection(COLLECTION)
+    .where('userId', '==', userId)
+    .where('purchasedAt', '>=', Timestamp.fromDate(start))
+    .where('purchasedAt', '<', Timestamp.fromDate(end))
+    .orderBy('purchasedAt', 'asc');
+  const snap = await q.get();
+  return snap.docs.map((d) => ({ id: d.id, ...d.data() }));
 }

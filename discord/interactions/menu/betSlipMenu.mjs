@@ -23,7 +23,7 @@ export default async function betSlipMenu(interaction) {
     const pending = getSlipPendingReview(userId);
     if (!pending?.items?.length) {
       await interaction.reply({
-        content: '❌ 買い目の確認セッションが無効です。',
+        content: '❌ 購入予定の確認セッションが無効です。',
         ephemeral: true,
       });
       return;
@@ -71,7 +71,7 @@ export default async function betSlipMenu(interaction) {
         kind: 'slip',
         slipIdx: idx,
         buffer: buf,
-        subtitle: `**${idx + 1}番の買い目**`,
+        subtitle: `**${idx + 1}番の購入予定**`,
         extraFlags,
       }),
     );
@@ -84,7 +84,7 @@ export default async function betSlipMenu(interaction) {
   const pending = getSlipPendingReview(userId);
   if (!pending?.items?.length) {
     await interaction.reply({
-      content: '❌ 買い目の確認セッションが無効です。',
+      content: '❌ 購入予定の確認セッションが無効です。',
       ephemeral: true,
     });
     return;
@@ -115,7 +115,7 @@ export default async function betSlipMenu(interaction) {
     await interaction.update(
       buildTextAndRowsV2Payload({
         headline:
-          '買い目をすべて削除しました。\n\nもう一度 **/race** からやり直してください。',
+          '購入予定をすべて削除しました。\n\nもう一度 **/race** からやり直してください。',
         actionRows: [],
         extraFlags,
       }),

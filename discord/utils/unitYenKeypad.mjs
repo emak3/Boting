@@ -62,10 +62,6 @@ export function deleteLastDigit(buffer) {
   return String(buffer || '').slice(0, -1);
 }
 
-function keypadHintBlock() {
-  return ['```', '7 8 9', '4 5 6', '1 2 3', 'del 0 決定', '```'].join('\n');
-}
-
 /**
  * @param {{ buffer: string, subtitle?: string | null }} opts
  */
@@ -75,8 +71,6 @@ export function formatUnitKeypadHeadline({ buffer, subtitle }) {
     '**1点あたりの金額（100 bp 単位）**',
     subtitle ? String(subtitle) : null,
     `\`${part}\`00 bp`,
-    '',
-    keypadHintBlock(),
   ].filter(Boolean);
   return lines.join('\n');
 }

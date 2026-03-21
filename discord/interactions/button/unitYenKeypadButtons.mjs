@@ -90,7 +90,7 @@ export default async function unitYenKeypadButtons(interaction) {
 
   const extraFlags = v2ExtraFlags(interaction);
   const slipSubtitle =
-    parsed.kind === 'slip' ? `**${parsed.slipIdx + 1}番の買い目**` : null;
+    parsed.kind === 'slip' ? `**${parsed.slipIdx + 1}番の購入予定**` : null;
 
   if (parsed.op === 'digit' && parsed.digit != null) {
     const nextBuf = appendDigit(draft.buffer, parsed.digit);
@@ -168,7 +168,7 @@ export default async function unitYenKeypadButtons(interaction) {
     ) {
       await interaction.editReply(
         buildTextAndRowsV2Payload({
-          headline: '❌ 買い目の確認セッションが無効です。まとめて購入の画面を開き直してください。',
+          headline: '❌ 購入予定の確認セッションが無効です。まとめて購入の画面を開き直してください。',
           actionRows: [],
           extraFlags,
         }),

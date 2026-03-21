@@ -8,7 +8,14 @@ import {
   StringSelectMenuBuilder,
   StringSelectMenuOptionBuilder,
 } from 'discord.js';
-import { buildTextAndRowsV2Payload, V2_TEXT_TOTAL_MAX } from './raceCardDisplay.mjs';
+import {
+  buildTextAndRowsV2Payload,
+  V2_TEXT_TOTAL_MAX,
+} from './raceCardDisplay.mjs';
+import {
+  RACE_CMD_HUB_PREFIX,
+  buildRaceHubBackButtonRow,
+} from './raceCommandHub.mjs';
 import {
   formatBetSlipItemBlock,
   slipItemDescriptionForSelect,
@@ -69,7 +76,7 @@ function buildMoneySummaryText({
   } else {
     lines.push(
       '',
-      `⚠️ **bp が不足**しています（不足 **${fmtBp(grandYen - balance)}** bp）。\`/daily\` で受け取るか、金額・買い目を調整してください。`,
+      `⚠️ **bp が不足**しています（不足 **${fmtBp(grandYen - balance)}** bp）。\`/daily\` で受け取るか、金額・購入予定を調整してください。`,
     );
   }
   lines.push('', `**合計点数**　**${fmtBp(grandPoints)}** 点`);
@@ -176,7 +183,7 @@ function slipReviewActionRows(anchorRaceId, items, { pageIndex, totalPages }) {
     new ActionRowBuilder().addComponents(
       new StringSelectMenuBuilder()
         .setCustomId(`race_bet_slip_unit_pick|${anchorRaceId}`)
-        .setPlaceholder('金額を変える買い目を選択')
+        .setPlaceholder('金額を変える購入予定を選択')
         .setMinValues(1)
         .setMaxValues(1)
         .addOptions(opts),
@@ -239,8 +246,8 @@ export async function buildSlipReviewV2Payload({ userId, extraFlags = 0 }) {
   const pending = getSlipPendingReview(userId);
   if (!pending?.items?.length) {
     return buildTextAndRowsV2Payload({
-      headline: '❌ 買い目データがありません。もう一度 /race からやり直してください。',
-      actionRows: [],
+      headline: '❌ 購入予定データがありません。もう一度 /race からやり直してください。',
+      actionRows: [buildRaceHubBackButtonRow()],
       extraFlags,
     });
   }

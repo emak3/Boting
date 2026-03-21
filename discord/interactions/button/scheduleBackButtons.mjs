@@ -24,9 +24,12 @@ import {
 } from '../../utils/betSlipViewUi.mjs';
 import {
   SCHEDULE_KIND_BACK_BUTTON_ID,
-  scheduleKindSelectRow,
   scheduleBackToKindSelectButtonRow,
 } from '../../utils/scheduleKindUi.mjs';
+import {
+  buildRaceScheduleIntroV2Payload,
+  buildVenuePickIntroV2Payload,
+} from '../../utils/raceCommandHub.mjs';
 
 function v2ExtraFlags(interaction) {
   try {
@@ -104,10 +107,8 @@ export default async function scheduleBackButtons(interaction) {
   try {
     if (isKindBack) {
       await interaction.editReply(
-        buildTextAndRowsV2Payload({
-          headline:
-            'まず **中央(JRA)** か **地方(NAR)** を選び、その後に開催場を選ぶとレース一覧が表示されます。続けてレースを選ぶと出馬表を表示します。',
-          actionRows: [scheduleKindSelectRow()],
+        await buildRaceScheduleIntroV2Payload({
+          userId: interaction.user.id,
           extraFlags: v2ExtraFlags(interaction),
         }),
       );
@@ -134,9 +135,9 @@ export default async function scheduleBackButtons(interaction) {
         const { venues } = await fetchNarVenuesForDate(kaisaiDateYmd);
         const row = venueSelectRow('nar', kaisaiDateYmd, null, venues);
         await interaction.editReply(
-          buildTextAndRowsV2Payload({
-            headline:
-              '開催場を選ぶと、その場のレース一覧（発走時刻・発売状態）が表示されます。続けてレースを選ぶと出馬表を表示します。',
+          await buildVenuePickIntroV2Payload({
+            userId: interaction.user.id,
+            extraFlags: v2ExtraFlags(interaction),
             actionRows: [
               row,
               betSlipOpenReviewButtonRowForSchedule(
@@ -144,7 +145,6 @@ export default async function scheduleBackButtons(interaction) {
                 firstScheduleAnchorRaceIdFromVenues(venues),
               ),
             ],
-            extraFlags: v2ExtraFlags(interaction),
           }),
         );
         return;
@@ -155,9 +155,9 @@ export default async function scheduleBackButtons(interaction) {
       const row = venueSelectRow('jra', kaisaiDateYmd, currentGroup, venues);
 
       await interaction.editReply(
-        buildTextAndRowsV2Payload({
-          headline:
-            '開催場を選ぶと、その場のレース一覧（発走時刻・発売状態）が表示されます。続けてレースを選ぶと出馬表を表示します。',
+        await buildVenuePickIntroV2Payload({
+          userId: interaction.user.id,
+          extraFlags: v2ExtraFlags(interaction),
           actionRows: [
             row,
             scheduleBackToKindSelectButtonRow(),
@@ -166,7 +166,6 @@ export default async function scheduleBackButtons(interaction) {
               firstScheduleAnchorRaceIdFromVenues(venues),
             ),
           ],
-          extraFlags: v2ExtraFlags(interaction),
         }),
       );
       return;

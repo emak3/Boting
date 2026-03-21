@@ -92,13 +92,13 @@ export function buildBetSlipBatchV2Headline({ items }) {
 }
 
 /** `選択: 3連単（通常） => …` から式別ラベル部分だけ取り出す */
-function parseSelectionBetKindLabel(selectionLine) {
+export function parseSelectionBetKindLabel(selectionLine) {
   const m = String(selectionLine || '').match(/^選択:\s*(.+?)\s*=>\s*/);
   return m ? m[1].trim() : null;
 }
 
 /** 見出し用（例: `11R 3歳未勝利`）。タイトル先頭に R が無ければ raceId 下2桁で補う */
-function slipRaceTitleLine(it) {
+export function slipRaceTitleLine(it) {
   const title = (it.raceTitle || 'レース').replace(/\s+/g, ' ').trim();
   if (/^\d+\s*R\b/i.test(title) || /^第\d+レース/i.test(title)) {
     return title;
@@ -456,7 +456,7 @@ export function formatSlipPickDisplayLines(it) {
   const label =
     parseSelectionBetKindLabel(it.selectionLine) ||
     BET_TYPE_LABEL[it.betType] ||
-    '買い目';
+    '購入予定';
   const tickets = it.tickets || [];
   const detail = parseSelectionDetail(it.selectionLine);
   const bt = it.betType || '';
@@ -723,7 +723,7 @@ export function formatBetSlipItemBlock(it, i) {
   const label =
     parseSelectionBetKindLabel(it.selectionLine) ||
     BET_TYPE_LABEL[it.betType] ||
-    '買い目';
+    '購入予定';
   const pickBlock = formatSlipPickDisplayLines(it);
 
   const lines = [

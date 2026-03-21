@@ -35,7 +35,7 @@ export default async function betSlipReviewModal(interaction) {
   const pending = getSlipPendingReview(userId);
   if (!pending?.items?.length) {
     await interaction.reply({
-      content: '❌ 買い目の確認セッションが無効です。',
+      content: '❌ 購入予定の確認セッションが無効です。',
       ephemeral: true,
     });
     return;
@@ -44,14 +44,14 @@ export default async function betSlipReviewModal(interaction) {
   const { raceId, idx } = parsed;
   if (pending.anchorRaceId && pending.anchorRaceId !== raceId) {
     await interaction.reply({
-      content: '❌ 買い目の確認セッションが一致しません。',
+      content: '❌ 購入予定の確認セッションが一致しません。',
       ephemeral: true,
     });
     return;
   }
   if (idx < 0 || idx >= pending.items.length) {
     await interaction.reply({
-      content: '❌ 対象の買い目が見つかりません。',
+      content: '❌ 対象の購入予定が見つかりません。',
       ephemeral: true,
     });
     return;

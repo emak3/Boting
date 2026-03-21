@@ -10,6 +10,11 @@ import {
 
 const DEBUG_BYPASS_USER_ID = '864735082732322867';
 
+/** `/race_debug` や BP デバッグ調整など、デバッグ系スラッシュを使えるユーザー */
+export function canUseDebugCommands(userId) {
+  return String(userId) === DEBUG_BYPASS_USER_ID;
+}
+
 let debugSalesBypassEnabled = false;
 
 export function canBypassSalesClosed(userId) {

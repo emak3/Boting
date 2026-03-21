@@ -45,9 +45,20 @@ export function getNextDailyWindowStartDate(periodKey) {
   return new Date(thisStart.getTime() + 24 * 60 * 60 * 1000);
 }
 
+/** 日次帯 periodKey（YYYYMMDD）の [start, end) — いずれも JST 8:00 境界 */
+export function getJstDailyPeriodWindowBounds(periodKey) {
+  const y = periodKey.slice(0, 4);
+  const mo = periodKey.slice(4, 6);
+  const da = periodKey.slice(6, 8);
+  const start = new Date(`${y}-${mo}-${da}T08:00:00+09:00`);
+  const end = new Date(start.getTime() + 24 * 60 * 60 * 1000);
+  return { start, end };
+}
+
 export function kindLabelJa(kind) {
   if (kind === 'first') return '初回ボーナス';
   if (kind === 'debug_extra') return 'デバッグ';
+  if (kind === 'debug_bp_adjust') return 'デバッグ（BP調整）';
   if (kind === 'race_bet') return '競馬（購入）';
   if (kind === 'race_refund') return '競馬（払戻）';
   return 'デイリー';
@@ -128,6 +139,53 @@ export async function getBalance(userId) {
   const snap = await db.collection(COLLECTION).doc(userId).get();
   if (!snap.exists) return 0;
   return normBalance(snap.data()?.balance);
+}
+
+const DEBUG_BP_ADJUST_ABS_MAX = 99_999_999;
+
+/**
+ * デバッグ用: 指定ユーザーの bp を増減し台帳に記録する（許可ユーザーのみコマンドから呼ぶこと）
+ * @param {string} targetUserId
+ * @param {number} delta 正で追加、負で減算
+ * @returns {Promise<
+ *   | { ok: true, balanceBefore: number, balanceAfter: number, delta: number }
+ *   | { ok: false, reason: 'zero_delta' | 'delta_too_large' | 'would_go_negative', balance?: number }
+ * >}
+ */
+export async function applyDebugBpAdjustment(targetUserId, delta) {
+  const d = Math.trunc(Number(delta));
+  if (!Number.isFinite(d) || d === 0) {
+    return { ok: false, reason: 'zero_delta' };
+  }
+  if (Math.abs(d) > DEBUG_BP_ADJUST_ABS_MAX) {
+    return { ok: false, reason: 'delta_too_large' };
+  }
+
+  const period = getCurrentDailyPeriodKey();
+  const db = getAdminFirestore();
+  const ref = db.collection(COLLECTION).doc(String(targetUserId));
+
+  return db.runTransaction(async (tx) => {
+    const snap = await tx.get(ref);
+    const u = snap.exists ? snap.data() : {};
+    const balanceBefore = normBalance(u.balance);
+    const balanceAfter = balanceBefore + d;
+    if (balanceAfter < 0) {
+      return {
+        ok: false,
+        reason: 'would_go_negative',
+        balance: balanceBefore,
+      };
+    }
+    tx.set(ref, { balance: balanceAfter }, { merge: true });
+    appendLedgerTx(tx, ref, {
+      delta: d,
+      balanceAfter,
+      kind: 'debug_bp_adjust',
+      period,
+    });
+    return { ok: true, balanceBefore, balanceAfter, delta: d };
+  });
 }
 
 /**

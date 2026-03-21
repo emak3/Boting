@@ -30,6 +30,11 @@ import {
 } from '../../utils/betSlipOpenReview.mjs';
 import { buildRaceCardV2Payload, buildTextAndRowsV2Payload } from '../../utils/raceCardDisplay.mjs';
 import {
+  buildRacePurchaseHistoryV2Payload,
+  RACE_HISTORY_PAGE_PREFIX,
+} from '../../utils/racePurchaseHistoryUi.mjs';
+import { RACE_PURCHASE_HISTORY_CUSTOM_ID } from '../../utils/betSlipViewUi.mjs';
+import {
   selectHorseLabel,
   selectFrameLabel,
   wakuUmaEmojiResolvable,
@@ -44,6 +49,7 @@ import {
   normalizeUnitYen100,
 } from '../../utils/unitYenKeypad.mjs';
 import { setUnitKeypadDraft } from '../../utils/unitYenKeypadStore.mjs';
+import { buildRaceHubBackButtonRow } from '../../utils/raceCommandHub.mjs';
 
 const BET_TYPES = [
   { id: 'win', label: '単勝' },
@@ -180,6 +186,7 @@ export async function renderBetFlowResumeView(interaction, { userId, raceId, flo
       headline: h,
       actionRows: components.filter(Boolean),
       extraFlags: extraCard,
+      utilityContext: { userId, flow },
     }),
   );
 }
@@ -258,8 +265,58 @@ export default async function betFlowButtons(interaction) {
         headline: '',
         actionRows: components.filter(Boolean),
         extraFlags,
+        utilityContext: { userId, flow },
       }),
     );
+    return;
+  }
+
+  if (customId.startsWith(`${RACE_PURCHASE_HISTORY_CUSTOM_ID}|`)) {
+    await interaction.deferReply({
+      flags: MessageFlags.Ephemeral,
+    });
+    try {
+      const payload = await buildRacePurchaseHistoryV2Payload({
+        userId,
+        page: 0,
+        extraFlags: MessageFlags.Ephemeral,
+      });
+      await interaction.editReply(payload);
+    } catch (e) {
+      console.error('race_bet_purchase_history', e);
+      await interaction.editReply({
+        content: `❌ 購入履歴の取得に失敗しました: ${e.message}`,
+      });
+    }
+    return;
+  }
+
+  if (customId.startsWith(`${RACE_HISTORY_PAGE_PREFIX}|`)) {
+    const parts = customId.split('|');
+    const pk = parts[1];
+    const pg = parseInt(parts[2], 10);
+    if (!/^\d{8}$/.test(String(pk || '')) || !Number.isFinite(pg) || pg < 0) {
+      await interaction.reply({
+        content: '❌ ページ指定が無効です。',
+        ephemeral: true,
+      });
+      return;
+    }
+    await interaction.deferUpdate();
+    try {
+      const payload = await buildRacePurchaseHistoryV2Payload({
+        userId,
+        periodKey: pk,
+        page: pg,
+        extraFlags: MessageFlags.Ephemeral,
+      });
+      await interaction.editReply(payload);
+    } catch (e) {
+      console.error('race_bet_history_pg', e);
+      await interaction.editReply({
+        content: `❌ 表示の更新に失敗しました: ${e.message}`,
+      }).catch(() => {});
+    }
     return;
   }
 
@@ -282,7 +339,7 @@ export default async function betFlowButtons(interaction) {
     const pending = getSlipPendingReview(userId);
     if (!pending?.items?.length) {
       await interaction.reply({
-        content: '❌ 買い目の確認セッションが無効です。',
+        content: '❌ 購入予定の確認セッションが無効です。',
         ephemeral: true,
       });
       return;
@@ -317,7 +374,7 @@ export default async function betFlowButtons(interaction) {
     const pending = getSlipPendingReview(userId);
     if (!pending?.items?.length) {
       await interaction.reply({
-        content: '❌ 買い目の確認セッションが無効です。',
+        content: '❌ 購入予定の確認セッションが無効です。',
         ephemeral: true,
       });
       return;
@@ -341,7 +398,7 @@ export default async function betFlowButtons(interaction) {
       await interaction.editReply(
         buildTextAndRowsV2Payload({
           headline:
-            '✅ 表示されていた買い目はすべて発売締切のため一覧から外しました。/race から買い目を追加し直せます。',
+            '✅ 表示されていた購入予定はすべて発売締切のため一覧から外しました。/race から購入予定を追加し直せます。',
           actionRows: [],
           extraFlags,
         }),
@@ -358,7 +415,7 @@ export default async function betFlowButtons(interaction) {
     const pending = getSlipPendingReview(userId);
     if (!pending?.items?.length) {
       await interaction.reply({
-        content: '❌ 買い目の確認セッションが無効です。',
+        content: '❌ 購入予定の確認セッションが無効です。',
         ephemeral: true,
       });
       return;
@@ -382,7 +439,7 @@ export default async function betFlowButtons(interaction) {
     const pending = getSlipPendingReview(userId);
     if (!pending?.items?.length) {
       await interaction.reply({
-        content: '❌ 買い目の確認セッションが無効です。',
+        content: '❌ 購入予定の確認セッションが無効です。',
         ephemeral: true,
       });
       return;
@@ -407,7 +464,7 @@ export default async function betFlowButtons(interaction) {
           return `${i + 1}. **${title}**\n└ ${sel}`;
         });
         const headline = [
-          '⚠️ **発売が締め切られている買い目があるため、この内容では確定できません。**',
+          '⚠️ **発売が締め切られている購入予定があるため、この内容では確定できません。**',
           '',
           '次の行は、発売終了・発走済み、または結果確定と判定されています。',
           '',
@@ -448,7 +505,7 @@ export default async function betFlowButtons(interaction) {
         await interaction.editReply(
           buildTextAndRowsV2Payload({
             headline:
-              '❌ 買い目に **払戻用データ** がありません。出馬表から該当レースを開き直し、式別を選び直して **買い目に追加** し直してください。',
+              '❌ 購入予定に **払戻用データ** がありません。出馬表から該当レースを開き直し、式別を選び直して **購入予定に追加** し直してください。',
             actionRows: [],
             extraFlags,
           }),
@@ -466,7 +523,7 @@ export default async function betFlowButtons(interaction) {
       const extraFlags = slipReviewExtraFlags();
       await interaction.editReply(
         buildTextAndRowsV2Payload({
-          headline: `❌ **bp が不足**しています（必要 **${totalBp}** bp / 残高 **${bal}** bp）。\n`/daily` で受け取るか、買い目を減らす・1点あたりの金額を下げてください。`,
+          headline: `❌ **bp が不足**しています（必要 **${totalBp}** bp / 残高 **${bal}** bp）。\n`/daily` で受け取るか、購入予定を減らす・1点あたりの金額を下げてください。`,
           actionRows: [],
           extraFlags,
         }),
@@ -482,7 +539,7 @@ export default async function betFlowButtons(interaction) {
         msg = `❌ **bp が不足**しています（必要 **${purchase.need}** bp / 残高 **${purchase.balance}** bp）。`;
       } else if (purchase.reason === 'bad_tickets') {
         msg =
-          '❌ 買い目データが不正です。出馬表からやり直し、**買い目に追加** し直してください。';
+          '❌ 購入予定データが不正です。出馬表からやり直し、**購入予定に追加** し直してください。';
       }
       await interaction.editReply(
         buildTextAndRowsV2Payload({
@@ -507,7 +564,7 @@ export default async function betFlowButtons(interaction) {
     await interaction.editReply(
       buildTextAndRowsV2Payload({
         headline,
-        actionRows: [],
+        actionRows: [buildRaceHubBackButtonRow()],
         extraFlags,
       }),
     );
@@ -570,7 +627,7 @@ export default async function betFlowButtons(interaction) {
     ) {
       await interaction.reply({
         content:
-          '❌ 買い目データが古いか不完全です。出馬表から式別を選び直してから **買い目に追加** してください。',
+          '❌ 購入予定データが古いか不完全です。出馬表から式別を選び直してから **購入予定に追加** してください。',
         ephemeral: true,
       });
       return;
@@ -591,7 +648,7 @@ export default async function betFlowButtons(interaction) {
     });
     if (!added.ok && added.reason === 'full') {
       await interaction.reply({
-        content: `❌ 買い目は最大${SLIP_MAX_ITEMS}件までです。**買い目**で確認するか、追加済みを空にしてください。`,
+        content: `❌ 購入予定は最大${SLIP_MAX_ITEMS}件までです。**購入予定**で確認するか、追加済みを空にしてください。`,
         ephemeral: true,
       });
       return;
@@ -615,13 +672,14 @@ export default async function betFlowButtons(interaction) {
       /* ignore */
     }
 
-    const head = `✅ 買い目に追加しました（保存: **${added.count}**件）\n\n同じレースで別の式別を選ぶか、他レースから追加できます。**買い目** ボタンで一覧・まとめて確認できます。`;
+    const head = `✅ 購入予定に追加しました（保存: **${added.count}**件）\n\n同じレースで別の式別を選ぶか、他レースから追加できます。**購入予定** ボタンで一覧・まとめて確認できます。`;
     await interaction.editReply(
       buildRaceCardV2Payload({
         result: flowNext.result,
         headline: head,
         actionRows: components.filter(Boolean),
         extraFlags,
+        utilityContext: { userId, flow: flowNext },
       }),
     );
     return;
@@ -741,6 +799,7 @@ export default async function betFlowButtons(interaction) {
           headline: lastLine ? `購入前（戻り）\n${lastLine}` : '購入前（戻り）',
           actionRows: components.filter(Boolean),
           extraFlags: extraRoot,
+          utilityContext: { userId, flow: flowRoot },
         }),
       );
       return;

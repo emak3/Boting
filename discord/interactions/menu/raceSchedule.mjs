@@ -37,6 +37,7 @@ import { getBetFlow, setBetFlow, patchBetFlow, clearBetFlow } from '../../utils/
 import { getSlipSavedCount } from '../../utils/betSlipStore.mjs';
 import {
   BET_SLIP_OPEN_CUSTOM_ID,
+  RACE_PURCHASE_HISTORY_CUSTOM_ID,
   betSlipOpenReviewButtonRowForSchedule,
   firstScheduleAnchorRaceIdFromRaces,
   firstScheduleAnchorRaceIdFromVenues,
@@ -55,6 +56,7 @@ import {
 } from '../../utils/jraBetAvailability.mjs';
 import { buildPayoutTicketsFromFlow } from '../../utils/raceBetTickets.mjs';
 import { settleOpenRaceBetsForUser } from '../../utils/raceBetRecords.mjs';
+import { buildVenuePickIntroV2Payload } from '../../utils/raceCommandHub.mjs';
 
 const VENUE_MENU_ID = 'race_menu_venue';
 const RACE_MENU_ID = 'race_menu_race';
@@ -71,8 +73,15 @@ function v2ExtraFlags(interaction) {
 }
 
 function raceCardPayload(interaction, opts) {
+  const rid = opts.result?.raceId;
+  const uid = interaction.user?.id;
+  const utilityContext =
+    uid && rid && /^\d{12}$/.test(String(rid))
+      ? { userId: uid, flow: getBetFlow(uid, String(rid)) }
+      : null;
   return buildRaceCardV2Payload({
     ...opts,
+    utilityContext,
   });
 }
 
@@ -359,7 +368,7 @@ function buildSelectionRow({
   return new ActionRowBuilder().addComponents(menu);
 }
 
-/** 購入サマリー下部: 金額変更・買い目に追加・買い目（=まとめて確認）・追加済みクリア、その下に戻る・レース一覧 */
+/** 購入サマリー下部: 金額変更・購入予定に追加・購入予定（=まとめて確認）・追加済みクリア、その下に戻る・レース一覧 */
 function summaryPurchaseButtonRows(raceId, userId, backMenuIndex, flow = null) {
   const savedN = getSlipSavedCount(userId);
   const hasCurrent = !!(flow?.purchase?.selectionLine);
@@ -372,11 +381,15 @@ function summaryPurchaseButtonRows(raceId, userId, backMenuIndex, flow = null) {
         .setStyle(ButtonStyle.Primary),
       new ButtonBuilder()
         .setCustomId(`race_bet_add_to_cart|${raceId}`)
-        .setLabel('買い目に追加')
+        .setLabel('購入予定に追加')
         .setStyle(ButtonStyle.Success),
       new ButtonBuilder()
+        .setCustomId(`${RACE_PURCHASE_HISTORY_CUSTOM_ID}|${raceId}`)
+        .setLabel('購入履歴')
+        .setStyle(ButtonStyle.Secondary),
+      new ButtonBuilder()
         .setCustomId(`${BET_SLIP_OPEN_CUSTOM_ID}|${raceId}`)
-        .setLabel(batchTotal ? `買い目(${batchTotal})` : '買い目')
+        .setLabel(batchTotal ? `購入予定(${batchTotal})` : '購入予定')
         .setStyle(ButtonStyle.Primary),
       new ButtonBuilder()
         .setCustomId(`race_bet_cart_clear|${raceId}`)
@@ -864,9 +877,9 @@ export default async function raceScheduleMenu(interaction) {
           return;
         }
         await interaction.editReply(
-          buildTextAndRowsV2Payload({
-            headline:
-              '開催場を選ぶと、その場のレース一覧（発走時刻・発売状態）が表示されます。続けてレースを選ぶと出馬表を表示します。',
+          await buildVenuePickIntroV2Payload({
+            userId,
+            extraFlags: v2ExtraFlags(interaction),
             actionRows: [
               venueSelectRowFromSchedule('jra', kaisaiDateYmd, currentGroup, venues),
               scheduleBackToKindSelectButtonRow(),
@@ -875,7 +888,6 @@ export default async function raceScheduleMenu(interaction) {
                 firstScheduleAnchorRaceIdFromVenues(venues),
               ),
             ],
-            extraFlags: v2ExtraFlags(interaction),
           }),
         );
         return;
@@ -893,9 +905,9 @@ export default async function raceScheduleMenu(interaction) {
           return;
         }
         await interaction.editReply(
-          buildTextAndRowsV2Payload({
-            headline:
-              '開催場を選ぶと、その場のレース一覧（発走時刻・発売状態）が表示されます。続けてレースを選ぶと出馬表を表示します。',
+          await buildVenuePickIntroV2Payload({
+            userId,
+            extraFlags: v2ExtraFlags(interaction),
             actionRows: [
               venueSelectRowFromSchedule('nar', kaisaiDateYmd, null, venues),
               scheduleBackToKindSelectButtonRow(),
@@ -904,7 +916,6 @@ export default async function raceScheduleMenu(interaction) {
                 firstScheduleAnchorRaceIdFromVenues(venues),
               ),
             ],
-            extraFlags: v2ExtraFlags(interaction),
           }),
         );
         return;

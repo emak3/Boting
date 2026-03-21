@@ -9,6 +9,7 @@ import {
 import { wakuUmaEmoji } from './raceNumberEmoji.mjs';
 import { netkeibaResultUrl } from './netkeibaUrls.mjs';
 import { buildRaceResultV2Sections } from './raceResultEmbed.mjs';
+import { maybeInsertRaceBetUtilityRow } from './betSlipViewUi.mjs';
 
 /** Discord Display Components: 全 Text Display 合計 4000 文字まで */
 export const V2_TEXT_TOTAL_MAX = 3900;
@@ -69,15 +70,24 @@ function appendChunkedToContainer(container, text) {
 
 /**
  * 出馬表を Container（Text Display + Separator）で組み立て、続けて操作行を並べる。
- * @param {{ result: object, headline?: string, actionRows?: import('discord.js').ActionRowBuilder[], extraFlags?: number }} opts
+ * @param {{ result: object, headline?: string, actionRows?: import('discord.js').ActionRowBuilder[], extraFlags?: number, utilityContext?: { userId: string, flow?: object } | null }} opts
  */
 export function buildRaceCardV2Payload({
   result,
   headline = '',
   actionRows = [],
   extraFlags = 0,
+  utilityContext = null,
 }) {
-  const rows = actionRows.filter(Boolean);
+  let rows = actionRows.filter(Boolean);
+  if (utilityContext?.userId && result?.raceId) {
+    rows = maybeInsertRaceBetUtilityRow(
+      utilityContext.userId,
+      String(result.raceId),
+      rows,
+      utilityContext.flow,
+    );
+  }
   const flags = MessageFlags.IsComponentsV2 | extraFlags;
 
   if (!result?.horses?.length) {

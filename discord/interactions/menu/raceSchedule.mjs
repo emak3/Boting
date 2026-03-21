@@ -34,6 +34,7 @@ import {
   DISCORD_SELECT_OPTION_LABEL_RESERVE_POST_SELECTION,
 } from '../../utils/raceNumberEmoji.mjs';
 import { getBetFlow, setBetFlow, patchBetFlow, clearBetFlow } from '../../utils/betFlowStore.mjs';
+import { getSlipSavedCount } from '../../utils/betSlipStore.mjs';
 import {
   buildMenuRowFromCustomId,
   buildBetTypeMenuRow,
@@ -342,8 +343,12 @@ function buildSelectionRow({
   return new ActionRowBuilder().addComponents(menu);
 }
 
-/** 購入サマリー下部: 金額変更（左）・購入（右）を同一行、その下に戻る・レース一覧 */
-function summaryPurchaseButtonRows(raceId, userId, backMenuIndex) {
+/** 購入サマリー下部: 金額変更・買い目に追加・まとめて購入・保存クリア、その下に戻る・レース一覧 */
+function summaryPurchaseButtonRows(raceId, userId, backMenuIndex, flow = null) {
+  const savedN = getSlipSavedCount(userId);
+  const hasCurrent = !!(flow?.purchase?.selectionLine);
+  const batchTotal = savedN + (hasCurrent ? 1 : 0);
+  const canBatch = batchTotal > 0;
   const rows = [
     new ActionRowBuilder().addComponents(
       new ButtonBuilder()
@@ -351,9 +356,19 @@ function summaryPurchaseButtonRows(raceId, userId, backMenuIndex) {
         .setLabel('金額変更')
         .setStyle(ButtonStyle.Primary),
       new ButtonBuilder()
-        .setCustomId(`race_bet_purchase|${raceId}`)
-        .setLabel('購入')
+        .setCustomId(`race_bet_add_to_cart|${raceId}`)
+        .setLabel('買い目に追加')
         .setStyle(ButtonStyle.Success),
+      new ButtonBuilder()
+        .setCustomId(`race_bet_cart_checkout|${raceId}`)
+        .setLabel(batchTotal ? `まとめて購入(${batchTotal})` : 'まとめて購入')
+        .setStyle(ButtonStyle.Primary)
+        .setDisabled(!canBatch),
+      new ButtonBuilder()
+        .setCustomId(`race_bet_cart_clear|${raceId}`)
+        .setLabel('追加済みを空にする')
+        .setStyle(ButtonStyle.Danger)
+        .setDisabled(savedN === 0),
     ),
   ];
   const br = backButtonRow(raceId, backMenuIndex);
@@ -597,7 +612,7 @@ export async function editReplyPurchaseSummaryFromFlow(interaction, userId, race
       headline: content,
       actionRows: [
         ...summaryMenuRows,
-        ...summaryPurchaseButtonRows(raceId, userId, backMenuIndex),
+        ...summaryPurchaseButtonRows(raceId, userId, backMenuIndex, flow),
       ].filter(Boolean),
       extraFlags: v2ExtraFlags(interaction),
     }),
@@ -680,7 +695,7 @@ async function renderFinalSelection({
       headline: content,
       actionRows: [
         ...summaryMenuRows,
-        ...summaryPurchaseButtonRows(raceId, userId, backMenuIndex),
+        ...summaryPurchaseButtonRows(raceId, userId, backMenuIndex, flowAfter),
       ].filter(Boolean),
       extraFlags: v2ExtraFlags(interaction),
     }),

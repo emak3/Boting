@@ -10,7 +10,18 @@ import {
   MessageFlags,
 } from 'discord.js';
 import { getBetFlow, clearBetFlow, patchBetFlow } from '../../utils/betFlowStore.mjs';
-import { buildBetPurchaseV2Headline } from '../../utils/betPurchaseEmbed.mjs';
+import {
+  addSlipSavedItem,
+  clearSlipSaved,
+  getSlipSavedItems,
+  setSlipPendingReview,
+  getSlipPendingReview,
+  clearSlipPending,
+  SLIP_MAX_ITEMS,
+} from '../../utils/betSlipStore.mjs';
+import { netkeibaOriginFromFlow } from '../../utils/netkeibaUrls.mjs';
+import { buildBetSlipBatchV2Headline } from '../../utils/betPurchaseEmbed.mjs';
+import { buildSlipReviewV2Payload } from '../../utils/betSlipReview.mjs';
 import { buildRaceCardV2Payload, buildTextAndRowsV2Payload } from '../../utils/raceCardDisplay.mjs';
 import {
   selectHorseLabel,
@@ -67,9 +78,42 @@ const TRITAN_MODE_OPTIONS = [
 ];
 
 function safeParseRaceId(customId) {
-  // race_bet_purchase|{raceId} / race_bet_unit_edit|{raceId}
+  // race_bet_*|{raceId}（末尾セグメントが raceId）
   const parts = customId.split('|');
   return parts[parts.length - 1] || null;
+}
+
+function slipItemFromLiveFlow(flow, raceId) {
+  const origin = netkeibaOriginFromFlow(flow);
+  return {
+    id: `live_${Date.now()}_${Math.random().toString(36).slice(2, 9)}`,
+    raceId: flow.result?.raceId || raceId,
+    unitYen: flow.unitYen ?? 100,
+    points: flow.purchase.points,
+    selectionLine: flow.purchase.selectionLine,
+    raceTitle: flow.result?.raceInfo?.title,
+    oddsOfficialTime: flow.result?.oddsOfficialTime,
+    isResult: !!flow.result?.isResult,
+    netkeibaOrigin: origin,
+  };
+}
+
+function resetFlowAfterSlipAction(userId, raceId) {
+  patchBetFlow(userId, raceId, {
+    purchase: null,
+    purchaseSnapshot: null,
+    lastSelectionLine: '',
+    backMenuIds: [],
+    backMenuIndex: -1,
+    navViewMenuIndex: null,
+    resumeBackFromSummary: false,
+    betType: null,
+    pairMode: null,
+    umatanMode: null,
+    trifukuMode: null,
+    tritanMode: null,
+    stepSelections: {},
+  });
 }
 
 function scheduleRaceListBackRow(raceId) {
@@ -152,32 +196,23 @@ export async function renderBetFlowResumeView(interaction, { userId, raceId, flo
 export default async function betFlowButtons(interaction) {
   if (!interaction.isButton()) return;
   const customId = interaction.customId;
-  if (
-    !customId.startsWith('race_bet_purchase|') &&
-    !customId.startsWith('race_bet_unit_edit|') &&
-    !customId.startsWith('race_bet_back|') &&
-    !customId.startsWith('race_bet_forward|')
-  )
-    return;
-
-  const raceId = safeParseRaceId(customId);
   const userId = interaction.user.id;
-  const flow = getBetFlow(userId, raceId);
 
-  if (!flow) {
-    await interaction.reply({ content: '❌ セッションが無効です。もう一度 /race から開始してください。', ephemeral: true });
-    return;
-  }
-
-  // 購入（仮）確定
-  if (customId.startsWith('race_bet_purchase|')) {
-    if (!flow.purchase) {
-      await interaction.reply({ content: '❌ 購入できません（選択が完了していません）。', ephemeral: true });
+  if (customId.startsWith('race_bet_slip_confirm|')) {
+    const raceId = safeParseRaceId(customId);
+    const pending = getSlipPendingReview(userId);
+    if (!pending?.items?.length) {
+      await interaction.reply({
+        content: '❌ 買い目の確認セッションが無効です。',
+        ephemeral: true,
+      });
       return;
     }
     await interaction.deferUpdate();
-    const headline = buildBetPurchaseV2Headline({ flow });
-    clearBetFlow(userId, raceId);
+    const headline = buildBetSlipBatchV2Headline({ items: pending.items });
+    const anchor = pending.anchorRaceId || raceId;
+    clearSlipPending(userId);
+    clearBetFlow(userId, anchor);
     let extraFlags = 0;
     try {
       if (interaction.message?.flags?.has(MessageFlags.Ephemeral)) {
@@ -193,6 +228,169 @@ export default async function betFlowButtons(interaction) {
         extraFlags,
       }),
     );
+    return;
+  }
+
+  if (customId.startsWith('race_bet_slip_unit_modal_open|')) {
+    const raceId = safeParseRaceId(customId);
+    const pending = getSlipPendingReview(userId);
+    if (!pending?.items?.length) {
+      await interaction.reply({
+        content: '❌ 買い目の確認セッションが無効です。',
+        ephemeral: true,
+      });
+      return;
+    }
+    const modal = new ModalBuilder()
+      .setCustomId(`race_bet_slip_unit_modal|${raceId}`)
+      .setTitle('金額変更（番号指定）');
+    const noInput = new TextInputBuilder()
+      .setCustomId('item_no')
+      .setLabel('買い目の番号（1から順）')
+      .setStyle(TextInputStyle.Short)
+      .setRequired(true)
+      .setMinLength(1)
+      .setMaxLength(2)
+      .setPlaceholder(`1〜${pending.items.length}`);
+    const yenInput = new TextInputBuilder()
+      .setCustomId('unit_yen')
+      .setLabel('1点あたりの金額（円）')
+      .setStyle(TextInputStyle.Short)
+      .setRequired(true)
+      .setMinLength(1)
+      .setMaxLength(7)
+      .setValue(String(pending.items[0]?.unitYen ?? 100));
+    modal.addComponents(
+      new ActionRowBuilder().addComponents(noInput),
+      new ActionRowBuilder().addComponents(yenInput),
+    );
+    await interaction.showModal(modal);
+    return;
+  }
+
+  if (
+    !customId.startsWith('race_bet_add_to_cart|') &&
+    !customId.startsWith('race_bet_cart_checkout|') &&
+    !customId.startsWith('race_bet_cart_clear|') &&
+    !customId.startsWith('race_bet_unit_edit|') &&
+    !customId.startsWith('race_bet_back|') &&
+    !customId.startsWith('race_bet_forward|')
+  )
+    return;
+
+  const raceId = safeParseRaceId(customId);
+
+  if (customId.startsWith('race_bet_cart_checkout|')) {
+    const flowOpt = getBetFlow(userId, raceId);
+    const saved = getSlipSavedItems(userId);
+    const merged = [...saved];
+    if (flowOpt?.purchase) {
+      merged.push(slipItemFromLiveFlow(flowOpt, raceId));
+    }
+    if (!merged.length) {
+      await interaction.reply({
+        content:
+          '❌ 買い目がありません。「買い目に追加」で溜めた分か、今のサマリーの買い目が必要です。',
+        ephemeral: true,
+      });
+      return;
+    }
+    if (merged.length > SLIP_MAX_ITEMS) {
+      await interaction.reply({
+        content: `❌ 一度にまとめられる買い目は最大${SLIP_MAX_ITEMS}件です。`,
+        ephemeral: true,
+      });
+      return;
+    }
+    await interaction.deferUpdate();
+    clearSlipSaved(userId);
+    setSlipPendingReview(userId, { items: merged, anchorRaceId: raceId });
+    if (flowOpt) {
+      resetFlowAfterSlipAction(userId, raceId);
+    }
+    let extraFlags = 0;
+    try {
+      if (interaction.message?.flags?.has(MessageFlags.Ephemeral)) {
+        extraFlags |= MessageFlags.Ephemeral;
+      }
+    } catch (_) {
+      /* ignore */
+    }
+    await interaction.editReply(buildSlipReviewV2Payload({ userId, extraFlags }));
+    return;
+  }
+
+  const flow = getBetFlow(userId, raceId);
+  if (!flow) {
+    await interaction.reply({
+      content: '❌ セッションが無効です。もう一度 /race から開始してください。',
+      ephemeral: true,
+    });
+    return;
+  }
+
+  if (customId.startsWith('race_bet_add_to_cart|')) {
+    if (!flow.purchase) {
+      await interaction.reply({
+        content: '❌ 追加できません（選択が完了していません）。',
+        ephemeral: true,
+      });
+      return;
+    }
+    const origin = netkeibaOriginFromFlow(flow);
+    const added = addSlipSavedItem(userId, {
+      raceId: flow.result?.raceId || raceId,
+      unitYen: flow.unitYen ?? 100,
+      points: flow.purchase.points,
+      selectionLine: flow.purchase.selectionLine,
+      raceTitle: flow.result?.raceInfo?.title,
+      oddsOfficialTime: flow.result?.oddsOfficialTime,
+      isResult: !!flow.result?.isResult,
+      netkeibaOrigin: origin,
+    });
+    if (!added.ok && added.reason === 'full') {
+      await interaction.reply({
+        content: `❌ 買い目は最大${SLIP_MAX_ITEMS}件までです。まとめて購入するか、保存を空にしてください。`,
+        ephemeral: true,
+      });
+      return;
+    }
+
+    await interaction.deferUpdate();
+    resetFlowAfterSlipAction(userId, raceId);
+
+    const flowNext = getBetFlow(userId, raceId);
+    const components = [buildBetTypeMenuRow(raceId, flowNext)];
+    if (hasScheduleContext(flowNext)) {
+      components.push(scheduleRaceListBackRow(raceId));
+    }
+
+    let extraFlags = 0;
+    try {
+      if (interaction.message?.flags?.has(MessageFlags.Ephemeral)) {
+        extraFlags |= MessageFlags.Ephemeral;
+      }
+    } catch (_) {
+      /* ignore */
+    }
+
+    const head = `✅ 買い目に追加しました（保存: **${added.count}**件）\n\n同じレースで別の式別を選ぶか、他レースから追加できます。**まとめて購入** で今のサマリーも含めて確認できます。`;
+    await interaction.editReply(
+      buildRaceCardV2Payload({
+        result: flowNext.result,
+        headline: head,
+        actionRows: components.filter(Boolean),
+        extraFlags,
+      }),
+    );
+    return;
+  }
+
+  if (customId.startsWith('race_bet_cart_clear|')) {
+    await interaction.deferUpdate();
+    clearSlipSaved(userId);
+    const { editReplyPurchaseSummaryFromFlow } = await import('../menu/raceSchedule.mjs');
+    await editReplyPurchaseSummaryFromFlow(interaction, userId, raceId);
     return;
   }
 

@@ -44,6 +44,47 @@ export function buildBetPurchaseV2Headline({ flow }) {
     .join('\n');
 }
 
+/**
+ * 複数買い目をまとめた確認文（Components V2 用）
+ * @param {{ items: Array<{ raceId: string, unitYen: number, points: number, selectionLine: string, raceTitle?: string, oddsOfficialTime?: string, isResult?: boolean, netkeibaOrigin?: string }> }} opts
+ */
+export function buildBetSlipBatchV2Headline({ items }) {
+  const lines = ['**まとめて購入内容（仮）**', ''];
+  let grandPoints = 0;
+  let grandYen = 0;
+
+  for (let i = 0; i < items.length; i++) {
+    const it = items[i];
+    const unitYen = it.unitYen ?? 100;
+    const points = it.points ?? 0;
+    const selectionLine = it.selectionLine ?? '（選択なし）';
+    const raceTitle = it.raceTitle || 'レース';
+    const raceId = it.raceId;
+    const origin = it.netkeibaOrigin === 'nar' ? 'nar' : 'jra';
+    const resultUrl =
+      raceId && it.isResult ? netkeibaResultUrl(raceId, origin) : null;
+    const subtotal = points * unitYen;
+    grandPoints += points;
+    grandYen += subtotal;
+
+    lines.push(`**${i + 1}.** ${raceTitle}`);
+    if (it.oddsOfficialTime) lines.push(`オッズ時刻: ${it.oddsOfficialTime}`);
+    if (resultUrl) lines.push(`結果: ${resultUrl}`);
+    lines.push(selectionLine);
+    lines.push(`点数: ${points}点 | 1点: ${unitYen}円 | 小計: ${subtotal}円`);
+    lines.push('');
+  }
+
+  lines.push(
+    `—`,
+    `**合計** 点数: ${grandPoints}点 | 合計目安: ${grandYen}円`,
+    '',
+    '*実際の決済は行いません（選択内容の確認のみ）*',
+  );
+
+  return lines.join('\n');
+}
+
 export function buildBetPurchaseEmbed({ flow }) {
   const unitYen = flow?.unitYen ?? 100;
   const points = flow?.purchase?.points ?? 0;

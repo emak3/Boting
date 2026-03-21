@@ -334,6 +334,14 @@ function finalizeBackMenuIds(ids, lastMenuCustomId) {
   return [...ids, lastMenuCustomId];
 }
 
+/** race_bet_* セレクトの customId から raceId（2番目のセグメント）を取る */
+function raceIdFromBetFlowSelectCustomId(customId) {
+  const parts = String(customId).split('|');
+  if (parts.length < 2) return null;
+  const rid = parts[1];
+  return /^\d{12}$/.test(rid) ? rid : null;
+}
+
 function inferTritanModeFromCustomId(lastMenuCustomId) {
   if (!lastMenuCustomId) return null;
   const kind = String(lastMenuCustomId).split('|')[0];
@@ -822,6 +830,17 @@ export default async function raceScheduleMenu(interaction) {
     return;
   }
 
+  // セレクトでベットフローを前進したら「購入から戻った直後」専用の戻る解釈を解除する
+  if (
+    customId.startsWith(BET_PREFIX) &&
+    !customId.startsWith(BET_TYPE_MENU_PREFIX)
+  ) {
+    const rid = raceIdFromBetFlowSelectCustomId(customId);
+    if (rid && userId) {
+      patchBetFlow(userId, rid, { resumeBackFromSummary: false });
+    }
+  }
+
   // 3) 賭け方メニュー
   if (customId.startsWith(BET_TYPE_MENU_PREFIX)) {
     await interaction.deferUpdate();
@@ -867,6 +886,7 @@ export default async function raceScheduleMenu(interaction) {
       tritanFormB: null,
       backMenuIds: null,
       backMenuIndex: null,
+      resumeBackFromSummary: false,
       purchase: null,
       stepSelections: {},
       lastSelectionLine: null,

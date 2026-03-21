@@ -122,20 +122,69 @@ export default async function betFlowButtons(interaction) {
   // 戻る（多段）
   if (customId.startsWith('race_bet_back|')) {
     const backMenuIds = flow.backMenuIds || [];
-    const currentIndex = flow.backMenuIndex ?? backMenuIds.length - 1;
-    // 「購入前」から最初の戻るは、最終入力メニューそのものを表示する
-    const displayIndex = currentIndex;
-    const nextIndex = currentIndex - 1;
-    if (displayIndex < 0) {
-      await interaction.reply({ content: 'これ以上戻れません。', ephemeral: true });
+    const currentIndex =
+      flow.backMenuIndex !== undefined && flow.backMenuIndex !== null
+        ? flow.backMenuIndex
+        : backMenuIds.length - 1;
+
+    const lastLine = flow.purchase?.selectionLine ?? flow.lastSelectionLine ?? '';
+
+    // 二重クリック・不整合で index がルートより前 — 賭け方へ（エラーにしない）
+    if (currentIndex < 0 || !backMenuIds.length) {
+      await interaction.deferUpdate();
+      patchBetFlow(userId, raceId, {
+        purchase: null,
+        lastSelectionLine: lastLine,
+        backMenuIndex: -1,
+        resumeBackFromSummary: false,
+      });
+      const components = [buildBetTypeMenuRow(raceId)];
+      if (hasScheduleContext(flow)) {
+        components.push(scheduleRaceListBackRow(raceId));
+      }
+      await interaction.editReply({
+        content: lastLine ? `購入前（戻り）\n${lastLine}` : '購入前（戻り）',
+        embeds: [buildRaceCardEmbed(flow.result)],
+        components: components.filter(Boolean),
+      });
       return;
     }
 
-    const lastLine = flow.purchase?.selectionLine ?? flow.lastSelectionLine ?? '';
+    const atPurchase = !!flow.purchase;
+    const resumeBackFromSummary = flow.resumeBackFromSummary === true;
+    // 購入サマリーからの1回目、またはその直後の連鎖では「今の index のメニュー」を開く。
+    // それ以外（通常にセレクトで進んだ画面）は 1 回の戻るで親（賭け方を含む）へ進む。
+    let displayIndex;
+    let nextIndex;
+    if (atPurchase || resumeBackFromSummary) {
+      displayIndex = currentIndex;
+      nextIndex = currentIndex - 1;
+    } else {
+      displayIndex = currentIndex - 1;
+      nextIndex = currentIndex - 2;
+    }
+
+    if (displayIndex < 0) {
+      displayIndex = 0;
+      nextIndex = -1;
+    }
+    if (displayIndex >= backMenuIds.length) {
+      displayIndex = backMenuIds.length - 1;
+      nextIndex = Math.min(nextIndex, displayIndex - 1);
+    }
+
+    let nextResume = resumeBackFromSummary;
+    if (atPurchase) {
+      nextResume = true;
+    } else if (displayIndex === 0 && nextIndex < 0) {
+      nextResume = false;
+    }
+
     patchBetFlow(userId, raceId, {
       purchase: null,
       lastSelectionLine: lastLine,
       backMenuIndex: nextIndex,
+      resumeBackFromSummary: nextResume,
     });
 
     const currentMenuCustomId = backMenuIds[displayIndex];

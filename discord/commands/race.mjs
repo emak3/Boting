@@ -16,24 +16,7 @@ import { buildRaceCardV2Payload } from '../utils/raceCardDisplay.mjs';
 import { buildRaceResultEmbeds } from '../utils/raceResultEmbed.mjs';
 import { setBetFlow } from '../utils/betFlowStore.mjs';
 import { canBypassSalesClosed } from '../utils/raceDebugBypass.mjs';
-
-function scheduleKindSelectRow() {
-  return new ActionRowBuilder().addComponents(
-    new StringSelectMenuBuilder()
-      .setCustomId('race_menu_schedule_kind')
-      .setPlaceholder('中央(JRA) か 地方(NAR) を選択')
-      .addOptions(
-        new StringSelectMenuOptionBuilder()
-          .setLabel('中央競馬 (JRA)')
-          .setValue('jra')
-          .setDescription('race.netkeiba.com'),
-        new StringSelectMenuOptionBuilder()
-          .setLabel('地方競馬 (NAR)')
-          .setValue('nar')
-          .setDescription('nar.netkeiba.com'),
-      ),
-  );
-}
+import { scheduleKindSelectRow } from '../utils/scheduleKindUi.mjs';
 
 function venueSelectRow(scheduleKind, kaisaiDate, currentGroup, venues) {
   const menu = new StringSelectMenuBuilder()

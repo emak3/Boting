@@ -22,10 +22,10 @@ import {
 import { netkeibaResultUrl, netkeibaOriginFromFlow } from '../../utils/netkeibaUrls.mjs';
 import {
   buildRaceCardV2Payload,
+  buildRaceResultV2Payload,
   buildTextAndRowsV2Payload,
 } from '../../utils/raceCardDisplay.mjs';
 import { canBypassSalesClosed } from '../../utils/raceDebugBypass.mjs';
-import { buildRaceResultV2Text } from '../../utils/raceResultEmbed.mjs';
 import {
   selectHorseLabel,
   selectFrameLabel,
@@ -38,10 +38,13 @@ import {
   buildMenuRowFromCustomId,
   buildBetTypeMenuRow,
 } from '../button/betFlowButtons.mjs';
+import {
+  SCHEDULE_KIND_MENU_ID,
+  scheduleBackToKindSelectButtonRow,
+} from '../../utils/scheduleKindUi.mjs';
 
 const VENUE_MENU_ID = 'race_menu_venue';
 const RACE_MENU_ID = 'race_menu_race';
-const SCHEDULE_KIND_MENU_ID = 'race_menu_schedule_kind';
 
 function v2ExtraFlags(interaction) {
   try {
@@ -808,7 +811,10 @@ export default async function raceScheduleMenu(interaction) {
           buildTextAndRowsV2Payload({
             headline:
               '開催場を選ぶと、その場のレース一覧（発走時刻・発売状態）が表示されます。続けてレースを選ぶと出馬表を表示します。',
-            actionRows: [venueSelectRowFromSchedule('jra', kaisaiDateYmd, currentGroup, venues)],
+            actionRows: [
+              venueSelectRowFromSchedule('jra', kaisaiDateYmd, currentGroup, venues),
+              scheduleBackToKindSelectButtonRow(),
+            ],
             extraFlags: v2ExtraFlags(interaction),
           }),
         );
@@ -830,7 +836,10 @@ export default async function raceScheduleMenu(interaction) {
           buildTextAndRowsV2Payload({
             headline:
               '開催場を選ぶと、その場のレース一覧（発走時刻・発売状態）が表示されます。続けてレースを選ぶと出馬表を表示します。',
-            actionRows: [venueSelectRowFromSchedule('nar', kaisaiDateYmd, null, venues)],
+            actionRows: [
+              venueSelectRowFromSchedule('nar', kaisaiDateYmd, null, venues),
+              scheduleBackToKindSelectButtonRow(),
+            ],
             extraFlags: v2ExtraFlags(interaction),
           }),
         );
@@ -1053,8 +1062,8 @@ export default async function raceScheduleMenu(interaction) {
           source: flowCtx.source || resultSnap.netkeibaOrigin || 'jra',
         });
         await interaction.editReply(
-          buildTextAndRowsV2Payload({
-            headline: buildRaceResultV2Text(resultSnap),
+          buildRaceResultV2Payload({
+            parsed: resultSnap,
             actionRows: [
               flowCtx.kaisaiId ? scheduleBackToRaceListButtonRow(raceId) : null,
             ].filter(Boolean),

@@ -81,7 +81,9 @@ function scheduleRaceListBackRow(raceId) {
 }
 
 function hasScheduleContext(flow) {
-  return !!(flow?.kaisaiDate && flow?.currentGroup && flow?.kaisaiId);
+  if (!flow?.kaisaiDate || !flow?.kaisaiId) return false;
+  if (flow.source === 'nar') return true;
+  return !!flow.currentGroup;
 }
 
 function shouldShowForwardNav(flow) {

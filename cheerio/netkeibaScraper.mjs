@@ -32,26 +32,46 @@ class NetkeibaScraper {
   }
 
   /**
-   * メインの出馬表データ取得メソッド（中央→地方の順で試行）
+   * メインの出馬表データ取得メソッド
+   * Cheerio は JRA / NAR を並列に取り、どちらかで馬が取れたら即返す（NAR で JRA 用 Puppeteer が走らないようにする）。
+   * Puppeteer は両方の Cheerio が空のときだけ、JRA → NAR の順で試す。
    */
   async scrapeRaceCard(raceId) {
-    const bases = [
+    const jraUrl = `${this.baseUrl}/race/shutuba.html?race_id=${raceId}`;
+    const narUrl = `${NAR_BASE_URL}/race/shutuba.html?race_id=${raceId}`;
+    const jraHeaders = this.requestHeadersForBase(this.baseUrl);
+    const narHeaders = this.requestHeadersForBase(NAR_BASE_URL);
+
+    let lastErr;
+    try {
+      const [jraCheerio, narCheerio] = await Promise.all([
+        this.scrapeWithCheerio(jraUrl, { headers: jraHeaders }),
+        this.scrapeWithCheerio(narUrl, { headers: narHeaders }),
+      ]);
+
+      if (jraCheerio?.horses?.length) {
+        jraCheerio.netkeibaOrigin = 'jra';
+        await this.mergeJraOddsFromApi(raceId, jraCheerio);
+        return jraCheerio;
+      }
+      if (narCheerio?.horses?.length) {
+        narCheerio.netkeibaOrigin = 'nar';
+        return narCheerio;
+      }
+    } catch (error) {
+      lastErr = error;
+      console.warn('scrapeRaceCard cheerio parallel:', error.message);
+    }
+
+    const puppeteerBases = [
       { origin: 'jra', base: this.baseUrl },
       { origin: 'nar', base: NAR_BASE_URL },
     ];
-    let lastErr;
-    for (const { origin, base } of bases) {
+    for (const { origin, base } of puppeteerBases) {
       const url = `${base}/race/shutuba.html?race_id=${raceId}`;
-      const headers = this.requestHeadersForBase(base);
       try {
-        let result = await this.scrapeWithCheerio(url, { headers });
-        if (result && result.horses.length > 0) {
-          result.netkeibaOrigin = origin;
-          if (origin === 'jra') await this.mergeJraOddsFromApi(raceId, result);
-          return result;
-        }
-        console.log(`Cheerio approach failed for ${origin}, falling back to Puppeteer...`);
-        result = await this.scrapeWithPuppeteer(url);
+        console.log(`Cheerio empty for both sites, Puppeteer: ${origin}...`);
+        const result = await this.scrapeWithPuppeteer(url);
         if (result && result.horses.length > 0) {
           result.netkeibaOrigin = origin;
           if (origin === 'jra') await this.mergeJraOddsFromApi(raceId, result);
@@ -59,9 +79,10 @@ class NetkeibaScraper {
         }
       } catch (error) {
         lastErr = error;
-        console.warn(`scrapeRaceCard ${origin}:`, error.message);
+        console.warn(`scrapeRaceCard puppeteer ${origin}:`, error.message);
       }
     }
+
     console.error('Error scraping race card:', lastErr);
     throw new Error(`Failed to scrape race data: ${lastErr?.message || 'no data'}`);
   }

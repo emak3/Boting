@@ -18,7 +18,7 @@ export function buildRaceCardEmbed(result) {
   const resultUrl = raceId ? netkeibaResultUrl(raceId, origin) : null;
 
   const embed = {
-    color: isResult ? 0xf1c40f : 0x0099ff,
+    color: isResult ? 0xed4245 : 0x0099ff,
     title: `${isResult ? '🏁' : '🐎'} ${result?.raceInfo?.title || 'レース情報'}`,
     description: `**日程:** ${result.raceInfo?.date || 'N/A'}\n**コース:** ${result.raceInfo?.course || 'N/A'}`,
     fields: result.horses.slice(0, 18).map((horse) => {

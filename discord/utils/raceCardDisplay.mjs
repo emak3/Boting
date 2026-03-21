@@ -8,12 +8,18 @@ import {
 } from 'discord.js';
 import { wakuUmaEmoji } from './raceNumberEmoji.mjs';
 import { netkeibaResultUrl } from './netkeibaUrls.mjs';
+import { buildRaceResultV2Sections } from './raceResultEmbed.mjs';
 
 /** Discord Display Components: 全 Text Display 合計 4000 文字まで */
 const V2_TEXT_TOTAL_MAX = 3900;
 const V2_SINGLE_CHUNK = 3500;
 
 export const RACE_CARD_V2_FLAGS = MessageFlags.IsComponentsV2;
+
+/** 出馬表 Container のアクセント（左側の色帯） */
+export const RACE_CARD_ACCENT_BLUE = 0x0099ff;
+/** レース結果・払戻 Container のアクセント */
+export const RACE_RESULT_ACCENT_RED = 0xed4245;
 
 function horseBlock(horse) {
   const place = horse.placeOddsMin ? ` / 複勝〜${horse.placeOddsMin}` : '';
@@ -46,6 +52,19 @@ function splitForTextDisplays(fullText) {
     rest = rest.slice(cut).trimStart();
   }
   return out;
+}
+
+/** 長文を複数 Text Display に分割し、間に Separator を挟む */
+function appendChunkedToContainer(container, text) {
+  const chunks = splitForTextDisplays(String(text || '').trimEnd()).filter((c) => String(c).trim());
+  for (let i = 0; i < chunks.length; i++) {
+    container.addTextDisplayComponents((td) => td.setContent(chunks[i]));
+    if (i < chunks.length - 1) {
+      container.addSeparatorComponents((sep) =>
+        sep.setSpacing(SeparatorSpacingSize.Small).setDivider(true),
+      );
+    }
+  }
 }
 
 /**
@@ -96,30 +115,42 @@ export function buildRaceCardV2Payload({
     );
   }
 
-  const prose = [
-    headline,
-    titleLine,
-    meta,
-    footerLine,
-    '—',
-    horseLines.join('\n\n'),
-  ]
-    .filter(Boolean)
-    .join('\n\n');
+  const topBlock = [headline, titleLine, meta, footerLine].filter(Boolean).join('\n\n');
+  const horsesText = horseLines.join('\n\n');
 
-  const chunks = splitForTextDisplays(prose);
-  const container = new ContainerBuilder().setAccentColor(
-    isResult ? 0xf1c40f : 0x0099ff,
-  );
+  const container = new ContainerBuilder().setAccentColor(RACE_CARD_ACCENT_BLUE);
+  appendChunkedToContainer(container, topBlock);
+  container.addSeparatorComponents((separator) => separator);
+  appendChunkedToContainer(container, horsesText);
 
-  for (let i = 0; i < chunks.length; i++) {
-    const chunk = chunks[i];
-    container.addTextDisplayComponents((td) => td.setContent(chunk));
-    if (i < chunks.length - 1) {
-      container.addSeparatorComponents((sep) =>
-        sep.setSpacing(SeparatorSpacingSize.Small).setDivider(true),
-      );
-    }
+  return {
+    content: null,
+    embeds: [],
+    components: [container, ...rows],
+    flags,
+  };
+}
+
+/**
+ * レース結果・払戻（Components V2）— 赤アクセントの Container
+ * @param {{ parsed: object, actionRows?: import('discord.js').ActionRowBuilder[], extraFlags?: number }} opts
+ */
+export function buildRaceResultV2Payload({
+  parsed,
+  actionRows = [],
+  extraFlags = 0,
+}) {
+  const rows = actionRows.filter(Boolean);
+  const flags = MessageFlags.IsComponentsV2 | extraFlags;
+  const { header, ranks, payout } = buildRaceResultV2Sections(parsed);
+  const container = new ContainerBuilder().setAccentColor(RACE_RESULT_ACCENT_RED);
+
+  appendChunkedToContainer(container, header);
+  container.addSeparatorComponents((separator) => separator);
+  appendChunkedToContainer(container, ranks);
+  if (payout) {
+    container.addSeparatorComponents((separator) => separator);
+    appendChunkedToContainer(container, payout);
   }
 
   return {

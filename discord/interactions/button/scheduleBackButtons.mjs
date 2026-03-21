@@ -17,6 +17,11 @@ import {
 } from '../../../cheerio/netkeibaSchedule.mjs';
 import { getBetFlow } from '../../utils/betFlowStore.mjs';
 import { buildTextAndRowsV2Payload } from '../../utils/raceCardDisplay.mjs';
+import {
+  SCHEDULE_KIND_BACK_BUTTON_ID,
+  scheduleKindSelectRow,
+  scheduleBackToKindSelectButtonRow,
+} from '../../utils/scheduleKindUi.mjs';
 
 function v2ExtraFlags(interaction) {
   try {
@@ -86,11 +91,24 @@ export default async function scheduleBackButtons(interaction) {
 
   const isVenueBack = customId.startsWith(VENUE_BACK_PREFIX);
   const isRaceListBack = customId.startsWith(RACE_LIST_BACK_PREFIX);
-  if (!isVenueBack && !isRaceListBack) return;
+  const isKindBack = customId === SCHEDULE_KIND_BACK_BUTTON_ID;
+  if (!isVenueBack && !isRaceListBack && !isKindBack) return;
 
   await interaction.deferUpdate();
 
   try {
+    if (isKindBack) {
+      await interaction.editReply(
+        buildTextAndRowsV2Payload({
+          headline:
+            'まず **中央(JRA)** か **地方(NAR)** を選び、その後に開催場を選ぶとレース一覧が表示されます。続けてレースを選ぶと出馬表を表示します。',
+          actionRows: [scheduleKindSelectRow()],
+          extraFlags: v2ExtraFlags(interaction),
+        }),
+      );
+      return;
+    }
+
     if (isVenueBack) {
       const parts = customId.split('|');
       const scheduleKind = parts[1];
@@ -129,7 +147,7 @@ export default async function scheduleBackButtons(interaction) {
         buildTextAndRowsV2Payload({
           headline:
             '開催場を選ぶと、その場のレース一覧（発走時刻・発売状態）が表示されます。続けてレースを選ぶと出馬表を表示します。',
-          actionRows: [row],
+          actionRows: [row, scheduleBackToKindSelectButtonRow()],
           extraFlags: v2ExtraFlags(interaction),
         }),
       );

@@ -4,6 +4,7 @@ import {
   replaceSlipPendingItems,
 } from '../../utils/betSlipStore.mjs';
 import { buildSlipReviewV2Payload } from '../../utils/betSlipReview.mjs';
+import { normalizeUnitYen100 } from '../../utils/unitYenKeypad.mjs';
 
 /** race_bet_slip_unit_modal|{raceId}|{index} */
 function parseModalCustomId(customId) {
@@ -48,9 +49,6 @@ export default async function betSlipReviewModal(interaction) {
     });
     return;
   }
-  const rawYen = interaction.fields.getTextInputValue('unit_yen') || '';
-  const unitYen = parseInt(rawYen.trim(), 10);
-
   if (idx < 0 || idx >= pending.items.length) {
     await interaction.reply({
       content: '❌ 対象の買い目が見つかりません。',
@@ -58,13 +56,17 @@ export default async function betSlipReviewModal(interaction) {
     });
     return;
   }
-  if (!Number.isFinite(unitYen) || unitYen <= 0) {
+
+  const rawYen = interaction.fields.getTextInputValue('unit_yen') || '';
+  const parsedYen = parseInt(rawYen.trim(), 10);
+  if (!Number.isFinite(parsedYen) || parsedYen <= 0) {
     await interaction.reply({
       content: '❌ bp は正の整数で入力してください。',
       ephemeral: true,
     });
     return;
   }
+  const unitYen = normalizeUnitYen100(parsedYen);
 
   const next = pending.items.map((it, i) =>
     i === idx ? { ...it, unitYen } : { ...it },

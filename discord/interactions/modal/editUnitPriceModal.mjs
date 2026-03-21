@@ -1,5 +1,5 @@
-import { TextInputStyle } from 'discord.js';
 import { getBetFlow, patchBetFlow } from '../../utils/betFlowStore.mjs';
+import { normalizeUnitYen100 } from '../../utils/unitYenKeypad.mjs';
 import {
   buildTextAndRowsV2Payload,
   extractTopLevelActionRowsFromMessage,
@@ -30,12 +30,14 @@ export default async function editUnitPriceModal(interaction) {
   }
 
   const raw = interaction.fields.getTextInputValue('unit_yen') || '';
-  const unitYen = parseInt(raw, 10);
+  const parsed = parseInt(raw.trim(), 10);
 
-  if (!Number.isFinite(unitYen) || unitYen <= 0) {
+  if (!Number.isFinite(parsed) || parsed <= 0) {
     await interaction.reply({ content: '❌ bp は正の整数で入力してください。', ephemeral: true });
     return;
   }
+
+  const unitYen = normalizeUnitYen100(parsed);
 
   patchBetFlow(userId, raceId, { unitYen });
 

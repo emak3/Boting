@@ -1,7 +1,4 @@
 import {
-  ModalBuilder,
-  TextInputBuilder,
-  TextInputStyle,
   ActionRowBuilder,
   ButtonBuilder,
   ButtonStyle,
@@ -38,6 +35,12 @@ import { filterBetTypesForJraSale } from '../../utils/jraBetAvailability.mjs';
 import { tryConfirmRacePurchase } from '../../utils/raceBetRecords.mjs';
 import { getBalance } from '../../utils/userPointsStore.mjs';
 import { ticketCountForValidation } from '../../utils/raceBetTickets.mjs';
+import {
+  buildUnitKeypadPayload,
+  initBufferFromUnitYen,
+  normalizeUnitYen100,
+} from '../../utils/unitYenKeypad.mjs';
+import { setUnitKeypadDraft } from '../../utils/unitYenKeypadStore.mjs';
 
 const BET_TYPES = [
   { id: 'win', label: '単勝' },
@@ -534,7 +537,7 @@ export default async function betFlowButtons(interaction) {
     }
     const added = addSlipSavedItem(userId, {
       raceId: flow.result?.raceId || raceId,
-      unitYen: flow.unitYen ?? 100,
+      unitYen: normalizeUnitYen100(flow.unitYen ?? 100),
       points: flow.purchase.points,
       selectionLine: flow.purchase.selectionLine,
       raceTitle: flow.result?.raceInfo?.title,
@@ -752,27 +755,39 @@ export default async function betFlowButtons(interaction) {
     return;
   }
 
-  // 単価編集（modal を開く）
+  // 単価編集（100 bp 単位テンキー）
   if (customId.startsWith('race_bet_unit_edit|')) {
-    const modalRaceId = raceId;
-    const existing = flow.unitYen ?? 100;
+    if (!flow.purchase) {
+      await interaction.reply({
+        content: '❌ いまは金額を変えられません。式別と馬番の選択を完了してください。',
+        ephemeral: true,
+      });
+      return;
+    }
 
-    const modal = new ModalBuilder()
-      .setCustomId(`race_bet_unit_modal|${modalRaceId}`)
-      .setTitle('1点あたりの bp');
+    await interaction.deferUpdate();
+    const buf = initBufferFromUnitYen(flow.unitYen ?? 100);
+    setUnitKeypadDraft(userId, { raceId, kind: 'flow', buffer: buf });
 
-    const input = new TextInputBuilder()
-      .setCustomId('unit_yen')
-      .setLabel('1点あたりの bp（ポイント）')
-      .setStyle(TextInputStyle.Short)
-      .setRequired(true)
-      .setValue(String(existing))
-      .setMinLength(1)
-      .setMaxLength(7);
+    let extraFlags = 0;
+    try {
+      if (interaction.message?.flags?.has(MessageFlags.Ephemeral)) {
+        extraFlags |= MessageFlags.Ephemeral;
+      }
+    } catch (_) {
+      /* ignore */
+    }
 
-    modal.addComponents(new ActionRowBuilder().addComponents(input));
-
-    await interaction.showModal(modal);
+    await interaction.editReply(
+      buildUnitKeypadPayload({
+        raceId,
+        kind: 'flow',
+        slipIdx: null,
+        buffer: buf,
+        subtitle: null,
+        extraFlags,
+      }),
+    );
   }
 }
 

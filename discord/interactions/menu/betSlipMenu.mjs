@@ -1,10 +1,4 @@
-import {
-  MessageFlags,
-  ModalBuilder,
-  TextInputBuilder,
-  TextInputStyle,
-  ActionRowBuilder,
-} from 'discord.js';
+import { MessageFlags } from 'discord.js';
 import {
   getSlipPendingReview,
   replaceSlipPendingItems,
@@ -12,6 +6,8 @@ import {
 } from '../../utils/betSlipStore.mjs';
 import { buildSlipReviewV2Payload } from '../../utils/betSlipReview.mjs';
 import { buildTextAndRowsV2Payload } from '../../utils/raceCardDisplay.mjs';
+import { buildUnitKeypadPayload, initBufferFromUnitYen } from '../../utils/unitYenKeypad.mjs';
+import { setUnitKeypadDraft } from '../../utils/unitYenKeypadStore.mjs';
 
 function anchorRaceIdFromSlipCustomId(customId) {
   const parts = String(customId).split('|');
@@ -52,19 +48,33 @@ export default async function betSlipMenu(interaction) {
     }
 
     const it = pending.items[idx];
-    const modal = new ModalBuilder()
-      .setCustomId(`race_bet_slip_unit_modal|${anchorRaceId}|${idx}`)
-      .setTitle(`金額変更（${idx + 1}番）`.slice(0, 45));
-    const yenInput = new TextInputBuilder()
-      .setCustomId('unit_yen')
-      .setLabel('1点あたりの bp（ポイント）')
-      .setStyle(TextInputStyle.Short)
-      .setRequired(true)
-      .setMinLength(1)
-      .setMaxLength(7)
-      .setValue(String(it.unitYen ?? 100));
-    modal.addComponents(new ActionRowBuilder().addComponents(yenInput));
-    await interaction.showModal(modal);
+    const buf = initBufferFromUnitYen(it.unitYen ?? 100);
+    setUnitKeypadDraft(userId, {
+      raceId: anchorRaceId,
+      kind: 'slip',
+      slipIdx: idx,
+      buffer: buf,
+    });
+
+    let extraFlags = 0;
+    try {
+      if (interaction.message?.flags?.has(MessageFlags.Ephemeral)) {
+        extraFlags |= MessageFlags.Ephemeral;
+      }
+    } catch (_) {
+      /* ignore */
+    }
+
+    await interaction.update(
+      buildUnitKeypadPayload({
+        raceId: anchorRaceId,
+        kind: 'slip',
+        slipIdx: idx,
+        buffer: buf,
+        subtitle: `**${idx + 1}番の買い目**`,
+        extraFlags,
+      }),
+    );
     return;
   }
 

@@ -8,8 +8,13 @@ import {
   StringSelectMenuOptionBuilder,
 } from 'discord.js';
 import NetkeibaScraper from '../../cheerio/netkeibaScraper.mjs';
-import { fetchTodayVenuesAndRaces } from '../../cheerio/netkeibaSchedule.mjs';
+import {
+  fetchTodayVenuesAndRaces,
+  findRaceMetaForToday,
+  getRaceSalesStatus,
+} from '../../cheerio/netkeibaSchedule.mjs';
 import { buildRaceCardEmbed } from '../utils/raceCardEmbed.mjs';
+import { buildRaceResultEmbeds } from '../utils/raceResultEmbed.mjs';
 import { setBetFlow } from '../utils/betFlowStore.mjs';
 
 function venueSelectRow(kaisaiDate, currentGroup, venues) {
@@ -82,6 +87,39 @@ const commandObject = {
       }
       const scraper = new NetkeibaScraper();
       try {
+        const resultSnap = await scraper.scrapeRaceResult(raceId);
+        if (resultSnap.confirmed) {
+          await interaction.editReply({
+            content: '',
+            embeds: buildRaceResultEmbeds(resultSnap),
+            components: [],
+          });
+          return;
+        }
+
+        const meta = await findRaceMetaForToday(raceId);
+        if (meta) {
+          const st = getRaceSalesStatus(meta.race, meta.kaisaiDateYmd);
+          if (meta.race.isResult) {
+            await interaction.editReply({
+              content:
+                '❌ レース結果の取得に失敗しました。時間をおいて再度お試しください。',
+              embeds: [],
+              components: [],
+            });
+            return;
+          }
+          if (st.closed) {
+            await interaction.editReply({
+              content:
+                '⏳ 発売は締め切られています。レース結果の確定までお待ちください。',
+              embeds: [],
+              components: [],
+            });
+            return;
+          }
+        }
+
         const result = await scraper.scrapeRaceCard(raceId);
         result.raceId = raceId;
         setBetFlow(interaction.user.id, raceId, { result });

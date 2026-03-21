@@ -11,8 +11,10 @@ import {
   parseRaceListSub,
   filterVenueRaces,
   getRaceSalesStatus,
+  findRaceMetaForToday,
 } from '../../../cheerio/netkeibaSchedule.mjs';
 import { buildRaceCardEmbed } from '../../utils/raceCardEmbed.mjs';
+import { buildRaceResultEmbeds } from '../../utils/raceResultEmbed.mjs';
 import { getBetFlow, setBetFlow, patchBetFlow, clearBetFlow } from '../../utils/betFlowStore.mjs';
 
 const VENUE_MENU_ID = 'race_menu_venue';
@@ -671,24 +673,103 @@ export default async function raceScheduleMenu(interaction) {
     return;
   }
 
-  // 2) レース -> 出馬表 + 賭け方メニュー
+  // 2) レース -> 出馬表+賭け方 / 結果+払戻 / 確定待ち
   if (customId === RACE_MENU_ID) {
     await interaction.deferUpdate();
     const rawVal = interaction.values[0];
     const [raceId, isResultFlag] = String(rawVal).split('|');
     try {
       const scraper = new NetkeibaScraper();
-      const result = await scraper.scrapeRaceCard(raceId);
       const lastVenue = venueSelectionStore.get(userId);
-      const parsedIsResult = isResultFlag === '1';
-      const isResult = raceResultFlagStore.get(`${userId}|${raceId}`) ?? parsedIsResult;
-      result.isResult = !!isResult;
-      result.raceId = raceId;
-      setBetFlow(userId, raceId, {
-        result,
+
+      let raceMeta = null;
+      let salesStatus = null;
+      let isResult =
+        raceResultFlagStore.get(`${userId}|${raceId}`) ?? isResultFlag === '1';
+
+      if (
+        lastVenue?.kaisaiDate &&
+        lastVenue?.currentGroup &&
+        lastVenue?.kaisaiId
+      ) {
+        try {
+          const html = await fetchRaceListSub(
+            lastVenue.kaisaiDate,
+            lastVenue.currentGroup,
+          );
+          const { venues } = parseRaceListSub(html, lastVenue.kaisaiDate);
+          const races = filterVenueRaces(venues, lastVenue.kaisaiId);
+          raceMeta = races.find((x) => x.raceId === raceId) || null;
+          if (raceMeta) {
+            isResult = !!raceMeta.isResult;
+            raceResultFlagStore.set(`${userId}|${raceId}`, isResult);
+            salesStatus = getRaceSalesStatus(raceMeta, lastVenue.kaisaiDate);
+          }
+        } catch (_) {
+          /* 一覧取得失敗時は下で扱う */
+        }
+      }
+
+      if (!raceMeta) {
+        const meta = await findRaceMetaForToday(raceId);
+        if (meta) {
+          raceMeta = meta.race;
+          isResult = !!raceMeta.isResult;
+          salesStatus = getRaceSalesStatus(raceMeta, meta.kaisaiDateYmd);
+        }
+      }
+
+      const flowCtx = {
         kaisaiDate: lastVenue?.kaisaiDate,
         currentGroup: lastVenue?.currentGroup,
         kaisaiId: lastVenue?.kaisaiId,
+      };
+
+      const resultSnap = await scraper.scrapeRaceResult(raceId);
+      if (resultSnap.confirmed) {
+        setBetFlow(userId, raceId, flowCtx);
+        await interaction.editReply({
+          content: '',
+          embeds: buildRaceResultEmbeds(resultSnap),
+          components: [
+            lastVenue?.kaisaiId ? scheduleBackToRaceListButtonRow(raceId) : null,
+          ].filter(Boolean),
+        });
+        return;
+      }
+
+      if (isResult) {
+        setBetFlow(userId, raceId, flowCtx);
+        await interaction.editReply({
+          content:
+            '❌ レース結果の取得に失敗しました。時間をおいて再度お試しください。',
+          embeds: [],
+          components: [
+            lastVenue?.kaisaiId ? scheduleBackToRaceListButtonRow(raceId) : null,
+          ].filter(Boolean),
+        });
+        return;
+      }
+
+      if (salesStatus?.closed) {
+        setBetFlow(userId, raceId, flowCtx);
+        await interaction.editReply({
+          content:
+            '⏳ 発売は締め切られています。レース結果の確定までお待ちください。',
+          embeds: [],
+          components: [
+            lastVenue?.kaisaiId ? scheduleBackToRaceListButtonRow(raceId) : null,
+          ].filter(Boolean),
+        });
+        return;
+      }
+
+      const result = await scraper.scrapeRaceCard(raceId);
+      result.isResult = false;
+      result.raceId = raceId;
+      setBetFlow(userId, raceId, {
+        result,
+        ...flowCtx,
       });
 
       await interaction.editReply({

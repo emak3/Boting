@@ -161,6 +161,20 @@ export async function fetchTodayVenuesAndRaces() {
   return { ...parsed, currentGroup };
 }
 
+/** アクティブな開催日タブの一覧から raceId に一致するレースを探す（見つからなければ null） */
+export async function findRaceMetaForToday(raceId) {
+  try {
+    const { venues, kaisaiDateYmd } = await fetchTodayVenuesAndRaces();
+    for (const v of venues) {
+      const hit = v.races.find((r) => r.raceId === raceId);
+      if (hit) return { race: hit, kaisaiDateYmd };
+    }
+  } catch (e) {
+    console.warn('findRaceMetaForToday:', e.message);
+  }
+  return null;
+}
+
 export function filterVenueRaces(venues, kaisaiId) {
   const v = venues.find((x) => x.kaisaiId === kaisaiId);
   return v ? v.races : [];

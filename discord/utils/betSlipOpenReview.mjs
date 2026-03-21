@@ -21,6 +21,8 @@ export function slipItemFromLiveFlow(flow, raceId) {
     oddsOfficialTime: flow.result?.oddsOfficialTime,
     isResult: !!flow.result?.isResult,
     netkeibaOrigin: origin,
+    betType: flow.betType ?? '',
+    tickets: Array.isArray(flow.purchase?.tickets) ? flow.purchase.tickets : [],
   };
 }
 
@@ -125,7 +127,7 @@ export async function runOpenBetSlipReviewScreen(interaction, { userId, raceId, 
   }
 
   await interaction.editReply(
-    buildSlipReviewV2Payload({ userId, extraFlags }),
+    await buildSlipReviewV2Payload({ userId, extraFlags }),
   );
   return true;
 }

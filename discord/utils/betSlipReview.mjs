@@ -8,6 +8,7 @@ import {
 import { buildTextAndRowsV2Payload } from './raceCardDisplay.mjs';
 import { buildBetSlipBatchV2Headline } from './betPurchaseEmbed.mjs';
 import { getSlipPendingReview } from './betSlipStore.mjs';
+import { getBalance } from './userPointsStore.mjs';
 
 /** セレクトの説明では絵文字が表示されないため、<:name:id> / <a:name:id> を除去する */
 function stripDiscordCustomEmojiMarkup(s) {
@@ -66,7 +67,7 @@ function slipReviewActionRows(anchorRaceId, items) {
 /**
  * まとめて購入（仮）確認画面: 本文 + 確定・金額変更セレクト・削除セレクト
  */
-export function buildSlipReviewV2Payload({ userId, extraFlags = 0 }) {
+export async function buildSlipReviewV2Payload({ userId, extraFlags = 0 }) {
   const pending = getSlipPendingReview(userId);
   if (!pending?.items?.length) {
     return buildTextAndRowsV2Payload({
@@ -75,11 +76,24 @@ export function buildSlipReviewV2Payload({ userId, extraFlags = 0 }) {
       extraFlags,
     });
   }
+  const totalBp = pending.items.reduce(
+    (s, it) =>
+      s + Math.round(Number(it.points) || 0) * Math.max(1, Math.round(Number(it.unitYen) || 100)),
+    0,
+  );
+  const balance = await getBalance(userId);
   const headline = [
     buildBetSlipBatchV2Headline({ items: pending.items }),
     '',
-    '**編集:** **金額を変える買い目を選択**から選ぶと金額入力のウィンドウが開きます。下のメニューで**番号を選んで削除**。**戻る**でひとつ前の画面へ。**この内容で確定**で完了します。',
-  ].join('\n');
+    `**合計消費（確定時）** ${totalBp} bp　**いまの残高** ${balance} bp`,
+    balance < totalBp
+      ? '⚠️ 残高が足りません。`/daily` で受け取るか、金額・買い目を調整してください。'
+      : null,
+    '',
+    '**編集:** **金額を変える買い目を選択**から選ぶと金額入力のウィンドウが開きます。下のメニューで**番号を選んで削除**。**戻る**でひとつ前の画面へ。**この内容で確定**で bp を消費して購入します。',
+  ]
+    .filter(Boolean)
+    .join('\n');
   const rows = slipReviewActionRows(pending.anchorRaceId, pending.items);
   return buildTextAndRowsV2Payload({
     headline,

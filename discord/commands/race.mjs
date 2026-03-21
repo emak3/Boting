@@ -18,6 +18,7 @@ import { setBetFlow } from '../utils/betFlowStore.mjs';
 import { canBypassSalesClosed } from '../utils/raceDebugBypass.mjs';
 import { scheduleKindSelectRow } from '../utils/scheduleKindUi.mjs';
 import { filterBetTypesForJraSale } from '../utils/jraBetAvailability.mjs';
+import { settleOpenRaceBetsForUser } from '../utils/raceBetRecords.mjs';
 
 function venueSelectRow(scheduleKind, kaisaiDate, currentGroup, venues) {
   const menu = new StringSelectMenuBuilder()
@@ -82,7 +83,6 @@ const commandObject = {
         .setDescription('省略時は開催場→レースをメニューで選択（12桁のレースID）')
         .setRequired(false),
     )
-    .setDefaultMemberPermissions(PermissionFlagsBits.Administrator)
     .setContexts(InteractionContextType.Guild),
 
   async execute(interaction) {
@@ -102,8 +102,23 @@ const commandObject = {
         const salesBypass = canBypassSalesClosed(interaction.user.id);
         const resultSnap = await scraper.scrapeRaceResult(raceId);
         if (resultSnap.confirmed && !salesBypass) {
+          let bpLine = '';
+          try {
+            const pay = await settleOpenRaceBetsForUser(
+              interaction.user.id,
+              raceId,
+              resultSnap,
+            );
+            if (pay.settled > 0 && pay.totalRefund > 0) {
+              bpLine = `**競馬払戻** +${pay.totalRefund} bp（残高 ${pay.balance} bp）\n\n`;
+            } else if (pay.settled > 0) {
+              bpLine = `**競馬払戻** 該当なし（精算 ${pay.settled} 件・残高 ${pay.balance} bp）\n\n`;
+            }
+          } catch (e) {
+            console.warn('settleOpenRaceBetsForUser', e);
+          }
           await interaction.editReply({
-            content: '',
+            content: bpLine,
             embeds: buildRaceResultEmbeds(resultSnap),
             components: [],
           });

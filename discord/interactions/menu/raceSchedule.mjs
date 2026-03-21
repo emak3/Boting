@@ -53,6 +53,8 @@ import {
   filterBetTypesForJraSale,
   isJraBetTypeAllowedForFlow,
 } from '../../utils/jraBetAvailability.mjs';
+import { buildPayoutTicketsFromFlow } from '../../utils/raceBetTickets.mjs';
+import { settleOpenRaceBetsForUser } from '../../utils/raceBetRecords.mjs';
 
 const VENUE_MENU_ID = 'race_menu_venue';
 const RACE_MENU_ID = 'race_menu_race';
@@ -107,7 +109,7 @@ const DEFAULT_UNIT_YEN = 100;
 
 function formatBetPoints(points, unitYen = DEFAULT_UNIT_YEN) {
   const yen = points * unitYen;
-  return `点数: ${points}点 | 合計目安: ${yen}円（${unitYen}円/点）`;
+  return `点数: ${points}点 | 合計: ${yen} bp（${unitYen} bp/点）`;
 }
 
 function uniqValues(arr) {
@@ -656,6 +658,27 @@ async function renderFinalSelection({
   const backMenuIndex = backMenuIds.lastIndexOf(lastMenu.customId);
 
   const unitYen = flowUnitYen ?? DEFAULT_UNIT_YEN;
+  const nextStepSelections = {
+    ...(currentFlow.stepSelections || {}),
+    [lastMenu.customId]:
+      lastMenu.defaultValues && lastMenu.defaultValues.length
+        ? lastMenu.defaultValues.map((v) => String(v))
+        : [],
+  };
+  const tickets = buildPayoutTicketsFromFlow(
+    {
+      ...currentFlow,
+      betType,
+      unitYen,
+      stepSelections: nextStepSelections,
+      purchase: {
+        selectionLine,
+        points,
+        lastMenuCustomId: lastMenu.customId,
+      },
+    },
+    raceId,
+  );
   patchBetFlow(userId, raceId, {
     betType,
     unitYen,
@@ -663,14 +686,9 @@ async function renderFinalSelection({
       selectionLine,
       points,
       lastMenuCustomId: lastMenu.customId,
+      tickets,
     },
-    stepSelections: {
-      ...(currentFlow.stepSelections || {}),
-      [lastMenu.customId]:
-        lastMenu.defaultValues && lastMenu.defaultValues.length
-          ? lastMenu.defaultValues.map((v) => String(v))
-          : [],
-    },
+    stepSelections: nextStepSelections,
     lastSelectionLine: selectionLine,
     backMenuIds,
     backMenuIndex: backMenuIndex >= 0 ? backMenuIndex : backMenuIds.length - 1,
@@ -1107,6 +1125,17 @@ export default async function raceScheduleMenu(interaction) {
 
       const resultSnap = await scraper.scrapeRaceResult(raceId);
       if (resultSnap.confirmed && !salesBypass) {
+        let bpFooter = null;
+        try {
+          const pay = await settleOpenRaceBetsForUser(userId, raceId, resultSnap);
+          if (pay.settled > 0 && pay.totalRefund > 0) {
+            bpFooter = `**あなたの競馬払戻** +${pay.totalRefund} bp（残高 ${pay.balance} bp）`;
+          } else if (pay.settled > 0) {
+            bpFooter = `**あなたの競馬払戻** 該当なし（精算 ${pay.settled} 件・残高 ${pay.balance} bp）`;
+          }
+        } catch (e) {
+          console.warn('settleOpenRaceBetsForUser', e);
+        }
         setBetFlow(userId, raceId, {
           ...flowCtx,
           source: flowCtx.source || resultSnap.netkeibaOrigin || 'jra',
@@ -1114,6 +1143,7 @@ export default async function raceScheduleMenu(interaction) {
         await interaction.editReply(
           buildRaceResultV2Payload({
             parsed: resultSnap,
+            bpFooter,
             actionRows: [
               flowCtx.kaisaiId ? scheduleBackToRaceListButtonRow(raceId) : null,
             ].filter(Boolean),

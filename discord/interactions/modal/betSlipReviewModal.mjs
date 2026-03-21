@@ -60,7 +60,7 @@ export default async function betSlipReviewModal(interaction) {
   }
   if (!Number.isFinite(unitYen) || unitYen <= 0) {
     await interaction.reply({
-      content: '❌ 金額は正の整数で入力してください。',
+      content: '❌ bp は正の整数で入力してください。',
       ephemeral: true,
     });
     return;
@@ -81,6 +81,6 @@ export default async function betSlipReviewModal(interaction) {
   }
 
   await interaction.update(
-    buildSlipReviewV2Payload({ userId, extraFlags }),
+    await buildSlipReviewV2Payload({ userId, extraFlags }),
   );
 }

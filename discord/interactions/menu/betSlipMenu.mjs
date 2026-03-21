@@ -57,7 +57,7 @@ export default async function betSlipMenu(interaction) {
       .setTitle(`金額変更（${idx + 1}番）`.slice(0, 45));
     const yenInput = new TextInputBuilder()
       .setCustomId('unit_yen')
-      .setLabel('1点あたりの金額（円）')
+      .setLabel('1点あたりの bp（ポイント）')
       .setStyle(TextInputStyle.Short)
       .setRequired(true)
       .setMinLength(1)
@@ -114,5 +114,5 @@ export default async function betSlipMenu(interaction) {
   }
 
   replaceSlipPendingItems(userId, next);
-  await interaction.update(buildSlipReviewV2Payload({ userId, extraFlags }));
+  await interaction.update(await buildSlipReviewV2Payload({ userId, extraFlags }));
 }

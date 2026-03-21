@@ -137,12 +137,13 @@ export function buildRaceCardV2Payload({
 
 /**
  * レース結果・払戻（Components V2）— 赤アクセントの Container
- * @param {{ parsed: object, actionRows?: import('discord.js').ActionRowBuilder[], extraFlags?: number }} opts
+ * @param {{ parsed: object, actionRows?: import('discord.js').ActionRowBuilder[], extraFlags?: number, bpFooter?: string | null }} opts
  */
 export function buildRaceResultV2Payload({
   parsed,
   actionRows = [],
   extraFlags = 0,
+  bpFooter = null,
 }) {
   const rows = actionRows.filter(Boolean);
   const flags = MessageFlags.IsComponentsV2 | extraFlags;
@@ -155,6 +156,10 @@ export function buildRaceResultV2Payload({
   if (payout) {
     container.addSeparatorComponents((separator) => separator);
     appendChunkedToContainer(container, payout);
+  }
+  if (bpFooter) {
+    container.addSeparatorComponents((separator) => separator);
+    appendChunkedToContainer(container, String(bpFooter));
   }
 
   return {

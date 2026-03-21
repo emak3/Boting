@@ -35,6 +35,9 @@ import {
   wakuUmaEmojiResolvable,
 } from '../../utils/raceNumberEmoji.mjs';
 import { filterBetTypesForJraSale } from '../../utils/jraBetAvailability.mjs';
+import { tryConfirmRacePurchase } from '../../utils/raceBetRecords.mjs';
+import { getBalance } from '../../utils/userPointsStore.mjs';
+import { ticketCountForValidation } from '../../utils/raceBetTickets.mjs';
 
 const BET_TYPES = [
   { id: 'win', label: '単勝' },
@@ -287,7 +290,7 @@ export default async function betFlowButtons(interaction) {
     const extraFlags = slipReviewExtraFlags();
     const { closed, open } = await partitionPendingItemsBySalesClosed(userId, pending.items);
     if (!closed.length) {
-      await interaction.editReply(buildSlipReviewV2Payload({ userId, extraFlags }));
+      await interaction.editReply(await buildSlipReviewV2Payload({ userId, extraFlags }));
       return;
     }
     if (!open.length) {
@@ -303,7 +306,7 @@ export default async function betFlowButtons(interaction) {
       return;
     }
     replaceSlipPendingItems(userId, open);
-    await interaction.editReply(buildSlipReviewV2Payload({ userId, extraFlags }));
+    await interaction.editReply(await buildSlipReviewV2Payload({ userId, extraFlags }));
     return;
   }
 
@@ -326,7 +329,7 @@ export default async function betFlowButtons(interaction) {
     }
     await interaction.deferUpdate();
     await interaction.editReply(
-      buildSlipReviewV2Payload({ userId, extraFlags: slipReviewExtraFlags() }),
+      await buildSlipReviewV2Payload({ userId, extraFlags: slipReviewExtraFlags() }),
     );
     return;
   }
@@ -394,7 +397,66 @@ export default async function betFlowButtons(interaction) {
       }
     }
 
-    const headline = buildBetSlipBatchV2Headline({ items: pending.items });
+    for (const it of pending.items) {
+      const p = Math.round(Number(it.points) || 0);
+      const t = it.tickets;
+      if (!Array.isArray(t) || ticketCountForValidation(t) !== p || p <= 0) {
+        const extraFlags = slipReviewExtraFlags();
+        await interaction.editReply(
+          buildTextAndRowsV2Payload({
+            headline:
+              '❌ 買い目に **払戻用データ** がありません。出馬表から該当レースを開き直し、式別を選び直して **買い目に追加** し直してください。',
+            actionRows: [],
+            extraFlags,
+          }),
+        );
+        return;
+      }
+    }
+
+    const totalBp = pending.items.reduce(
+      (s, it) => s + Math.round(Number(it.points) || 0) * Math.max(1, Math.round(Number(it.unitYen) || 100)),
+      0,
+    );
+    const bal = await getBalance(userId);
+    if (bal < totalBp) {
+      const extraFlags = slipReviewExtraFlags();
+      await interaction.editReply(
+        buildTextAndRowsV2Payload({
+          headline: `❌ **bp が不足**しています（必要 **${totalBp}** bp / 残高 **${bal}** bp）。\n`/daily` で受け取るか、買い目を減らす・1点あたりの金額を下げてください。`,
+          actionRows: [],
+          extraFlags,
+        }),
+      );
+      return;
+    }
+
+    const purchase = await tryConfirmRacePurchase(userId, pending.items);
+    if (!purchase.ok) {
+      const extraFlags = slipReviewExtraFlags();
+      let msg = '❌ 購入を完了できませんでした。';
+      if (purchase.reason === 'insufficient') {
+        msg = `❌ **bp が不足**しています（必要 **${purchase.need}** bp / 残高 **${purchase.balance}** bp）。`;
+      } else if (purchase.reason === 'bad_tickets') {
+        msg =
+          '❌ 買い目データが不正です。出馬表からやり直し、**買い目に追加** し直してください。';
+      }
+      await interaction.editReply(
+        buildTextAndRowsV2Payload({
+          headline: msg,
+          actionRows: [],
+          extraFlags,
+        }),
+      );
+      return;
+    }
+
+    const headline = [
+      buildBetSlipBatchV2Headline({ items: pending.items }),
+      '',
+      `**購入完了** −**${purchase.spent}** bp（残高 **${purchase.balance}** bp）`,
+      'レース結果が出たら `/race` や開催メニューで結果を表示すると、netkeiba の払戻に基づき bp が自動加算されます。',
+    ].join('\n');
     const anchor = pending.anchorRaceId || raceId;
     clearSlipPending(userId);
     clearBetFlow(userId, anchor);
@@ -456,6 +518,20 @@ export default async function betFlowButtons(interaction) {
       return;
     }
     const origin = netkeibaOriginFromFlow(flow);
+    const tickets = flow.purchase?.tickets;
+    const pts = flow.purchase?.points ?? 0;
+    if (
+      !Array.isArray(tickets) ||
+      ticketCountForValidation(tickets) !== pts ||
+      pts <= 0
+    ) {
+      await interaction.reply({
+        content:
+          '❌ 買い目データが古いか不完全です。出馬表から式別を選び直してから **買い目に追加** してください。',
+        ephemeral: true,
+      });
+      return;
+    }
     const added = addSlipSavedItem(userId, {
       raceId: flow.result?.raceId || raceId,
       unitYen: flow.unitYen ?? 100,
@@ -465,6 +541,8 @@ export default async function betFlowButtons(interaction) {
       oddsOfficialTime: flow.result?.oddsOfficialTime,
       isResult: !!flow.result?.isResult,
       netkeibaOrigin: origin,
+      betType: flow.betType ?? '',
+      tickets: flow.purchase.tickets,
     });
     if (!added.ok && added.reason === 'full') {
       await interaction.reply({
@@ -681,11 +759,11 @@ export default async function betFlowButtons(interaction) {
 
     const modal = new ModalBuilder()
       .setCustomId(`race_bet_unit_modal|${modalRaceId}`)
-      .setTitle('金額変更');
+      .setTitle('1点あたりの bp');
 
     const input = new TextInputBuilder()
       .setCustomId('unit_yen')
-      .setLabel('1点あたりの金額（円）')
+      .setLabel('1点あたりの bp（ポイント）')
       .setStyle(TextInputStyle.Short)
       .setRequired(true)
       .setValue(String(existing))

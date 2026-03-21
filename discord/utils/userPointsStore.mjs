@@ -32,7 +32,7 @@ export function getCurrentDailyPeriodKey(now = new Date()) {
   return `${y}${String(m).padStart(2, '0')}${String(d).padStart(2, '0')}`;
 }
 
-function normBalance(v) {
+export function normBalance(v) {
   return typeof v === 'number' && Number.isFinite(v) ? v : 0;
 }
 
@@ -48,6 +48,8 @@ export function getNextDailyWindowStartDate(periodKey) {
 export function kindLabelJa(kind) {
   if (kind === 'first') return '初回ボーナス';
   if (kind === 'debug_extra') return 'デバッグ';
+  if (kind === 'race_bet') return '競馬（購入）';
+  if (kind === 'race_refund') return '競馬（払戻）';
   return 'デイリー';
 }
 
@@ -106,7 +108,7 @@ export async function getDailyAccountView(userId) {
   };
 }
 
-function appendLedgerTx(tx, userRef, payload) {
+export function appendLedgerTx(tx, userRef, payload) {
   const row = userRef.collection(LEDGER).doc();
   tx.set(row, {
     delta: payload.delta,

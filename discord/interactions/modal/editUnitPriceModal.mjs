@@ -13,7 +13,7 @@ function safeParseRaceId(customId) {
 
 function formatTotal(points, unitYen) {
   const yen = points * unitYen;
-  return `点数: ${points}点 | 合計目安: ${yen}円（${unitYen}円/点）`;
+  return `点数: ${points}点 | 合計: ${yen} bp（${unitYen} bp/点）`;
 }
 
 export default async function editUnitPriceModal(interaction) {
@@ -33,7 +33,7 @@ export default async function editUnitPriceModal(interaction) {
   const unitYen = parseInt(raw, 10);
 
   if (!Number.isFinite(unitYen) || unitYen <= 0) {
-    await interaction.reply({ content: '❌ 金額は正の整数で入力してください。', ephemeral: true });
+    await interaction.reply({ content: '❌ bp は正の整数で入力してください。', ephemeral: true });
     return;
   }
 

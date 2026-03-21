@@ -27,7 +27,7 @@ export function buildBetPurchaseV2Headline({ flow }) {
   const resultUrl = raceId ? netkeibaResultUrl(raceId, origin) : null;
 
   return [
-    '**購入内容（仮）**',
+    '**購入内容（確認）**',
     '',
     `レース: ${raceTitle}`,
     oddsTime ? `オッズ時刻: ${oddsTime}` : null,
@@ -35,10 +35,10 @@ export function buildBetPurchaseV2Headline({ flow }) {
     '',
     selectionLine,
     `点数: ${points}点`,
-    `1点あたり: ${unitYen}円`,
-    `合計目安: ${totalYen}円（${unitYen}円/点）`,
+    `1点あたり: ${unitYen} bp`,
+    `合計消費: ${totalYen} bp（${unitYen} bp/点）`,
     '',
-    '*実際の決済は行いません（選択内容の確認のみ）*',
+    '*まとめて確定時に上記の bp が差し引かれます*',
   ]
     .filter(Boolean)
     .join('\n');
@@ -71,15 +71,15 @@ export function buildBetSlipBatchV2Headline({ items }) {
     if (it.oddsOfficialTime) lines.push(`オッズ時刻: ${it.oddsOfficialTime}`);
     if (resultUrl) lines.push(`結果: ${resultUrl}`);
     lines.push(selectionLine);
-    lines.push(`点数: ${points}点 | 1点: ${unitYen}円 | 小計: ${subtotal}円`);
+    lines.push(`点数: ${points}点 | 1点: ${unitYen} bp | 小計: ${subtotal} bp`);
     lines.push('');
   }
 
   lines.push(
     `—`,
-    `**合計** 点数: ${grandPoints}点 | 合計目安: ${grandYen}円`,
+    `**合計** 点数: ${grandPoints}点 | 合計消費: ${grandYen} bp`,
     '',
-    '*実際の決済は行いません（選択内容の確認のみ）*',
+    '*「この内容で確定」で上記の bp が一括で差し引かれます*',
   );
 
   return lines.join('\n');
@@ -108,12 +108,12 @@ export function buildBetPurchaseEmbed({ flow }) {
       '',
       selectionLine,
       `点数: ${points}点`,
-      `1点あたり: ${unitYen}円`,
-      `合計目安: ${totalYen}円（${unitYen}円/点）`,
+      `1点あたり: ${unitYen} bp`,
+      `合計消費: ${totalYen} bp（${unitYen} bp/点）`,
     ]
       .filter(Boolean)
       .join('\n'),
-    footer: { text: '実際の決済は行いません（選択内容の確認のみ）' },
+    footer: { text: '確定時に bp が差し引かれます' },
   };
 }
 

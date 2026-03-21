@@ -107,6 +107,7 @@ export function buildRaceResultEmbeds(parsed) {
     `📅 **日程** ${ri.date || 'N/A'}`,
     `🏟 **コース** ${ri.course || 'N/A'}`,
   ];
+  if (ri.prizeMoney) descLines.push(ri.prizeMoney);
   if (url) descLines.push(`🔗 [netkeibaで開く](${url})`);
   const desc = descLines.join('\n');
 
@@ -175,6 +176,7 @@ export function buildRaceResultV2Sections(parsed) {
     `📅 ${ri.date || 'N/A'}`,
     `🏟 ${ri.course || 'N/A'}`,
   ];
+  if (ri.prizeMoney) headLines.push(ri.prizeMoney);
   if (url) headLines.push(url);
   const header = headLines.join('\n');
 

@@ -17,10 +17,14 @@ export function buildRaceCardEmbed(result) {
   const origin = result?.netkeibaOrigin === 'nar' ? 'nar' : 'jra';
   const resultUrl = raceId ? netkeibaResultUrl(raceId, origin) : null;
 
+  const ri = result.raceInfo || {};
+  const courseBlock = ri.prizeMoney
+    ? `**コース:** ${ri.course || 'N/A'}\n${ri.prizeMoney}`
+    : `**コース:** ${ri.course || 'N/A'}`;
   const embed = {
     color: isResult ? 0xed4245 : 0x0099ff,
-    title: `${isResult ? '🏁' : '🐎'} ${result?.raceInfo?.title || 'レース情報'}`,
-    description: `**日程:** ${result.raceInfo?.date || 'N/A'}\n**コース:** ${result.raceInfo?.course || 'N/A'}`,
+    title: `${isResult ? '🏁' : '🐎'} ${ri.title || 'レース情報'}`,
+    description: `**日程:** ${ri.date || 'N/A'}\n${courseBlock}`,
     fields: result.horses.slice(0, 18).map((horse) => {
       const place = horse.placeOddsMin ? ` / 複勝〜${horse.placeOddsMin}` : '';
       const ninki = horse.popularity && horse.popularity !== 'N/A' ? ` | ${horse.popularity}人気` : '';

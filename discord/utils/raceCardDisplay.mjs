@@ -98,7 +98,11 @@ export function buildRaceCardV2Payload({
   const resultUrl = raceId ? netkeibaResultUrl(raceId, origin) : null;
 
   const titleLine = `${isResult ? '🏁' : '🐎'} **${result.raceInfo?.title || 'レース情報'}**`;
-  const meta = `**日程:** ${result.raceInfo?.date || 'N/A'}\n**コース:** ${result.raceInfo?.course || 'N/A'}`;
+  const ri = result.raceInfo || {};
+  const courseBlock = ri.prizeMoney
+    ? `**コース:** ${ri.course || 'N/A'}\n${ri.prizeMoney}`
+    : `**コース:** ${ri.course || 'N/A'}`;
+  const meta = `**日程:** ${ri.date || 'N/A'}\n${courseBlock}`;
   const footParts = [
     `全${result.totalHorses}頭${
       result.oddsOfficialTime ? ` · オッズ時刻 ${result.oddsOfficialTime}` : ''

@@ -1,4 +1,8 @@
 import puppeteer from 'puppeteer';
+import {
+  normalizeRaceScrapedText,
+  splitCourseAndPrize,
+} from './raceTextNormalize.mjs';
 
 /**
  * Puppeteerを使用した高信頼性スクレイピング
@@ -120,10 +124,25 @@ function parseHorseDataFromHtml($) {
  */
 function extractRaceInfo($) {
   return {
-    title: $('.RaceName, .race_name, h1.raceTitle').first().text().trim() || 'レース情報',
-    date: $('.RaceData01, .race_date, .raceData01').first().text().trim() || 'N/A',
-    course: $('.RaceData02, .course_info, .raceData02').first().text().trim() || 'N/A',
-    class: $('.RaceData03, .race_class, .raceData03').first().text().trim() || 'N/A',
+    title:
+      normalizeRaceScrapedText(
+        $('.RaceName, .race_name, h1.raceTitle').first().text(),
+      ) || 'レース情報',
+    date:
+      normalizeRaceScrapedText(
+        $('.RaceData01, .race_date, .raceData01').first().text(),
+      ) || 'N/A',
+    ...(() => {
+      const raw = normalizeRaceScrapedText(
+        $('.RaceData02, .course_info, .raceData02').first().text(),
+      );
+      const { course, prizeMoney } = splitCourseAndPrize(raw);
+      return { course: course || 'N/A', prizeMoney };
+    })(),
+    class:
+      normalizeRaceScrapedText(
+        $('.RaceData03, .race_class, .raceData03').first().text(),
+      ) || 'N/A',
   };
 }
 

@@ -136,13 +136,12 @@ class NetkeibaScraper {
 
   parseResultHorseRows($) {
     const horses = [];
-    const seenRank = new Set();
+    /** 同一行が複数セレクタで拾われないよう (着順+馬番) で除く。同着は馬番が異なるため残る */
+    const seenHorseKey = new Set();
 
     const addFromRow = ($row) => {
       const finishRank = $row.find('.Result_Num .Rank').first().text().trim();
       if (!finishRank || !/^\d+$/.test(finishRank)) return;
-      if (seenRank.has(finishRank)) return;
-      seenRank.add(finishRank);
 
       let frameNumber = 'N/A';
       let horseNumber = 'N/A';
@@ -192,6 +191,12 @@ class NetkeibaScraper {
       let odds = $row.find('span.Odds_Ninki').first().text().trim();
       if (!odds) odds = $row.find('td.Odds.Txt_R').first().text().trim();
       if (!odds) odds = 'N/A';
+
+      const hnNorm = String(horseNumber).replace(/\D/g, '');
+      const dedupeKey =
+        hnNorm && /^\d+$/.test(hnNorm) ? `${finishRank}|${hnNorm}` : null;
+      if (dedupeKey && seenHorseKey.has(dedupeKey)) return;
+      if (dedupeKey) seenHorseKey.add(dedupeKey);
 
       horses.push({
         finishRank,
@@ -299,6 +304,72 @@ class NetkeibaScraper {
                 pushEntry(nums, payout, nk);
               });
               return;
+            }
+          }
+
+          if (kind === 'Wakuren' || kind === 'Umaren') {
+            const $uls = $result.find('ul');
+            if ($uls.length > 1) {
+              $uls.each((i, ul) => {
+                const raw = NetkeibaScraper.extractNumSpans($, $(ul));
+                if (raw.length < 2) return;
+                const nums = raw.slice(0, 2);
+                const payout = payoutParts[i] ?? payoutParts[0] ?? '—';
+                const nk =
+                  ninkiList.length > i
+                    ? ninkiList[i]
+                    : ninkiList.length === 1
+                      ? ninkiList[0]
+                      : ninkiFallback;
+                pushEntry(nums, payout, nk);
+              });
+              return;
+            }
+          }
+
+          if (kind === 'Umatan' || kind === 'Tan3' || kind === 'Fuku3') {
+            const $uls = $result.find('ul');
+            if ($uls.length > 1) {
+              const need = kind === 'Umatan' ? 2 : 3;
+              $uls.each((i, ul) => {
+                const raw = NetkeibaScraper.extractNumSpans($, $(ul));
+                if (raw.length < need) return;
+                const nums = raw.slice(0, need);
+                const payout = payoutParts[i] ?? payoutParts[0] ?? '—';
+                const nk =
+                  ninkiList.length > i
+                    ? ninkiList[i]
+                    : ninkiList.length === 1
+                      ? ninkiList[0]
+                      : ninkiFallback;
+                pushEntry(nums, payout, nk);
+              });
+              return;
+            }
+          }
+
+          if (kind === 'Tansho') {
+            const tn = NetkeibaScraper.extractNumSpans($, $result);
+            if (tn.length > 1) {
+              let parts = [...payoutParts];
+              if (parts.length < tn.length && parts.length === 1) {
+                parts = String(parts[0] || '')
+                  .split(/\s*\/\s*/)
+                  .map((s) => s.trim())
+                  .filter(Boolean);
+              }
+              if (parts.length >= tn.length) {
+                for (let i = 0; i < tn.length; i++) {
+                  const nk =
+                    ninkiList.length >= tn.length
+                      ? ninkiList[i]
+                      : ninkiList.length === 1
+                        ? ninkiList[0]
+                        : ninkiFallback;
+                  pushEntry([tn[i]], parts[i], nk);
+                }
+                return;
+              }
             }
           }
 

@@ -538,7 +538,7 @@ export default async function betFlowButtons(interaction) {
       const extraFlags = slipReviewExtraFlags();
       await interaction.editReply(
         buildTextAndRowsV2Payload({
-          headline: `❌ **bp が不足**しています（必要 **${totalBp}** bp / 残高 **${bal}** bp）。\n`/daily` で受け取るか、購入予定を減らす・1点あたりの金額を下げてください。`,
+          headline: `❌ **bp が不足**しています（必要 **${totalBp}** bp / 残高 **${bal}** bp）。\n\`/daily\` で受け取るか、購入予定を減らす・1点あたりの金額を下げてください。`,
           actionRows: [],
           extraFlags,
         }),

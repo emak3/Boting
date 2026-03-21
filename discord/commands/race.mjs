@@ -87,7 +87,8 @@ async function runRaceIdFlow(interaction, raceId) {
   try {
     const salesBypass = canBypassSalesClosed(interaction.user.id);
     const resultSnap = await scraper.scrapeRaceResult(raceId);
-    if (resultSnap.confirmed && !salesBypass) {
+    // デバッグ発売バイパス時も精算・結果表示は行う（バイパスは締切後の購入可否用）
+    if (resultSnap.confirmed) {
       let bpLine = '';
       try {
         const pay = await settleOpenRaceBetsForUser(

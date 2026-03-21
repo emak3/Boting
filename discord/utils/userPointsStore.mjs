@@ -141,6 +141,25 @@ export async function getBalance(userId) {
   return normBalance(snap.data()?.balance);
 }
 
+/**
+ * 台帳の最古の取引時刻（初回デイリー・購入など）
+ * @param {string} userId
+ * @returns {Promise<Date | null>}
+ */
+export async function fetchFirstLedgerAt(userId) {
+  const db = getAdminFirestore();
+  const snap = await db
+    .collection(COLLECTION)
+    .doc(String(userId))
+    .collection(LEDGER)
+    .orderBy('at', 'asc')
+    .limit(1)
+    .get();
+  if (snap.empty) return null;
+  const at = snap.docs[0].data()?.at?.toDate?.();
+  return at instanceof Date && !Number.isNaN(at.getTime()) ? at : null;
+}
+
 const DEBUG_BP_ADJUST_ABS_MAX = 99_999_999;
 
 /**

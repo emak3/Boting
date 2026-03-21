@@ -1149,7 +1149,8 @@ export default async function raceScheduleMenu(interaction) {
       const salesBypass = canBypassSalesClosed(userId);
 
       const resultSnap = await scraper.scrapeRaceResult(raceId);
-      if (resultSnap.confirmed && !salesBypass) {
+      // デバッグ発売バイパス時も精算・結果表示は行う（バイパスは締切後の購入可否用）
+      if (resultSnap.confirmed) {
         let bpFooter = null;
         try {
           const pay = await settleOpenRaceBetsForUser(userId, raceId, resultSnap);

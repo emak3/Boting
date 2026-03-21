@@ -6,6 +6,7 @@ import {
   MessageFlags,
 } from 'discord.js';
 import { fetchUserRaceBetsForDailyPeriod } from './raceBetRecords.mjs';
+import { runPendingRaceRefundsForUser } from './raceBetRefundSweep.mjs';
 import { getBalance, getCurrentDailyPeriodKey } from './userPointsStore.mjs';
 import {
   formatSlipPickDisplayLines,
@@ -94,12 +95,23 @@ function refundSuffix(bet) {
   return r > 0 ? `\`${r}bp\`` : '`0bp`';
 }
 
+/** 例: 3点`500bp` 合計`1500bp`（costBp = points × 1点あたり） */
+function betCostBpLine(bet) {
+  const costBp = Math.max(0, Math.round(Number(bet.costBp) || 0));
+  const points = Math.max(0, Math.round(Number(bet.points) || 0));
+  if (points <= 0) {
+    return `合計\`${costBp}bp\``;
+  }
+  const perPoint = Math.round(costBp / points);
+  return `${points}点\`${perPoint}bp\` 合計\`${costBp}bp\``;
+}
+
 /**
  * 例:
- * 単勝
+ * 単勝 1点`100bp` 合計`100bp`
  * > <絵文字> `未確定`
  *
- * 馬連（通常）
+ * ワイド（ボックス）3点`500bp` 合計`1500bp`
  * > <絵文字> - <絵文字> `未確定`
  *
  * 馬単（1着ながし）
@@ -108,6 +120,7 @@ function refundSuffix(bet) {
  */
 function formatBetEntryForHistory(bet) {
   const kind = fullKindLabel(bet);
+  const costPart = betCostBpLine(bet);
   const suff = refundSuffix(bet);
   const pickParts = historyPickQuotedParts(bet)
     .map((p) => String(p).trim())
@@ -117,7 +130,7 @@ function formatBetEntryForHistory(bet) {
   const quoted = parts.map((p, i) =>
     i === last ? `> ${p} ${suff}` : `> ${p}`,
   );
-  return `${kind}\n${quoted.join('\n')}`;
+  return `${kind}${costPart}\n${quoted.join('\n')}`;
 }
 
 function raceSortKey(raceId) {
@@ -312,6 +325,8 @@ export async function buildRacePurchaseHistoryV2Payload({
   meetingFilter = 'all',
   extraFlags = 0,
 }) {
+  await runPendingRaceRefundsForUser(userId);
+
   const [allBets, bpBalance] = await Promise.all([
     fetchUserRaceBetsForDailyPeriod(userId, periodKey),
     getBalance(userId),

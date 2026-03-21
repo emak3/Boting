@@ -118,8 +118,10 @@ export default async function betFlowButtons(interaction) {
   if (customId.startsWith('race_bet_back|')) {
     const backMenuIds = flow.backMenuIds || [];
     const currentIndex = flow.backMenuIndex ?? backMenuIds.length - 1;
+    // 「購入前」から最初の戻るは、最終入力メニューそのものを表示する
+    const displayIndex = currentIndex;
     const nextIndex = currentIndex - 1;
-    if (nextIndex < 0) {
+    if (displayIndex < 0) {
       await interaction.reply({ content: 'これ以上戻れません。', ephemeral: true });
       return;
     }
@@ -131,7 +133,7 @@ export default async function betFlowButtons(interaction) {
       backMenuIndex: nextIndex,
     });
 
-    const currentMenuCustomId = backMenuIds[nextIndex];
+    const currentMenuCustomId = backMenuIds[displayIndex];
     const betTypeMenuId = `race_bet_type|${raceId}`;
 
     const components = [];
@@ -147,7 +149,7 @@ export default async function betFlowButtons(interaction) {
     if (menuRow) components.push(menuRow);
     else components.push(buildBetTypeMenuRow(raceId));
 
-    if (nextIndex > 0) {
+    if (nextIndex >= 0) {
       components.push(
         new ActionRowBuilder().addComponents(
           new ButtonBuilder()

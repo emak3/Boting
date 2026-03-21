@@ -15,6 +15,13 @@ import {
 } from '../../../cheerio/netkeibaSchedule.mjs';
 import { buildRaceCardEmbed } from '../../utils/raceCardEmbed.mjs';
 import { buildRaceResultEmbeds } from '../../utils/raceResultEmbed.mjs';
+import {
+  selectHorseLabel,
+  selectFrameLabel,
+  wakuUmaEmoji,
+  wakuUmaEmojiResolvable,
+  DISCORD_SELECT_OPTION_LABEL_RESERVE_POST_SELECTION,
+} from '../../utils/raceNumberEmoji.mjs';
 import { getBetFlow, setBetFlow, patchBetFlow, clearBetFlow } from '../../utils/betFlowStore.mjs';
 
 const VENUE_MENU_ID = 'race_menu_venue';
@@ -261,6 +268,7 @@ function buildSelectionRow({
             .setLabel(annotatedLabel)
             .setValue(value);
           if (desc) builder.setDescription(desc);
+          if (json.emoji?.id) builder.setEmoji(json.emoji);
           return builder;
         });
       })(),
@@ -532,12 +540,15 @@ function horseOptionsFromResult(result, cap = 25) {
     .map(([num, horse]) => ({ num, horse }))
     .sort((a, b) => Number(a.num) - Number(b.num))
     .slice(0, cap);
-  return arr.map(({ num, horse }) =>
-    new StringSelectMenuOptionBuilder()
-      .setLabel(`${num}. ${horse.name}`)
+  return arr.map(({ num, horse }) => {
+    const opt = new StringSelectMenuOptionBuilder()
+      .setLabel(selectHorseLabel(horse, '', DISCORD_SELECT_OPTION_LABEL_RESERVE_POST_SELECTION))
       .setValue(num)
-      .setDescription(`${horse.jockey}`.slice(0, 70)),
-  );
+      .setDescription(`${horse.jockey}`.slice(0, 70));
+    const em = wakuUmaEmojiResolvable(horse.frameNumber, horse.horseNumber);
+    if (em) opt.setEmoji({ id: em.id, name: em.name });
+    return opt;
+  });
 }
 
 function frameOptionsFromResult(result, cap = 25) {
@@ -556,10 +567,14 @@ function frameOptionsFromResult(result, cap = 25) {
 
   return arr.map(({ frame, count, horses }) => {
     const firstHorseName = horses?.[0]?.name || '';
-    return new StringSelectMenuOptionBuilder()
-      .setLabel(`枠${frame}`)
+    const f = parseInt(String(frame).replace(/\D/g, ''), 10);
+    const opt = new StringSelectMenuOptionBuilder()
+      .setLabel(selectFrameLabel(frame, '', DISCORD_SELECT_OPTION_LABEL_RESERVE_POST_SELECTION))
       .setValue(frame)
       .setDescription(`${count}頭${firstHorseName ? `（例: ${firstHorseName}）` : ''}`.slice(0, 70));
+    const em = Number.isFinite(f) ? wakuUmaEmojiResolvable(f, f) : null;
+    if (em) opt.setEmoji({ id: em.id, name: em.name });
+    return opt;
   });
 }
 
@@ -580,8 +595,24 @@ function frameLabelToHorses(result) {
 }
 
 function formatNamesByNums(result, nums) {
-  const map = horseNameByNum(result);
-  return nums.map((n) => `${n}. ${map.get(String(n)) || '不明'}`).join(', ');
+  const byKey = new Map();
+  for (const h of result.horses || []) {
+    byKey.set(String(h.horseNumber), h);
+    const k = parseInt(String(h.horseNumber).replace(/\D/g, ''), 10);
+    if (Number.isFinite(k)) byKey.set(String(k), h);
+  }
+  const nameMap = horseNameByNum(result);
+  return nums
+    .map((n) => {
+      const ns = String(n);
+      const kn = parseInt(ns.replace(/\D/g, ''), 10);
+      const horse = byKey.get(ns) ?? (Number.isFinite(kn) ? byKey.get(String(kn)) : null);
+      const nm = horse?.name || nameMap.get(ns) || '不明';
+      const em = horse ? wakuUmaEmoji(horse.frameNumber, horse.horseNumber) : null;
+      if (em) return `${em} ${nm}`.trim();
+      return `${n}. ${nm}`;
+    })
+    .join(', ');
 }
 
 function formatFrames(result, frames) {

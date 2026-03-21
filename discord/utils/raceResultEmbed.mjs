@@ -1,3 +1,9 @@
+import {
+  wakuUmaEmoji,
+  formatNumsWithWakuUmaEmoji,
+  formatWakurenNumsWithEmoji,
+} from './raceNumberEmoji.mjs';
+
 /** @param {{ raceId?: string, raceInfo?: object, horses?: object[], payouts?: object[] }} parsed */
 export function buildRaceResultEmbeds(parsed) {
   const raceId = parsed?.raceId;
@@ -10,6 +16,12 @@ export function buildRaceResultEmbeds(parsed) {
   if (url) desc.push(`[netkeibaで開く](${url})`);
 
   const horses = parsed.horses || [];
+  const horseNumToFrame = new Map();
+  for (const h of horses) {
+    const key = parseInt(String(h.horseNumber).replace(/\D/g, ''), 10);
+    if (Number.isFinite(key)) horseNumToFrame.set(String(key), h.frameNumber);
+  }
+
   const fields = horses.slice(0, 25).map((h) => {
     const odds =
       h.odds && h.odds !== 'N/A' ? `単勝オッズ ${h.odds}` : '';
@@ -17,9 +29,12 @@ export function buildRaceResultEmbeds(parsed) {
       h.popularity && h.popularity !== 'N/A' ? `${h.popularity}人気` : '';
     const tail = [pop, odds].filter(Boolean).join(' · ');
     const margin = h.margin ? ` 差: ${h.margin}` : '';
+    const wu = wakuUmaEmoji(h.frameNumber, h.horseNumber);
+    const numLabel = wu ? `${wu}` : `${h.horseNumber}.`;
+    const wakuPart = wu ? '' : `枠${h.frameNumber} | `;
     return {
-      name: `${h.finishRank}着 ${h.horseNumber}. ${h.name}`,
-      value: `枠${h.frameNumber} | ${h.jockey || '—'} | ${h.time || '—'}${margin}${tail ? `\n${tail}` : ''}`.slice(
+      name: `${h.finishRank}着 ${numLabel} ${h.name}`.trim(),
+      value: `${wakuPart}${h.jockey || '—'} | ${h.time || '—'}${margin}${tail ? `\n${tail}` : ''}`.slice(
         0,
         1024,
       ),
@@ -29,13 +44,15 @@ export function buildRaceResultEmbeds(parsed) {
 
   const fmtNums = (nums, joiner) => {
     if (!nums?.length) return '—';
-    const sep = joiner === '>' ? ' > ' : ' - ';
-    return nums.join(sep);
+    return formatNumsWithWakuUmaEmoji(nums, joiner || '-', horseNumToFrame);
   };
 
   const payoutLines = (parsed.payouts || []).map((p) => {
+    const isWakuren = /枠連/.test(p.label || '');
     const numPart = p.nums?.length
-      ? fmtNums(p.nums, p.joiner || '-')
+      ? isWakuren
+        ? formatWakurenNumsWithEmoji(p.nums, p.joiner || '-')
+        : fmtNums(p.nums, p.joiner || '-')
       : p.result && p.result !== '—'
         ? p.result
         : '—';

@@ -11,6 +11,11 @@ import {
 import { getBetFlow, clearBetFlow, patchBetFlow } from '../../utils/betFlowStore.mjs';
 import { buildBetPurchaseEmbed } from '../../utils/betPurchaseEmbed.mjs';
 import { buildRaceCardEmbed } from '../../utils/raceCardEmbed.mjs';
+import {
+  selectHorseLabel,
+  selectFrameLabel,
+  wakuUmaEmojiResolvable,
+} from '../../utils/raceNumberEmoji.mjs';
 
 const BET_TYPES = [
   { id: 'win', label: '単勝' },
@@ -219,11 +224,14 @@ function horseOptionsFromResult(result, selectedValues = [], cap = 25) {
     .sort((a, b) => Number(a.num) - Number(b.num))
     .slice(0, cap);
   return arr.map(({ num, horse }) => {
-    const label = `${num}. ${horse.name}${selectedSet.has(String(num)) ? '（選択中）' : ''}`;
-    return new StringSelectMenuOptionBuilder()
-      .setLabel(label)
+    const suffix = selectedSet.has(String(num)) ? '（選択中）' : '';
+    const opt = new StringSelectMenuOptionBuilder()
+      .setLabel(selectHorseLabel(horse, suffix))
       .setValue(String(num))
       .setDescription(`${horse.jockey}`.slice(0, 70));
+    const em = wakuUmaEmojiResolvable(horse.frameNumber, horse.horseNumber);
+    if (em) opt.setEmoji({ id: em.id, name: em.name });
+    return opt;
   });
 }
 
@@ -243,11 +251,15 @@ function frameOptionsFromResult(result, selectedValues = [], cap = 25) {
     .slice(0, cap);
   return arr.map(({ frame, count, horses }) => {
     const ex = horses?.[0]?.name || '';
-    const label = `枠${frame}${selectedSet.has(String(frame)) ? '（選択中）' : ''}`;
-    return new StringSelectMenuOptionBuilder()
-      .setLabel(label)
+    const suffix = selectedSet.has(String(frame)) ? '（選択中）' : '';
+    const f = parseInt(String(frame).replace(/\D/g, ''), 10);
+    const opt = new StringSelectMenuOptionBuilder()
+      .setLabel(selectFrameLabel(frame, suffix))
       .setValue(String(frame))
       .setDescription(`${count}頭${ex ? `（例: ${ex}）` : ''}`.slice(0, 70));
+    const em = Number.isFinite(f) ? wakuUmaEmojiResolvable(f, f) : null;
+    if (em) opt.setEmoji({ id: em.id, name: em.name });
+    return opt;
   });
 }
 

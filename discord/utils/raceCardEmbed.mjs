@@ -1,3 +1,5 @@
+import { wakuUmaEmoji } from './raceNumberEmoji.mjs';
+
 /** @param {{ raceInfo?: object, horses: object[], totalHorses: number, oddsOfficialTime?: string }} result */
 export function buildRaceCardEmbed(result) {
   const raceId = result?.raceId;
@@ -13,9 +15,12 @@ export function buildRaceCardEmbed(result) {
     fields: result.horses.slice(0, 18).map((horse) => {
       const place = horse.placeOddsMin ? ` / 複勝〜${horse.placeOddsMin}` : '';
       const ninki = horse.popularity && horse.popularity !== 'N/A' ? ` | ${horse.popularity}人気` : '';
+      const wu = wakuUmaEmoji(horse.frameNumber, horse.horseNumber);
+      const numLabel = wu ? `${wu}` : `${horse.horseNumber}.`;
+      const wakuPart = wu ? '' : `枠${horse.frameNumber} | `;
       return {
-        name: `${horse.horseNumber}. ${horse.name}`,
-        value: `枠${horse.frameNumber} | ${horse.age} | ${horse.weight}kg\n${horse.jockey}${ninki}\n単勝 ${horse.odds}${place}`,
+        name: `${numLabel} ${horse.name}`.trim(),
+        value: `${wakuPart}${horse.age} | ${horse.weight}kg\n${horse.jockey}${ninki}\n単勝 ${horse.odds}${place}`,
         inline: true,
       };
     }),

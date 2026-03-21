@@ -4,7 +4,7 @@ import {
   StringSelectMenuOptionBuilder,
   ButtonBuilder,
   ButtonStyle,
-  ComponentType,
+  MessageFlags,
 } from 'discord.js';
 import NetkeibaScraper from '../../../cheerio/netkeibaScraper.mjs';
 import {
@@ -19,7 +19,7 @@ import {
   buildTextAndRowsV2Payload,
 } from '../../utils/raceCardDisplay.mjs';
 import { canBypassSalesClosed } from '../../utils/raceDebugBypass.mjs';
-import { buildRaceResultEmbeds } from '../../utils/raceResultEmbed.mjs';
+import { buildRaceResultV2Text } from '../../utils/raceResultEmbed.mjs';
 import {
   selectHorseLabel,
   selectFrameLabel,
@@ -35,6 +35,17 @@ import {
 
 const VENUE_MENU_ID = 'race_menu_venue';
 const RACE_MENU_ID = 'race_menu_race';
+
+function v2ExtraFlags(interaction) {
+  try {
+    if (interaction.message?.flags?.has(MessageFlags.Ephemeral)) {
+      return MessageFlags.Ephemeral;
+    }
+  } catch (_) {
+    /* ignore */
+  }
+  return 0;
+}
 
 const BET_TYPE_MENU_PREFIX = 'race_bet_type|'; // raceId is appended after |
 const BET_PREFIX = 'race_bet_';
@@ -289,17 +300,27 @@ function buildSelectionRow({
   return new ActionRowBuilder().addComponents(menu);
 }
 
-function finalButtonsRow(raceId) {
-  return new ActionRowBuilder().addComponents(
-    new ButtonBuilder()
-      .setCustomId(`race_bet_purchase|${raceId}`)
-      .setLabel('購入')
-      .setStyle(ButtonStyle.Success),
-    new ButtonBuilder()
-      .setCustomId(`race_bet_unit_edit|${raceId}`)
-      .setLabel('1点単価')
-      .setStyle(ButtonStyle.Primary),
-  );
+/** 購入サマリー下部: 1行にボタン1つずつ */
+function summaryPurchaseButtonRows(raceId, userId, backMenuIndex) {
+  const rows = [
+    new ActionRowBuilder().addComponents(
+      new ButtonBuilder()
+        .setCustomId(`race_bet_purchase|${raceId}`)
+        .setLabel('購入')
+        .setStyle(ButtonStyle.Success),
+    ),
+    new ActionRowBuilder().addComponents(
+      new ButtonBuilder()
+        .setCustomId(`race_bet_unit_edit|${raceId}`)
+        .setLabel('1点単価')
+        .setStyle(ButtonStyle.Primary),
+    ),
+  ];
+  const br = backButtonRow(raceId, backMenuIndex);
+  if (br) rows.push(br);
+  const sched = scheduleRaceListBackIfScheduled(userId, raceId);
+  if (sched) rows.push(sched);
+  return rows;
 }
 
 function backButtonRow(raceId, backMenuIndex) {
@@ -479,18 +500,69 @@ function computeBackMenuIds({ raceId, flow, betType, lastMenuCustomId }) {
   return finalizeBackMenuIds(ids, lastMenuCustomId);
 }
 
-/** 購入前サマリー用: セレクトは表示のみ（操作で状態が変わらないよう無効化） */
-function disableStringSelectRow(row) {
-  if (!row) return row;
-  const j = row.toJSON();
-  const comp = j.components?.[0];
-  if (comp && comp.type === ComponentType.StringSelect) {
-    return ActionRowBuilder.from({
-      type: ComponentType.ActionRow,
-      components: [{ ...comp, disabled: true }],
-    });
+/**
+ * 購入サマリー画面を flow から再描画（「進む」で復帰時など）
+ */
+export async function editReplyPurchaseSummaryFromFlow(interaction, userId, raceId) {
+  const flow = getBetFlow(userId, raceId);
+  const purch = flow?.purchase;
+  if (!purch?.lastMenuCustomId || !flow?.result) {
+    await interaction.editReply(
+      buildTextAndRowsV2Payload({
+        headline: '❌ サマリーを再表示できませんでした。',
+        actionRows: [],
+        extraFlags: v2ExtraFlags(interaction),
+      }),
+    );
+    return;
   }
-  return row;
+
+  const result = flow.result;
+  const betType = flow.betType;
+  const { selectionLine, points, lastMenuCustomId } = purch;
+  const unitYen = flow.unitYen ?? DEFAULT_UNIT_YEN;
+
+  const backMenuIds = computeBackMenuIds({
+    raceId,
+    flow,
+    betType,
+    lastMenuCustomId,
+  });
+  const backMenuIndex = backMenuIds.lastIndexOf(lastMenuCustomId);
+
+  const isResult = !!result?.isResult;
+  const resultUrl = isResult
+    ? `https://race.netkeiba.com/race/result.html?race_id=${raceId}`
+    : null;
+
+  const content = `${selectionLine}\n${formatBetPoints(points, unitYen)}${
+    resultUrl ? `\n結果: ${resultUrl}` : ''
+  }`;
+
+  const betTypeMenuId = `race_bet_type|${raceId}`;
+  const summaryMenuRows = [];
+  for (const menuId of backMenuIds) {
+    const row =
+      menuId === betTypeMenuId
+        ? buildBetTypeMenuRow(raceId, flow)
+        : buildMenuRowFromCustomId({
+            menuCustomId: menuId,
+            flow,
+            result,
+          });
+    if (row) summaryMenuRows.push(row);
+  }
+
+  await interaction.editReply(
+    buildTextAndRowsV2Payload({
+      headline: content,
+      actionRows: [
+        ...summaryMenuRows,
+        ...summaryPurchaseButtonRows(raceId, userId, backMenuIndex),
+      ].filter(Boolean),
+      extraFlags: v2ExtraFlags(interaction),
+    }),
+  );
 }
 
 /**
@@ -524,6 +596,7 @@ async function renderFinalSelection({
     purchase: {
       selectionLine,
       points,
+      lastMenuCustomId: lastMenu.customId,
     },
     stepSelections: {
       ...(currentFlow.stepSelections || {}),
@@ -535,6 +608,8 @@ async function renderFinalSelection({
     lastSelectionLine: selectionLine,
     backMenuIds,
     backMenuIndex: backMenuIndex >= 0 ? backMenuIndex : backMenuIds.length - 1,
+    navViewMenuIndex: null,
+    purchaseSnapshot: null,
   });
 
   const isResult = !!result?.isResult;
@@ -558,7 +633,7 @@ async function renderFinalSelection({
             flow: flowAfter,
             result,
           });
-    if (row) summaryMenuRows.push(disableStringSelectRow(row));
+    if (row) summaryMenuRows.push(row);
   }
 
   await interaction.editReply(
@@ -566,10 +641,9 @@ async function renderFinalSelection({
       headline: content,
       actionRows: [
         ...summaryMenuRows,
-        finalButtonsRow(raceId),
-        backButtonRow(raceId, backMenuIndex),
-        scheduleRaceListBackIfScheduled(userId, raceId),
+        ...summaryPurchaseButtonRows(raceId, userId, backMenuIndex),
       ].filter(Boolean),
+      extraFlags: v2ExtraFlags(interaction),
     }),
   );
 }
@@ -691,11 +765,13 @@ export default async function raceScheduleMenu(interaction) {
     const val = interaction.values[0];
     const [kaisaiDate, currentGroup, kaisaiId] = val.split('|');
     if (!kaisaiDate || !currentGroup || !kaisaiId) {
-      await interaction.editReply({
-        content: '❌ メニュー値が不正です。もう一度 /race から試してください。',
-        embeds: [],
-        components: [],
-      });
+      await interaction.editReply(
+        buildTextAndRowsV2Payload({
+          headline: '❌ メニュー値が不正です。もう一度 /race から試してください。',
+          actionRows: [],
+          extraFlags: v2ExtraFlags(interaction),
+        }),
+      );
       return;
     }
     venueSelectionStore.set(userId, { kaisaiDate, currentGroup, kaisaiId });
@@ -704,11 +780,13 @@ export default async function raceScheduleMenu(interaction) {
       const { venues } = parseRaceListSub(html, kaisaiDate);
       const races = filterVenueRaces(venues, kaisaiId);
       if (!races.length) {
-        await interaction.editReply({
-          content: '❌ その開催場のレースが見つかりませんでした。',
-          embeds: [],
-          components: [],
-        });
+        await interaction.editReply(
+          buildTextAndRowsV2Payload({
+            headline: '❌ その開催場のレースが見つかりませんでした。',
+            actionRows: [],
+            extraFlags: v2ExtraFlags(interaction),
+          }),
+        );
         return;
       }
       // 「確定（結果あり）」の有無を raceId 単位で保存（後で raceId 選択時に使う）
@@ -722,27 +800,32 @@ export default async function raceScheduleMenu(interaction) {
       let description = lines.join('\n\n');
       if (description.length > 4090) description = `${description.slice(0, 4087)}…`;
 
-      const embed = {
-        color: 0x0099ff,
-        title: '🏇 レース一覧',
+      const headline = [
+        '🏇 **レース一覧**',
+        '',
         description,
-        footer: { text: `開催日 ${kaisaiDate}（日本時間）` },
-      };
-      await interaction.editReply({
-        content: '',
-        embeds: [embed],
-        components: [
-          raceSelectRow(kaisaiDate, races),
-          scheduleBackToVenueButtonRow(kaisaiDate, currentGroup),
-        ],
-      });
+        '',
+        `開催日 ${kaisaiDate}（日本時間）`,
+      ].join('\n');
+      await interaction.editReply(
+        buildTextAndRowsV2Payload({
+          headline,
+          actionRows: [
+            raceSelectRow(kaisaiDate, races),
+            scheduleBackToVenueButtonRow(kaisaiDate, currentGroup),
+          ],
+          extraFlags: v2ExtraFlags(interaction),
+        }),
+      );
     } catch (e) {
       console.error(e);
-      await interaction.editReply({
-        content: `❌ ${e.message}`,
-        embeds: [],
-        components: [],
-      });
+      await interaction.editReply(
+        buildTextAndRowsV2Payload({
+          headline: `❌ ${e.message}`,
+          actionRows: [],
+          extraFlags: v2ExtraFlags(interaction),
+        }),
+      );
     }
     return;
   }
@@ -804,39 +887,45 @@ export default async function raceScheduleMenu(interaction) {
       const resultSnap = await scraper.scrapeRaceResult(raceId);
       if (resultSnap.confirmed && !salesBypass) {
         setBetFlow(userId, raceId, flowCtx);
-        await interaction.editReply({
-          content: '',
-          embeds: buildRaceResultEmbeds(resultSnap),
-          components: [
-            lastVenue?.kaisaiId ? scheduleBackToRaceListButtonRow(raceId) : null,
-          ].filter(Boolean),
-        });
+        await interaction.editReply(
+          buildTextAndRowsV2Payload({
+            headline: buildRaceResultV2Text(resultSnap),
+            actionRows: [
+              lastVenue?.kaisaiId ? scheduleBackToRaceListButtonRow(raceId) : null,
+            ].filter(Boolean),
+            extraFlags: v2ExtraFlags(interaction),
+          }),
+        );
         return;
       }
 
       if (isResult && !salesBypass) {
         setBetFlow(userId, raceId, flowCtx);
-        await interaction.editReply({
-          content:
-            '❌ レース結果の取得に失敗しました。時間をおいて再度お試しください。',
-          embeds: [],
-          components: [
-            lastVenue?.kaisaiId ? scheduleBackToRaceListButtonRow(raceId) : null,
-          ].filter(Boolean),
-        });
+        await interaction.editReply(
+          buildTextAndRowsV2Payload({
+            headline:
+              '❌ レース結果の取得に失敗しました。時間をおいて再度お試しください。',
+            actionRows: [
+              lastVenue?.kaisaiId ? scheduleBackToRaceListButtonRow(raceId) : null,
+            ].filter(Boolean),
+            extraFlags: v2ExtraFlags(interaction),
+          }),
+        );
         return;
       }
 
       if (salesStatus?.closed && !salesBypass) {
         setBetFlow(userId, raceId, flowCtx);
-        await interaction.editReply({
-          content:
-            '⏳ 発売は締め切られています。レース結果の確定までお待ちください。',
-          embeds: [],
-          components: [
-            lastVenue?.kaisaiId ? scheduleBackToRaceListButtonRow(raceId) : null,
-          ].filter(Boolean),
-        });
+        await interaction.editReply(
+          buildTextAndRowsV2Payload({
+            headline:
+              '⏳ 発売は締め切られています。レース結果の確定までお待ちください。',
+            actionRows: [
+              lastVenue?.kaisaiId ? scheduleBackToRaceListButtonRow(raceId) : null,
+            ].filter(Boolean),
+            extraFlags: v2ExtraFlags(interaction),
+          }),
+        );
         return;
       }
 
@@ -861,15 +950,18 @@ export default async function raceScheduleMenu(interaction) {
             betTypeSelectRow(raceId, betTypeDefault),
             lastVenue?.kaisaiId ? scheduleBackToRaceListButtonRow(raceId) : null,
           ].filter(Boolean),
+          extraFlags: v2ExtraFlags(interaction),
         }),
       );
     } catch (e) {
       console.error(e);
-      await interaction.editReply({
-        content: `❌ 出馬表の取得に失敗: ${e.message}`,
-        embeds: [],
-        components: [],
-      });
+      await interaction.editReply(
+        buildTextAndRowsV2Payload({
+          headline: `❌ 出馬表の取得に失敗: ${e.message}`,
+          actionRows: [],
+          extraFlags: v2ExtraFlags(interaction),
+        }),
+      );
     }
     return;
   }
@@ -890,6 +982,8 @@ export default async function raceScheduleMenu(interaction) {
           ...(fl.stepSelections || {}),
           [customId]: interaction.values.map((v) => String(v)),
         };
+        patch.purchaseSnapshot = null;
+        patch.navViewMenuIndex = null;
       }
       patchBetFlow(userId, rid, patch);
     }
@@ -942,6 +1036,8 @@ export default async function raceScheduleMenu(interaction) {
       backMenuIndex: null,
       resumeBackFromSummary: false,
       purchase: null,
+      purchaseSnapshot: null,
+      navViewMenuIndex: null,
       stepSelections: { [`race_bet_type|${raceId}`]: [String(betType)] },
       lastSelectionLine: null,
     });
@@ -1134,11 +1230,13 @@ export default async function raceScheduleMenu(interaction) {
 
     const flow = getBetFlow(userId, raceId);
     if (!flow?.result) {
-      await interaction.editReply({
-        content: '❌ セッションが無効です。もう一度 /race から開始してください。',
-        embeds: [],
-        components: [],
-      });
+      await interaction.editReply(
+        buildTextAndRowsV2Payload({
+          headline: '❌ セッションが無効です。もう一度 /race から開始してください。',
+          actionRows: [],
+          extraFlags: v2ExtraFlags(interaction),
+        }),
+      );
       return;
     }
     const result = flow.result;

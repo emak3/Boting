@@ -84,13 +84,76 @@ function hasScheduleContext(flow) {
   return !!(flow?.kaisaiDate && flow?.currentGroup && flow?.kaisaiId);
 }
 
+function shouldShowForwardNav(flow) {
+  const ids = flow?.backMenuIds;
+  if (!ids?.length) return false;
+  const vi = flow.navViewMenuIndex;
+  if (vi == null || vi < 0) return false;
+  if (vi < ids.length - 1) return true;
+  return !!(vi === ids.length - 1 && flow.purchaseSnapshot);
+}
+
+/**
+ * 戻る導線で1メニューだけ表示するときの UI（戻る・進むは同一行、レース一覧は別行）
+ */
+export async function renderBetFlowResumeView(interaction, { userId, raceId, flow, viewIndex, headline }) {
+  const backMenuIds = flow.backMenuIds || [];
+  const betTypeMenuId = `race_bet_type|${raceId}`;
+  const currentMenuCustomId = backMenuIds[viewIndex];
+  const menuRow =
+    currentMenuCustomId === betTypeMenuId
+      ? buildBetTypeMenuRow(raceId, flow)
+      : buildMenuRowFromCustomId({
+          menuCustomId: currentMenuCustomId,
+          flow,
+          result: flow.result,
+        });
+  const components = [];
+  if (menuRow) components.push(menuRow);
+  else components.push(buildBetTypeMenuRow(raceId, flow));
+
+  const nextIndex = viewIndex - 1;
+  const showBack = viewIndex === 0 || nextIndex >= 0;
+  const backBtn = new ButtonBuilder()
+    .setCustomId(`race_bet_back|${raceId}`)
+    .setLabel('戻る')
+    .setStyle(ButtonStyle.Secondary);
+  const forwardBtn = shouldShowForwardNav(flow)
+    ? new ButtonBuilder()
+        .setCustomId(`race_bet_forward|${raceId}`)
+        .setLabel('進む')
+        .setStyle(ButtonStyle.Success)
+    : null;
+
+  const navRowButtons = [];
+  if (showBack) navRowButtons.push(backBtn);
+  if (forwardBtn) navRowButtons.push(forwardBtn);
+  if (navRowButtons.length) {
+    components.push(new ActionRowBuilder().addComponents(...navRowButtons));
+  }
+
+  if (hasScheduleContext(flow)) {
+    components.push(scheduleRaceListBackRow(raceId));
+  }
+
+  const h = headline ?? '購入前（戻り）';
+  await interaction.editReply(
+    buildRaceCardV2Payload({
+      result: flow.result,
+      headline: h,
+      actionRows: components.filter(Boolean),
+    }),
+  );
+}
+
 export default async function betFlowButtons(interaction) {
   if (!interaction.isButton()) return;
   const customId = interaction.customId;
   if (
     !customId.startsWith('race_bet_purchase|') &&
     !customId.startsWith('race_bet_unit_edit|') &&
-    !customId.startsWith('race_bet_back|')
+    !customId.startsWith('race_bet_back|') &&
+    !customId.startsWith('race_bet_forward|')
   )
     return;
 
@@ -130,8 +193,75 @@ export default async function betFlowButtons(interaction) {
     return;
   }
 
+  // 進む（戻り中に同じ選択のまま次へ / 最後は購入サマリーへ）
+  if (customId.startsWith('race_bet_forward|')) {
+    let flowFwd = getBetFlow(userId, raceId);
+    if (!flowFwd) {
+      await interaction.reply({
+        content: '❌ セッションが無効です。もう一度 /race から試してください。',
+        ephemeral: true,
+      });
+      return;
+    }
+    const backMenuIds = flowFwd.backMenuIds || [];
+    const vi = flowFwd.navViewMenuIndex;
+    if (vi == null || !backMenuIds.length) {
+      await interaction.reply({
+        content: '❌ ここからは進めません。',
+        ephemeral: true,
+      });
+      return;
+    }
+
+    await interaction.deferUpdate();
+
+    const lastLine = flowFwd.lastSelectionLine ?? '';
+
+    if (vi < backMenuIds.length - 1) {
+      const newVi = vi + 1;
+      patchBetFlow(userId, raceId, {
+        navViewMenuIndex: newVi,
+        backMenuIndex: newVi - 1,
+        resumeBackFromSummary: true,
+      });
+      flowFwd = getBetFlow(userId, raceId);
+      await renderBetFlowResumeView(interaction, {
+        userId,
+        raceId,
+        flow: flowFwd,
+        viewIndex: newVi,
+        headline: lastLine ? `購入前（戻り）\n${lastLine}` : '購入前（戻り）',
+      });
+      return;
+    }
+
+    if (flowFwd.purchaseSnapshot) {
+      patchBetFlow(userId, raceId, {
+        purchase: { ...flowFwd.purchaseSnapshot },
+        purchaseSnapshot: null,
+        navViewMenuIndex: null,
+        backMenuIndex: backMenuIds.length - 1,
+        resumeBackFromSummary: false,
+      });
+      const { editReplyPurchaseSummaryFromFlow } = await import('../menu/raceSchedule.mjs');
+      await editReplyPurchaseSummaryFromFlow(interaction, userId, raceId);
+      return;
+    }
+
+    await renderBetFlowResumeView(interaction, {
+      userId,
+      raceId,
+      flow: flowFwd,
+      viewIndex: vi,
+      headline: lastLine ? `購入前（戻り）\n${lastLine}` : '購入前（戻り）',
+    });
+    return;
+  }
+
   // 戻る（多段）
   if (customId.startsWith('race_bet_back|')) {
+    await interaction.deferUpdate();
+
     const backMenuIds = flow.backMenuIds || [];
     const currentIndex =
       flow.backMenuIndex !== undefined && flow.backMenuIndex !== null
@@ -142,20 +272,22 @@ export default async function betFlowButtons(interaction) {
 
     // 二重クリック・不整合で index がルートより前 — 賭け方へ（エラーにしない）
     if (currentIndex < 0 || !backMenuIds.length) {
-      await interaction.deferUpdate();
       patchBetFlow(userId, raceId, {
         purchase: null,
+        purchaseSnapshot: null,
         lastSelectionLine: lastLine,
         backMenuIndex: -1,
         resumeBackFromSummary: false,
+        navViewMenuIndex: null,
       });
-      const components = [buildBetTypeMenuRow(raceId, flow)];
-      if (hasScheduleContext(flow)) {
+      const flowRoot = getBetFlow(userId, raceId);
+      const components = [buildBetTypeMenuRow(raceId, flowRoot)];
+      if (hasScheduleContext(flowRoot)) {
         components.push(scheduleRaceListBackRow(raceId));
       }
       await interaction.editReply(
         buildRaceCardV2Payload({
-          result: flow.result,
+          result: flowRoot.result,
           headline: lastLine ? `購入前（戻り）\n${lastLine}` : '購入前（戻り）',
           actionRows: components.filter(Boolean),
         }),
@@ -195,50 +327,22 @@ export default async function betFlowButtons(interaction) {
 
     patchBetFlow(userId, raceId, {
       purchase: null,
+      purchaseSnapshot:
+        atPurchase && flow.purchase ? { ...flow.purchase } : flow.purchaseSnapshot ?? null,
       lastSelectionLine: lastLine,
       backMenuIndex: nextIndex,
       resumeBackFromSummary: nextResume,
+      navViewMenuIndex: displayIndex,
     });
 
-    const currentMenuCustomId = backMenuIds[displayIndex];
-    const betTypeMenuId = `race_bet_type|${raceId}`;
-
-    const components = [];
-    // セレクトは常に1行だけ（賭け方と馬番を同時に出さない）
-    const menuRow =
-      currentMenuCustomId === betTypeMenuId
-        ? buildBetTypeMenuRow(raceId, flow)
-        : buildMenuRowFromCustomId({
-            menuCustomId: currentMenuCustomId,
-            flow,
-            result: flow.result,
-          });
-    if (menuRow) components.push(menuRow);
-    else components.push(buildBetTypeMenuRow(raceId, flow));
-
-    if (nextIndex >= 0) {
-      components.push(
-        new ActionRowBuilder().addComponents(
-          new ButtonBuilder()
-            .setCustomId(`race_bet_back|${raceId}`)
-            .setLabel('戻る')
-            .setStyle(ButtonStyle.Secondary),
-        ),
-      );
-    }
-
-    if (hasScheduleContext(flow)) {
-      components.push(scheduleRaceListBackRow(raceId));
-    }
-
-    await interaction.deferUpdate();
-    await interaction.editReply(
-      buildRaceCardV2Payload({
-        result: flow.result,
-        headline: lastLine ? `購入前（戻り）\n${lastLine}` : '購入前（戻り）',
-        actionRows: components.filter(Boolean),
-      }),
-    );
+    const flowAfter = getBetFlow(userId, raceId);
+    await renderBetFlowResumeView(interaction, {
+      userId,
+      raceId,
+      flow: flowAfter,
+      viewIndex: displayIndex,
+      headline: lastLine ? `購入前（戻り）\n${lastLine}` : '購入前（戻り）',
+    });
     return;
   }
 

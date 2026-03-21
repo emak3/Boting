@@ -81,3 +81,25 @@ export function buildRaceResultEmbeds(parsed) {
 
   return embeds;
 }
+
+const V2_RESULT_TEXT_MAX = 3900;
+
+/** Components V2 用：結果・払戻を Text Display 向けプレーンテキストにする */
+export function buildRaceResultV2Text(parsed) {
+  const embeds = buildRaceResultEmbeds(parsed);
+  const blocks = [];
+  for (const e of embeds) {
+    const lines = [];
+    if (e.title) lines.push(String(e.title));
+    if (e.description) lines.push(e.description);
+    for (const f of e.fields || []) {
+      lines.push(`**${f.name}**\n${f.value}`);
+    }
+    if (e.footer?.text) lines.push(`*${e.footer.text}*`);
+    blocks.push(lines.join('\n'));
+  }
+  const out = blocks.join('\n\n—\n\n');
+  return out.length > V2_RESULT_TEXT_MAX
+    ? `${out.slice(0, V2_RESULT_TEXT_MAX - 1)}…`
+    : out;
+}

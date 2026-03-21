@@ -3,6 +3,7 @@ import * as cheerio from 'cheerio';
 import { handleEncoding } from './utils/encoding.mjs';
 
 const BASE = 'https://race.netkeiba.com';
+export const NAR_BASE = 'https://nar.netkeiba.com';
 
 const headers = {
   'User-Agent':
@@ -12,9 +13,24 @@ const headers = {
   Referer: 'https://race.netkeiba.com/top/',
 };
 
+const narHeaders = {
+  ...headers,
+  Referer: `${NAR_BASE}/top/`,
+};
+
 async function fetchHtml(url) {
   const response = await axios.get(url, {
     headers,
+    responseType: 'arraybuffer',
+    timeout: 20000,
+    maxRedirects: 5,
+  });
+  return handleEncoding(response.data, response);
+}
+
+async function fetchNarHtml(url) {
+  const response = await axios.get(url, {
+    headers: narHeaders,
     responseType: 'arraybuffer',
     timeout: 20000,
     maxRedirects: 5,
@@ -164,13 +180,38 @@ export async function fetchTodayVenuesAndRaces() {
 /** アクティブな開催日タブの一覧から raceId に一致するレースを探す（見つからなければ null） */
 export async function findRaceMetaForToday(raceId) {
   try {
-    const { venues, kaisaiDateYmd } = await fetchTodayVenuesAndRaces();
+    const { venues, kaisaiDateYmd, currentGroup } = await fetchTodayVenuesAndRaces();
     for (const v of venues) {
       const hit = v.races.find((r) => r.raceId === raceId);
-      if (hit) return { race: hit, kaisaiDateYmd };
+      if (hit) {
+        return {
+          race: hit,
+          kaisaiDateYmd,
+          source: 'jra',
+          scheduleKaisaiId: v.kaisaiId,
+          currentGroup,
+        };
+      }
     }
   } catch (e) {
-    console.warn('findRaceMetaForToday:', e.message);
+    console.warn('findRaceMetaForToday (JRA):', e.message);
+  }
+  try {
+    const { venues, kaisaiDateYmd } = await fetchNarTodayVenuesAndRaces();
+    for (const v of venues) {
+      const hit = v.races.find((r) => r.raceId === raceId);
+      if (hit) {
+        return {
+          race: hit,
+          kaisaiDateYmd,
+          source: 'nar',
+          scheduleKaisaiId: v.kaisaiId,
+          currentGroup: null,
+        };
+      }
+    }
+  } catch (e) {
+    console.warn('findRaceMetaForToday (NAR):', e.message);
   }
   return null;
 }
@@ -178,4 +219,149 @@ export async function findRaceMetaForToday(raceId) {
 export function filterVenueRaces(venues, kaisaiId) {
   const v = venues.find((x) => x.kaisaiId === kaisaiId);
   return v ? v.races : [];
+}
+
+// ----- 地方競馬 (NAR / nar.netkeiba.com) -----
+
+/**
+ * NAR トップの日付タブから開催日を取得（href の kaisai_id は任意）
+ */
+export async function fetchNarActiveKaisaiTab() {
+  const html = await fetchNarHtml(`${NAR_BASE}/top/race_list_get_date_list.html?encoding=UTF-8`);
+  const $ = cheerio.load(html);
+  const today = jstYmd();
+  let $li = $('#date_list_sub li.Active').first();
+  if (!$li.length) {
+    $li = $(`#date_list_sub li[date="${today}"]`).first();
+  }
+  if (!$li.length) {
+    $li = $('#date_list_sub li').first();
+  }
+  if (!$li.length) {
+    throw new Error('NAR: 開催日タブが見つかりません');
+  }
+  const kaisaiDate = $li.attr('date');
+  if (!kaisaiDate) {
+    throw new Error('NAR: 開催日が不正です');
+  }
+  const ahref = $li.find('a').attr('href') || '';
+  const am = ahref.match(/kaisai_id=(\d+)/);
+  return { kaisaiDate, activeKaisaiId: am ? am[1] : null };
+}
+
+/**
+ * NAR レース一覧（開催場タブ切り替え用の kaisai_id 任意）
+ */
+export async function fetchNarRaceListSub(kaisaiDate, kaisaiId = null) {
+  const q = new URLSearchParams({ kaisai_date: kaisaiDate, rf: 'race_list' });
+  if (kaisaiId) q.set('kaisai_id', kaisaiId);
+  return fetchNarHtml(`${NAR_BASE}/top/race_list_sub.html?${q.toString()}`);
+}
+
+/**
+ * 開催場タブの kaisai_id 一覧（表示順）
+ */
+export function extractNarProvinceKaisaiIds(html) {
+  const $ = cheerio.load(html);
+  const out = [];
+  const seen = new Set();
+  $('ul.RaceList_ProvinceSelect li a[href*="kaisai_id="]').each((_, a) => {
+    const href = $(a).attr('href') || '';
+    const m = href.match(/kaisai_id=(\d+)/);
+    if (!m) return;
+    const kaisaiId = m[1];
+    if (seen.has(kaisaiId)) return;
+    seen.add(kaisaiId);
+    const label = $(a).text().replace(/\s+/g, ' ').trim();
+    out.push({ kaisaiId, label });
+  });
+  return out;
+}
+
+/**
+ * NAR race_list_sub 1ページ分から 1開催場分を解析
+ * @returns {{ title: string, kaisaiId: string, races: object[] } | null}
+ */
+export function parseNarRaceListSubToVenue(html, kaisaiDateYmd) {
+  const $ = cheerio.load(html);
+  let $dl = $('dl.RaceList_DataList')
+    .filter((_, el) => /display\s*:\s*block/i.test($(el).attr('style') || ''))
+    .first();
+  if (!$dl.length) {
+    $dl = $('dl.RaceList_DataList').first();
+  }
+  if (!$dl.length) return null;
+
+  const payHref = $dl.find('a[href*="payback_list.html"]').first().attr('href') || '';
+  let kaisaiId = (payHref.match(/kaisai_id=(\d+)/) || [])[1] || null;
+
+  const title = $dl.find('dt .RaceList_DataTitle').first().text().replace(/\s+/g, ' ').trim();
+
+  const races = [];
+  $dl.find('dd.RaceList_Data li.RaceList_DataItem').each((_, li) => {
+    const $a = $(li).find('a[href*="race_id="]').first();
+    const href = $a.attr('href') || '';
+    const rm = href.match(/race_id=(\d{12})/);
+    if (!rm) return;
+    const raceId = rm[1];
+    const rTitle = $a.find('.ItemTitle').first().text().trim();
+    let timeText = '';
+    $a.find('.RaceData span').each((__, sp) => {
+      const t = $(sp).text().trim();
+      if (/\d{1,2}\s*:\s*\d{2}/.test(t)) {
+        timeText = t;
+        return false;
+      }
+    });
+    const numText = $a.find('.Race_Num').first().text().replace(/\s+/g, ' ').trim();
+    const isShutuba = href.includes('shutuba');
+    const isResult = href.includes('result');
+    races.push({
+      raceId,
+      roundLabel: numText,
+      title: rTitle,
+      timeText,
+      isShutuba,
+      isResult,
+    });
+  });
+
+  if (!races.length) return null;
+  if (!kaisaiId) {
+    kaisaiId = races[0].raceId.slice(0, 10);
+  }
+  return { title: title || '開催', kaisaiId, races };
+}
+
+/**
+ * 指定日の地方開催場一覧（タブごとに取得して結合）
+ */
+export async function fetchNarVenuesForDate(kaisaiDate) {
+  const html0 = await fetchNarRaceListSub(kaisaiDate);
+  const provinces = extractNarProvinceKaisaiIds(html0);
+  const venues = [];
+  const loaded = new Set();
+
+  const v0 = parseNarRaceListSubToVenue(html0, kaisaiDate);
+  if (v0?.races?.length) {
+    venues.push(v0);
+    loaded.add(v0.kaisaiId);
+  }
+
+  for (const { kaisaiId } of provinces) {
+    if (loaded.has(kaisaiId)) continue;
+    const html = await fetchNarRaceListSub(kaisaiDate, kaisaiId);
+    const v = parseNarRaceListSubToVenue(html, kaisaiDate);
+    if (v?.races?.length) {
+      venues.push(v);
+      loaded.add(v.kaisaiId);
+    }
+  }
+
+  return { kaisaiDateYmd: kaisaiDate, venues };
+}
+
+export async function fetchNarTodayVenuesAndRaces() {
+  const { kaisaiDate } = await fetchNarActiveKaisaiTab();
+  return fetchNarVenuesForDate(kaisaiDate);
 }

@@ -3,13 +3,13 @@ import {
   formatNumsWithWakuUmaEmoji,
   formatWakurenNumsWithEmoji,
 } from './raceNumberEmoji.mjs';
+import { netkeibaResultUrl } from './netkeibaUrls.mjs';
 
-/** @param {{ raceId?: string, raceInfo?: object, horses?: object[], payouts?: object[] }} parsed */
+/** @param {{ raceId?: string, raceInfo?: object, horses?: object[], payouts?: object[], netkeibaOrigin?: string }} parsed */
 export function buildRaceResultEmbeds(parsed) {
   const raceId = parsed?.raceId;
-  const url = raceId
-    ? `https://race.netkeiba.com/race/result.html?race_id=${raceId}`
-    : null;
+  const origin = parsed?.netkeibaOrigin === 'nar' ? 'nar' : 'jra';
+  const url = raceId ? netkeibaResultUrl(raceId, origin) : null;
 
   const ri = parsed.raceInfo || {};
   const desc = [`**日程:** ${ri.date || 'N/A'}`, `**コース:** ${ri.course || 'N/A'}`];

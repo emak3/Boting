@@ -1,3 +1,5 @@
+import { netkeibaResultUrl, netkeibaOriginFromFlow } from './netkeibaUrls.mjs';
+
 const BET_TYPE_LABEL = {
   win: '単勝',
   place: '複勝',
@@ -21,9 +23,8 @@ export function buildBetPurchaseV2Headline({ flow }) {
   const oddsTime = flow?.result?.oddsOfficialTime;
   const raceId = flow?.result?.raceId;
   const isResult = !!flow?.result?.isResult;
-  const resultUrl = raceId
-    ? `https://race.netkeiba.com/race/result.html?race_id=${raceId}`
-    : null;
+  const origin = netkeibaOriginFromFlow(flow);
+  const resultUrl = raceId ? netkeibaResultUrl(raceId, origin) : null;
 
   return [
     '**購入内容（仮）**',
@@ -53,9 +54,8 @@ export function buildBetPurchaseEmbed({ flow }) {
   const oddsTime = flow?.result?.oddsOfficialTime;
   const raceId = flow?.result?.raceId;
   const isResult = !!flow?.result?.isResult;
-  const resultUrl = raceId
-    ? `https://race.netkeiba.com/race/result.html?race_id=${raceId}`
-    : null;
+  const origin = netkeibaOriginFromFlow(flow);
+  const resultUrl = raceId ? netkeibaResultUrl(raceId, origin) : null;
 
   return {
     color: 0x2ecc71,

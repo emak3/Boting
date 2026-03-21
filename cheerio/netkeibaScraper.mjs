@@ -4,6 +4,8 @@ import iconv from 'iconv-lite';
 import { handleEncoding } from './utils/encoding.mjs';
 import { scrapWithPuppeteer } from './utils/puppeteerFallback.mjs';
 
+const NAR_BASE_URL = 'https://nar.netkeiba.com';
+
 class NetkeibaScraper {
   constructor() {
     this.baseUrl = 'https://race.netkeiba.com';
@@ -20,32 +22,48 @@ class NetkeibaScraper {
 
   /** 出馬表の馬行のみ（予想ラップ等の別テーブルの HorseList を除外） */
   static shutubaHorseRowSelector =
-    '.Shutuba_Table.ShutubaTable:not(.PredictRap_Table) tr.HorseList, .Shutuba_Table.RaceTable01.ShutubaTable:not(.PredictRap_Table) tr[id^="tr_"]';
+    '.Shutuba_Table.ShutubaTable:not(.PredictRap_Table) tr.HorseList, .Shutuba_Table.RaceTable01.ShutubaTable:not(.PredictRap_Table) tr[id^="tr_"], table.RaceTable01.ShutubaTable:not(.PredictRap_Table) tr.HorseList, table.RaceTable01.ShutubaTable:not(.PredictRap_Table) tr[id^="tr_"]';
+
+  requestHeadersForBase(baseUrl) {
+    return {
+      ...this.headers,
+      Referer: `${baseUrl.replace(/\/$/, '')}/top/`,
+    };
+  }
 
   /**
-   * メインの出馬表データ取得メソッド
+   * メインの出馬表データ取得メソッド（中央→地方の順で試行）
    */
   async scrapeRaceCard(raceId) {
-    const url = `${this.baseUrl}/race/shutuba.html?race_id=${raceId}`;
-    
-    try {
-      // まずCheerioでの取得を試行
-      const result = await this.scrapeWithCheerio(url);
-      if (result && result.horses.length > 0) {
-        await this.mergeJraOddsFromApi(raceId, result);
-        return result;
+    const bases = [
+      { origin: 'jra', base: this.baseUrl },
+      { origin: 'nar', base: NAR_BASE_URL },
+    ];
+    let lastErr;
+    for (const { origin, base } of bases) {
+      const url = `${base}/race/shutuba.html?race_id=${raceId}`;
+      const headers = this.requestHeadersForBase(base);
+      try {
+        let result = await this.scrapeWithCheerio(url, { headers });
+        if (result && result.horses.length > 0) {
+          result.netkeibaOrigin = origin;
+          if (origin === 'jra') await this.mergeJraOddsFromApi(raceId, result);
+          return result;
+        }
+        console.log(`Cheerio approach failed for ${origin}, falling back to Puppeteer...`);
+        result = await this.scrapeWithPuppeteer(url);
+        if (result && result.horses.length > 0) {
+          result.netkeibaOrigin = origin;
+          if (origin === 'jra') await this.mergeJraOddsFromApi(raceId, result);
+          return result;
+        }
+      } catch (error) {
+        lastErr = error;
+        console.warn(`scrapeRaceCard ${origin}:`, error.message);
       }
-      
-      // Cheerioで失敗した場合はPuppeteerを使用
-      console.log('Cheerio approach failed, falling back to Puppeteer...');
-      const puppetResult = await this.scrapeWithPuppeteer(url);
-      await this.mergeJraOddsFromApi(raceId, puppetResult);
-      return puppetResult;
-      
-    } catch (error) {
-      console.error('Error scraping race card:', error);
-      throw new Error(`Failed to scrape race data: ${error.message}`);
     }
+    console.error('Error scraping race card:', lastErr);
+    throw new Error(`Failed to scrape race data: ${lastErr?.message || 'no data'}`);
   }
 
   /**
@@ -53,63 +71,102 @@ class NetkeibaScraper {
    * @returns {{ confirmed: false } | { confirmed: true, raceId: string, raceInfo: object, horses: object[], payouts: object[] }}
    */
   async scrapeRaceResult(raceId) {
-    const url = `${this.baseUrl}/race/result.html?race_id=${raceId}`;
-    try {
-      const response = await axios.get(url, {
-        headers: this.headers,
-        responseType: 'arraybuffer',
-        timeout: 15000,
-        maxRedirects: 5,
-      });
-      const decodedData = handleEncoding(response.data, response);
-      const $ = cheerio.load(decodedData);
-      const horses = this.parseResultHorseRows($);
-      if (!horses.length) {
-        return { confirmed: false };
+    const bases = [
+      { origin: 'jra', base: this.baseUrl },
+      { origin: 'nar', base: NAR_BASE_URL },
+    ];
+    for (const { origin, base } of bases) {
+      const url = `${base}/race/result.html?race_id=${raceId}`;
+      const headers = this.requestHeadersForBase(base);
+      try {
+        const response = await axios.get(url, {
+          headers,
+          responseType: 'arraybuffer',
+          timeout: 15000,
+          maxRedirects: 5,
+        });
+        const decodedData = handleEncoding(response.data, response);
+        const $ = cheerio.load(decodedData);
+        const horses = this.parseResultHorseRows($);
+        if (!horses.length) {
+          continue;
+        }
+        const raceInfo = this.extractRaceInfo($);
+        const payouts = this.parseResultPayouts($);
+        return {
+          confirmed: true,
+          raceId: String(raceId),
+          raceInfo,
+          horses,
+          payouts,
+          scrapedAt: new Date().toISOString(),
+          netkeibaOrigin: origin,
+        };
+      } catch (e) {
+        console.warn(`scrapeRaceResult ${origin}:`, e.message);
       }
-      const raceInfo = this.extractRaceInfo($);
-      const payouts = this.parseResultPayouts($);
-      return {
-        confirmed: true,
-        raceId: String(raceId),
-        raceInfo,
-        horses,
-        payouts,
-        scrapedAt: new Date().toISOString(),
-      };
-    } catch (e) {
-      console.warn('scrapeRaceResult failed:', e.message);
-      return { confirmed: false };
     }
+    return { confirmed: false };
   }
 
   parseResultHorseRows($) {
     const horses = [];
-    $('#All_Result_Table tr.HorseList, table.ResultRefund tr.HorseList').each((_, el) => {
-      const $row = $(el);
+    const seenRank = new Set();
+
+    const addFromRow = ($row) => {
       const finishRank = $row.find('.Result_Num .Rank').first().text().trim();
       if (!finishRank || !/^\d+$/.test(finishRank)) return;
+      if (seenRank.has(finishRank)) return;
+      seenRank.add(finishRank);
 
-      const $wakuTd = $row.find('td.Num[class*="Waku"]').first();
-      const wakuClass = $wakuTd.attr('class') || '';
-      const wm = wakuClass.match(/Waku(\d)/);
-      const frameNumber = wm ? wm[1] : $wakuTd.find('div').first().text().trim() || 'N/A';
-
-      const horseNumber =
-        $row.find('td.Num.Txt_C').first().find('div').first().text().trim() || 'N/A';
+      let frameNumber = 'N/A';
+      let horseNumber = 'N/A';
+      const $numTds = $row.find('> td.Num');
+      if ($numTds.length >= 2) {
+        frameNumber =
+          $numTds.eq(0).find('div').first().text().trim() ||
+          $numTds.eq(0).text().replace(/\s+/g, ' ').trim() ||
+          'N/A';
+        horseNumber =
+          $numTds.eq(1).find('div').first().text().trim() ||
+          $numTds.eq(1).text().replace(/\s+/g, ' ').trim() ||
+          'N/A';
+      }
+      if (horseNumber === 'N/A' || !/^\d+$/.test(String(horseNumber).replace(/\D/g, ''))) {
+        const $wakuTd = $row.find('td.Num[class*="Waku"]').first();
+        const wakuClass = $wakuTd.attr('class') || '';
+        const wm = wakuClass.match(/Waku(\d)/);
+        frameNumber = wm ? wm[1] : $wakuTd.find('div').first().text().trim() || frameNumber;
+        horseNumber =
+          $row.find('td.Num.Txt_C').first().find('div').first().text().trim() ||
+          $row.find('td.Num.Txt_C').first().text().trim() ||
+          horseNumber;
+      }
 
       const name =
         $row.find('.HorseNameSpan').first().text().trim() ||
         $row.find('.Horse_Name a').first().text().trim() ||
+        $row.find('.Horse_Name').first().text().trim() ||
         'N/A';
 
       const $timeTds = $row.find('td.Time');
-      const time = $timeTds.eq(0).find('.RaceTime').first().text().trim() || 'N/A';
-      const margin = $timeTds.eq(1).find('.RaceTime').first().text().trim() || '';
+      let time = $timeTds.eq(0).find('.RaceTime').first().text().trim();
+      if (!time) time = $timeTds.eq(0).text().replace(/\s+/g, ' ').trim() || 'N/A';
+      let margin = $timeTds.eq(1).find('.RaceTime').first().text().trim();
+      if (!margin) margin = $timeTds.eq(1).text().replace(/\s+/g, ' ').trim();
 
-      const jockey = $row.find('.JockeyNameSpan').first().text().trim() || 'N/A';
-      const popularity = $row.find('td.Odds .OddsPeople').first().text().trim() || 'N/A';
-      const odds = $row.find('span.Odds_Ninki').first().text().trim() || 'N/A';
+      const jockey =
+        $row.find('.JockeyNameSpan').first().text().trim() ||
+        $row.find('td.Jockey').first().text().trim() ||
+        'N/A';
+
+      let popularity = $row.find('td.Odds .OddsPeople').first().text().trim();
+      if (!popularity) popularity = $row.find('td.Odds.Txt_C').first().text().trim();
+      if (!popularity) popularity = 'N/A';
+
+      let odds = $row.find('span.Odds_Ninki').first().text().trim();
+      if (!odds) odds = $row.find('td.Odds.Txt_R').first().text().trim();
+      if (!odds) odds = 'N/A';
 
       horses.push({
         finishRank,
@@ -122,7 +179,12 @@ class NetkeibaScraper {
         popularity,
         odds,
       });
-    });
+    };
+
+    $('#All_Result_Table tbody tr').each((_, el) => addFromRow($(el)));
+    $('#All_Result_Table tr.HorseList').each((_, el) => addFromRow($(el)));
+    $('table.ResultRefund tr.HorseList').each((_, el) => addFromRow($(el)));
+
     horses.sort((a, b) => Number(a.finishRank) - Number(b.finishRank));
     return horses;
   }
@@ -272,10 +334,11 @@ class NetkeibaScraper {
   /**
    * Cheerioを使用したスクレイピング
    */
-  async scrapeWithCheerio(url) {
+  async scrapeWithCheerio(url, options = {}) {
+    const headers = options.headers || this.headers;
     try {
       const response = await axios.get(url, {
-        headers: this.headers,
+        headers,
         responseType: 'arraybuffer',
         timeout: 10000,
         maxRedirects: 5,
@@ -285,8 +348,12 @@ class NetkeibaScraper {
       const decodedData = handleEncoding(response.data, response);
       const $ = cheerio.load(decodedData);
 
-      // メインテーブルの確認
-      const mainTable = $('.ShutubaTable, .RaceTable01, .Shutuba_Table').first();
+      // メインテーブルの確認（中央: Shutuba_Table / 地方: RaceTable01 ShutubaTable など）
+      const mainTable = $(
+        'table.RaceTable01.ShutubaTable, .Shutuba_Table.ShutubaTable, .ShutubaTable, .RaceTable01, .Shutuba_Table',
+      )
+        .not('.PredictRap_Table')
+        .first();
       if (!mainTable.length) {
         console.log('Race table not found, checking alternative selectors...');
         // 代替セレクタもチェック
@@ -447,7 +514,10 @@ class NetkeibaScraper {
    */
   extractOdds($row, $) {
     const oddsElement = $row.find('span[id^="odds-1_"], td.Txt_R.Popular span[id^="odds-"]').first();
-    const oddsText = oddsElement.text().trim();
+    let oddsText = oddsElement.text().trim();
+    if (!oddsText || oddsText === '---.-' || oddsText === '**') {
+      oddsText = $row.find('td.Popular.Txt_R').first().text().trim();
+    }
     return oddsText && oddsText !== '---.-' && oddsText !== '**' && oddsText !== '' ? oddsText : 'N/A';
   }
 
@@ -457,6 +527,9 @@ class NetkeibaScraper {
   extractPopularity($row, $) {
     const popularityElement = $row.find('span[id^="ninki-1_"], [id^="ninki-"], .Popular_Ninki span, td.ninki').first();
     let popularityText = popularityElement.text().trim().replace(/^\(|\)$/g, '');
+    if (!popularityText || popularityText === '**') {
+      popularityText = $row.find('td.Popular.Txt_C').first().text().trim();
+    }
     return popularityText && popularityText !== '**' && popularityText !== '' ? popularityText : 'N/A';
   }
 

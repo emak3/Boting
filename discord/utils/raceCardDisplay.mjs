@@ -7,6 +7,7 @@ import {
   ActionRowBuilder,
 } from 'discord.js';
 import { wakuUmaEmoji } from './raceNumberEmoji.mjs';
+import { netkeibaResultUrl } from './netkeibaUrls.mjs';
 
 /** Discord Display Components: 全 Text Display 合計 4000 文字まで */
 const V2_TEXT_TOTAL_MAX = 3900;
@@ -74,9 +75,8 @@ export function buildRaceCardV2Payload({
 
   const raceId = result.raceId;
   const isResult = !!result.isResult;
-  const resultUrl = raceId
-    ? `https://race.netkeiba.com/race/result.html?race_id=${raceId}`
-    : null;
+  const origin = result.netkeibaOrigin === 'nar' ? 'nar' : 'jra';
+  const resultUrl = raceId ? netkeibaResultUrl(raceId, origin) : null;
 
   const titleLine = `${isResult ? '🏁' : '🐎'} **${result.raceInfo?.title || 'レース情報'}**`;
   const meta = `**日程:** ${result.raceInfo?.date || 'N/A'}\n**コース:** ${result.raceInfo?.course || 'N/A'}`;

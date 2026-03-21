@@ -1,4 +1,5 @@
 import { wakuUmaEmoji } from './raceNumberEmoji.mjs';
+import { netkeibaResultUrl } from './netkeibaUrls.mjs';
 
 /** @param {{ raceInfo?: object, horses: object[], totalHorses: number, oddsOfficialTime?: string }} result */
 export function buildRaceCardEmbed(result) {
@@ -13,9 +14,8 @@ export function buildRaceCardEmbed(result) {
 
   const raceId = result?.raceId;
   const isResult = !!result?.isResult;
-  const resultUrl = raceId
-    ? `https://race.netkeiba.com/race/result.html?race_id=${raceId}`
-    : null;
+  const origin = result?.netkeibaOrigin === 'nar' ? 'nar' : 'jra';
+  const resultUrl = raceId ? netkeibaResultUrl(raceId, origin) : null;
 
   const embed = {
     color: isResult ? 0xf1c40f : 0x0099ff,

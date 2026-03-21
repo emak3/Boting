@@ -9,7 +9,6 @@ import {
 } from 'discord.js';
 import NetkeibaScraper from '../../cheerio/netkeibaScraper.mjs';
 import {
-  fetchTodayVenuesAndRaces,
   findRaceMetaForToday,
   getRaceSalesStatus,
 } from '../../cheerio/netkeibaSchedule.mjs';
@@ -18,17 +17,40 @@ import { buildRaceResultEmbeds } from '../utils/raceResultEmbed.mjs';
 import { setBetFlow } from '../utils/betFlowStore.mjs';
 import { canBypassSalesClosed } from '../utils/raceDebugBypass.mjs';
 
-function venueSelectRow(kaisaiDate, currentGroup, venues) {
+function scheduleKindSelectRow() {
+  return new ActionRowBuilder().addComponents(
+    new StringSelectMenuBuilder()
+      .setCustomId('race_menu_schedule_kind')
+      .setPlaceholder('中央(JRA) か 地方(NAR) を選択')
+      .addOptions(
+        new StringSelectMenuOptionBuilder()
+          .setLabel('中央競馬 (JRA)')
+          .setValue('jra')
+          .setDescription('race.netkeiba.com'),
+        new StringSelectMenuOptionBuilder()
+          .setLabel('地方競馬 (NAR)')
+          .setValue('nar')
+          .setDescription('nar.netkeiba.com'),
+      ),
+  );
+}
+
+function venueSelectRow(scheduleKind, kaisaiDate, currentGroup, venues) {
   const menu = new StringSelectMenuBuilder()
     .setCustomId('race_menu_venue')
     .setPlaceholder('開催場を選択')
     .addOptions(
-      venues.slice(0, 25).map((v) =>
-        new StringSelectMenuOptionBuilder()
-          .setLabel(v.title.slice(0, 100))
-          .setValue(`${kaisaiDate}|${currentGroup}|${v.kaisaiId}`)
-          .setDescription(`全${v.races.length}レース`.slice(0, 100)),
-      ),
+      venues.slice(0, 25).map((v) => {
+        const value =
+          scheduleKind === 'nar'
+            ? `nar|${kaisaiDate}|${v.kaisaiId}`
+            : `jra|${kaisaiDate}|${currentGroup}|${v.kaisaiId}`;
+        const prefix = scheduleKind === 'nar' ? '[地方] ' : '';
+        return new StringSelectMenuOptionBuilder()
+          .setLabel(`${prefix}${v.title}`.slice(0, 100))
+          .setValue(value)
+          .setDescription(`全${v.races.length}レース`.slice(0, 100));
+      }),
     );
   return new ActionRowBuilder().addComponents(menu);
 }
@@ -67,7 +89,7 @@ function betTypeSelectRow(raceId, selectedBetTypeId = null) {
 const commandObject = {
   command: new SlashCommandBuilder()
     .setName('race')
-    .setDescription('競馬の出馬表・本日の開催を表示します')
+    .setDescription('競馬の出馬表・本日の開催（中央JRA / 地方NAR）を表示します')
     .addStringOption((option) =>
       option
         .setName('raceid')
@@ -127,7 +149,13 @@ const commandObject = {
 
         const result = await scraper.scrapeRaceCard(raceId);
         result.raceId = raceId;
-        setBetFlow(interaction.user.id, raceId, { result });
+        const flowPatch = { result };
+        if (meta?.source === 'nar' || meta?.source === 'jra') {
+          flowPatch.source = meta.source;
+        } else if (result.netkeibaOrigin) {
+          flowPatch.source = result.netkeibaOrigin;
+        }
+        setBetFlow(interaction.user.id, raceId, flowPatch);
         await interaction.editReply(
           buildRaceCardV2Payload({
             result,
@@ -146,16 +174,10 @@ const commandObject = {
     }
 
     try {
-      const { venues, kaisaiDateYmd, currentGroup } = await fetchTodayVenuesAndRaces();
-      if (!venues.length) {
-        await interaction.editReply({
-          content: '❌ 本日の開催データが取得できませんでした。',
-        });
-        return;
-      }
       await interaction.editReply({
-        content: '開催場を選ぶと、その場のレース一覧（発走時刻・発売状態）が表示されます。続けてレースを選ぶと出馬表を表示します。',
-        components: [venueSelectRow(kaisaiDateYmd, currentGroup, venues)],
+        content:
+          'まず **中央(JRA)** か **地方(NAR)** を選び、その後に開催場を選ぶとレース一覧が表示されます。続けてレースを選ぶと出馬表を表示します。',
+        components: [scheduleKindSelectRow()],
       });
     } catch (e) {
       console.error('Race schedule error:', e);

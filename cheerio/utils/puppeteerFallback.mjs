@@ -35,9 +35,12 @@ export async function scrapWithPuppeteer(url) {
     });
 
     // メインテーブルの読み込み待機
-    await page.waitForSelector('.ShutubaTable, .RaceTable01, .Shutuba_Table, table', { 
-      timeout: 15000 
-    });
+    await page.waitForSelector(
+      'table.RaceTable01.ShutubaTable, .Shutuba_Table.ShutubaTable, .ShutubaTable, .RaceTable01, .Shutuba_Table, table',
+      {
+        timeout: 15000,
+      },
+    );
 
     await new Promise((r) => setTimeout(r, 3000));
 
@@ -72,7 +75,7 @@ function parseHorseDataFromHtml($) {
   
   // より柔軟なセレクタで馬情報を取得
   const shutubaRows =
-    '.Shutuba_Table.ShutubaTable:not(.PredictRap_Table) tr.HorseList, .Shutuba_Table.RaceTable01.ShutubaTable:not(.PredictRap_Table) tr[id^="tr_"]';
+    '.Shutuba_Table.ShutubaTable:not(.PredictRap_Table) tr.HorseList, .Shutuba_Table.RaceTable01.ShutubaTable:not(.PredictRap_Table) tr[id^="tr_"], table.RaceTable01.ShutubaTable:not(.PredictRap_Table) tr.HorseList, table.RaceTable01.ShutubaTable:not(.PredictRap_Table) tr[id^="tr_"]';
   $(shutubaRows).each((index, element) => {
     const $row = $(element);
     
@@ -199,7 +202,10 @@ function extractWeight($row) {
  */
 function extractOdds($row) {
   const oddsElement = $row.find('span[id^="odds-1_"], td.Txt_R.Popular span[id^="odds-"]').first();
-  const oddsText = oddsElement.text().trim();
+  let oddsText = oddsElement.text().trim();
+  if (!oddsText || oddsText === '---.-' || oddsText === '**') {
+    oddsText = $row.find('td.Popular.Txt_R').first().text().trim();
+  }
   return oddsText && oddsText !== '---.-' && oddsText !== '**' && oddsText !== '' ? oddsText : 'N/A';
 }
 
@@ -209,6 +215,9 @@ function extractOdds($row) {
 function extractPopularity($row) {
   const popularityElement = $row.find('span[id^="ninki-1_"], [id^="ninki-"], .Popular_Ninki span, td.ninki').first();
   let popularityText = popularityElement.text().trim().replace(/^\(|\)$/g, '');
+  if (!popularityText || popularityText === '**') {
+    popularityText = $row.find('td.Popular.Txt_C').first().text().trim();
+  }
   return popularityText && popularityText !== '**' && popularityText !== '' ? popularityText : 'N/A';
 }
 

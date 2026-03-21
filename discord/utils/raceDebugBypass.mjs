@@ -4,6 +4,8 @@ import {
   parseRaceListSub,
   filterVenueRaces,
   getRaceSalesStatus,
+  fetchNarRaceListSub,
+  parseNarRaceListSubToVenue,
 } from '../../cheerio/netkeibaSchedule.mjs';
 
 const DEBUG_BYPASS_USER_ID = '864735082732322867';
@@ -34,12 +36,19 @@ export async function resolveSalesClosedForRace(raceId, flow) {
     if (meta) {
       return getRaceSalesStatus(meta.race, meta.kaisaiDateYmd).closed;
     }
-    if (flow?.kaisaiDate && flow?.currentGroup && flow?.kaisaiId) {
-      const html = await fetchRaceListSub(flow.kaisaiDate, flow.currentGroup);
-      const { venues } = parseRaceListSub(html, flow.kaisaiDate);
-      const races = filterVenueRaces(venues, flow.kaisaiId);
-      const r = races.find((x) => x.raceId === raceId);
-      if (r) return getRaceSalesStatus(r, flow.kaisaiDate).closed;
+    if (flow?.kaisaiDate && flow?.kaisaiId) {
+      if (flow.source === 'nar') {
+        const html = await fetchNarRaceListSub(flow.kaisaiDate, flow.kaisaiId);
+        const venue = parseNarRaceListSubToVenue(html, flow.kaisaiDate);
+        const r = venue?.races.find((x) => x.raceId === raceId);
+        if (r) return getRaceSalesStatus(r, flow.kaisaiDate).closed;
+      } else if (flow.currentGroup) {
+        const html = await fetchRaceListSub(flow.kaisaiDate, flow.currentGroup);
+        const { venues } = parseRaceListSub(html, flow.kaisaiDate);
+        const races = filterVenueRaces(venues, flow.kaisaiId);
+        const r = races.find((x) => x.raceId === raceId);
+        if (r) return getRaceSalesStatus(r, flow.kaisaiDate).closed;
+      }
     }
   } catch (e) {
     console.warn('resolveSalesClosedForRace:', e.message);

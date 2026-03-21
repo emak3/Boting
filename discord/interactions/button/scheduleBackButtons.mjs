@@ -18,6 +18,11 @@ import {
 import { getBetFlow } from '../../utils/betFlowStore.mjs';
 import { buildTextAndRowsV2Payload } from '../../utils/raceCardDisplay.mjs';
 import {
+  betSlipOpenReviewButtonRowForSchedule,
+  firstScheduleAnchorRaceIdFromRaces,
+  firstScheduleAnchorRaceIdFromVenues,
+} from '../../utils/betSlipViewUi.mjs';
+import {
   SCHEDULE_KIND_BACK_BUTTON_ID,
   scheduleKindSelectRow,
   scheduleBackToKindSelectButtonRow,
@@ -132,7 +137,13 @@ export default async function scheduleBackButtons(interaction) {
           buildTextAndRowsV2Payload({
             headline:
               '開催場を選ぶと、その場のレース一覧（発走時刻・発売状態）が表示されます。続けてレースを選ぶと出馬表を表示します。',
-            actionRows: [row],
+            actionRows: [
+              row,
+              betSlipOpenReviewButtonRowForSchedule(
+                interaction.user.id,
+                firstScheduleAnchorRaceIdFromVenues(venues),
+              ),
+            ],
             extraFlags: v2ExtraFlags(interaction),
           }),
         );
@@ -147,7 +158,14 @@ export default async function scheduleBackButtons(interaction) {
         buildTextAndRowsV2Payload({
           headline:
             '開催場を選ぶと、その場のレース一覧（発走時刻・発売状態）が表示されます。続けてレースを選ぶと出馬表を表示します。',
-          actionRows: [row, scheduleBackToKindSelectButtonRow()],
+          actionRows: [
+            row,
+            scheduleBackToKindSelectButtonRow(),
+            betSlipOpenReviewButtonRowForSchedule(
+              interaction.user.id,
+              firstScheduleAnchorRaceIdFromVenues(venues),
+            ),
+          ],
           extraFlags: v2ExtraFlags(interaction),
         }),
       );
@@ -240,6 +258,10 @@ export default async function scheduleBackButtons(interaction) {
           actionRows: [
             raceSelectRow,
             scheduleBackToVenueButtonRow(kaisaiDateYmd, '_', 'nar'),
+            betSlipOpenReviewButtonRowForSchedule(
+              interaction.user.id,
+              firstScheduleAnchorRaceIdFromRaces(races),
+            ),
           ],
           extraFlags: v2ExtraFlags(interaction),
         }),
@@ -285,6 +307,10 @@ export default async function scheduleBackButtons(interaction) {
         actionRows: [
           raceSelectRow(kaisaiDateYmd, races),
           scheduleBackToVenueButtonRow(kaisaiDateYmd, currentGroup, 'jra'),
+          betSlipOpenReviewButtonRowForSchedule(
+            interaction.user.id,
+            firstScheduleAnchorRaceIdFromRaces(races),
+          ),
         ],
         extraFlags: v2ExtraFlags(interaction),
       }),

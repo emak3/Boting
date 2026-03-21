@@ -15,19 +15,8 @@ function stripDiscordCustomEmojiMarkup(s) {
   return t.replace(/  +/g, ' ').trim();
 }
 
-function slipReviewActionRows(anchorRaceId, items) {
-  const rowBtns = new ActionRowBuilder().addComponents(
-    new ButtonBuilder()
-      .setCustomId(`race_bet_slip_unit_modal_open|${anchorRaceId}`)
-      .setLabel('金額変更')
-      .setStyle(ButtonStyle.Primary),
-    new ButtonBuilder()
-      .setCustomId(`race_bet_slip_confirm|${anchorRaceId}`)
-      .setLabel('この内容で確定')
-      .setStyle(ButtonStyle.Success),
-  );
-
-  const opts = items.slice(0, 25).map((it, i) => {
+function slipItemSelectOptions(items) {
+  return items.slice(0, 25).map((it, i) => {
     const title = stripDiscordCustomEmojiMarkup(it.raceTitle || 'レース').slice(0, 70);
     const label = `${i + 1}. ${title}`.slice(0, 100);
     const desc = stripDiscordCustomEmojiMarkup(it.selectionLine || '').slice(0, 100);
@@ -37,6 +26,30 @@ function slipReviewActionRows(anchorRaceId, items) {
     if (desc.trim()) o.setDescription(desc);
     return o;
   });
+}
+
+function slipReviewActionRows(anchorRaceId, items) {
+  const opts = slipItemSelectOptions(items);
+
+  const rowBtns = new ActionRowBuilder().addComponents(
+    new ButtonBuilder()
+      .setCustomId(`race_bet_slip_back|${anchorRaceId}`)
+      .setLabel('戻る')
+      .setStyle(ButtonStyle.Secondary),
+    new ButtonBuilder()
+      .setCustomId(`race_bet_slip_confirm|${anchorRaceId}`)
+      .setLabel('この内容で確定')
+      .setStyle(ButtonStyle.Success),
+  );
+
+  const rowUnit = new ActionRowBuilder().addComponents(
+    new StringSelectMenuBuilder()
+      .setCustomId(`race_bet_slip_unit_pick|${anchorRaceId}`)
+      .setPlaceholder('金額を変える買い目を選択')
+      .setMinValues(1)
+      .setMaxValues(1)
+      .addOptions(opts),
+  );
 
   const rowRemove = new ActionRowBuilder().addComponents(
     new StringSelectMenuBuilder()
@@ -47,11 +60,11 @@ function slipReviewActionRows(anchorRaceId, items) {
       .addOptions(opts),
   );
 
-  return [rowBtns, rowRemove];
+  return [rowBtns, rowUnit, rowRemove];
 }
 
 /**
- * まとめて購入（仮）確認画面: 本文 + 金額変更・確定・削除セレクト
+ * まとめて購入（仮）確認画面: 本文 + 確定・金額変更セレクト・削除セレクト
  */
 export function buildSlipReviewV2Payload({ userId, extraFlags = 0 }) {
   const pending = getSlipPendingReview(userId);
@@ -65,7 +78,7 @@ export function buildSlipReviewV2Payload({ userId, extraFlags = 0 }) {
   const headline = [
     buildBetSlipBatchV2Headline({ items: pending.items }),
     '',
-    '**編集:** **金額変更**で番号（1〜）と1点あたりの円／下のメニューで**番号を選んで削除**。**この内容で確定**で完了します。',
+    '**編集:** **金額を変える買い目を選択**から選ぶと金額入力のウィンドウが開きます。下のメニューで**番号を選んで削除**。**戻る**でひとつ前の画面へ。**この内容で確定**で完了します。',
   ].join('\n');
   const rows = slipReviewActionRows(pending.anchorRaceId, pending.items);
   return buildTextAndRowsV2Payload({

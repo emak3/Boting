@@ -13,15 +13,21 @@ import { getBetFlow, clearBetFlow, patchBetFlow } from '../../utils/betFlowStore
 import {
   addSlipSavedItem,
   clearSlipSaved,
-  getSlipSavedItems,
-  setSlipPendingReview,
   getSlipPendingReview,
   clearSlipPending,
+  replaceSlipPendingItems,
+  restoreSlipSavedItems,
   SLIP_MAX_ITEMS,
 } from '../../utils/betSlipStore.mjs';
+import { canBypassSalesClosed } from '../../utils/raceDebugBypass.mjs';
+import { partitionPendingItemsBySalesClosed } from '../../utils/betSlipSalesPartition.mjs';
+import { buildSlipReviewV2Payload } from '../../utils/betSlipReview.mjs';
 import { netkeibaOriginFromFlow } from '../../utils/netkeibaUrls.mjs';
 import { buildBetSlipBatchV2Headline } from '../../utils/betPurchaseEmbed.mjs';
-import { buildSlipReviewV2Payload } from '../../utils/betSlipReview.mjs';
+import {
+  resetFlowAfterSlipAction,
+  runOpenBetSlipReviewScreen,
+} from '../../utils/betSlipOpenReview.mjs';
 import { buildRaceCardV2Payload, buildTextAndRowsV2Payload } from '../../utils/raceCardDisplay.mjs';
 import {
   selectHorseLabel,
@@ -81,39 +87,6 @@ function safeParseRaceId(customId) {
   // race_bet_*|{raceId}（末尾セグメントが raceId）
   const parts = customId.split('|');
   return parts[parts.length - 1] || null;
-}
-
-function slipItemFromLiveFlow(flow, raceId) {
-  const origin = netkeibaOriginFromFlow(flow);
-  return {
-    id: `live_${Date.now()}_${Math.random().toString(36).slice(2, 9)}`,
-    raceId: flow.result?.raceId || raceId,
-    unitYen: flow.unitYen ?? 100,
-    points: flow.purchase.points,
-    selectionLine: flow.purchase.selectionLine,
-    raceTitle: flow.result?.raceInfo?.title,
-    oddsOfficialTime: flow.result?.oddsOfficialTime,
-    isResult: !!flow.result?.isResult,
-    netkeibaOrigin: origin,
-  };
-}
-
-function resetFlowAfterSlipAction(userId, raceId) {
-  patchBetFlow(userId, raceId, {
-    purchase: null,
-    purchaseSnapshot: null,
-    lastSelectionLine: '',
-    backMenuIds: [],
-    backMenuIndex: -1,
-    navViewMenuIndex: null,
-    resumeBackFromSummary: false,
-    betType: null,
-    pairMode: null,
-    umatanMode: null,
-    trifukuMode: null,
-    tritanMode: null,
-    stepSelections: {},
-  });
 }
 
 function scheduleRaceListBackRow(raceId) {
@@ -184,11 +157,20 @@ export async function renderBetFlowResumeView(interaction, { userId, raceId, flo
   }
 
   const h = headline ?? '購入前（戻り）';
+  let extraCard = 0;
+  try {
+    if (interaction.message?.flags?.has(MessageFlags.Ephemeral)) {
+      extraCard |= MessageFlags.Ephemeral;
+    }
+  } catch (_) {
+    /* ignore */
+  }
   await interaction.editReply(
     buildRaceCardV2Payload({
       result: flow.result,
       headline: h,
       actionRows: components.filter(Boolean),
+      extraFlags: extraCard,
     }),
   );
 }
@@ -197,6 +179,157 @@ export default async function betFlowButtons(interaction) {
   if (!interaction.isButton()) return;
   const customId = interaction.customId;
   const userId = interaction.user.id;
+
+  if (customId.startsWith('race_bet_slip_back|')) {
+    const parsedRaceId = safeParseRaceId(customId);
+    const pending = getSlipPendingReview(userId);
+    if (!pending?.restore) {
+      await interaction.reply({
+        content: '❌ 戻れません。もう一度 /race から開き直してください。',
+        ephemeral: true,
+      });
+      return;
+    }
+    if (String(pending.anchorRaceId) !== String(parsedRaceId)) {
+      await interaction.reply({
+        content: '❌ このメッセージは古いです。もう一度開き直してください。',
+        ephemeral: true,
+      });
+      return;
+    }
+    const rid = pending.restore.raceId || parsedRaceId;
+    if (!rid || !/^\d{12}$/.test(String(rid))) {
+      await interaction.reply({
+        content: '❌ 戻れません。',
+        ephemeral: true,
+      });
+      return;
+    }
+
+    await interaction.deferUpdate();
+    const { restore } = pending;
+    clearSlipPending(userId);
+    restoreSlipSavedItems(userId, restore.savedBackup ?? []);
+
+    let extraFlags = 0;
+    try {
+      if (interaction.message?.flags?.has(MessageFlags.Ephemeral)) {
+        extraFlags |= MessageFlags.Ephemeral;
+      }
+    } catch (_) {
+      /* ignore */
+    }
+
+    if (restore.hadPurchase && restore.flowBackup) {
+      patchBetFlow(userId, rid, restore.flowBackup);
+      const { editReplyPurchaseSummaryFromFlow } = await import('../menu/raceSchedule.mjs');
+      await editReplyPurchaseSummaryFromFlow(interaction, userId, rid);
+      return;
+    }
+
+    const flow = getBetFlow(userId, rid);
+    if (!flow?.result) {
+      await interaction.editReply(
+        buildTextAndRowsV2Payload({
+          headline: '❌ セッションが切れています。もう一度 /race から開き直してください。',
+          actionRows: [],
+          extraFlags,
+        }),
+      );
+      return;
+    }
+
+    const components = [buildBetTypeMenuRow(rid, flow)];
+    if (hasScheduleContext(flow)) {
+      components.push(scheduleRaceListBackRow(rid));
+    }
+    await interaction.editReply(
+      buildRaceCardV2Payload({
+        result: flow.result,
+        headline: '',
+        actionRows: components.filter(Boolean),
+        extraFlags,
+      }),
+    );
+    return;
+  }
+
+  function slipReviewExtraFlags() {
+    let extraFlags = 0;
+    try {
+      if (interaction.message?.flags?.has(MessageFlags.Ephemeral)) {
+        extraFlags |= MessageFlags.Ephemeral;
+      }
+    } catch (_) {
+      /* ignore */
+    }
+    return extraFlags;
+  }
+
+  if (customId.startsWith('race_bet_slip_remove_closed|')) {
+    const anchor = safeParseRaceId(customId);
+    const pending = getSlipPendingReview(userId);
+    if (!pending?.items?.length) {
+      await interaction.reply({
+        content: '❌ 買い目の確認セッションが無効です。',
+        ephemeral: true,
+      });
+      return;
+    }
+    if (String(pending.anchorRaceId) !== String(anchor)) {
+      await interaction.reply({
+        content: '❌ このメッセージは古いです。もう一度開き直してください。',
+        ephemeral: true,
+      });
+      return;
+    }
+    await interaction.deferUpdate();
+    const extraFlags = slipReviewExtraFlags();
+    const { closed, open } = await partitionPendingItemsBySalesClosed(userId, pending.items);
+    if (!closed.length) {
+      await interaction.editReply(buildSlipReviewV2Payload({ userId, extraFlags }));
+      return;
+    }
+    if (!open.length) {
+      clearSlipPending(userId);
+      await interaction.editReply(
+        buildTextAndRowsV2Payload({
+          headline:
+            '✅ 表示されていた買い目はすべて発売締切のため一覧から外しました。/race から買い目を追加し直せます。',
+          actionRows: [],
+          extraFlags,
+        }),
+      );
+      return;
+    }
+    replaceSlipPendingItems(userId, open);
+    await interaction.editReply(buildSlipReviewV2Payload({ userId, extraFlags }));
+    return;
+  }
+
+  if (customId.startsWith('race_bet_slip_dismiss_closed_warn|')) {
+    const anchor = safeParseRaceId(customId);
+    const pending = getSlipPendingReview(userId);
+    if (!pending?.items?.length) {
+      await interaction.reply({
+        content: '❌ 買い目の確認セッションが無効です。',
+        ephemeral: true,
+      });
+      return;
+    }
+    if (String(pending.anchorRaceId) !== String(anchor)) {
+      await interaction.reply({
+        content: '❌ このメッセージは古いです。もう一度開き直してください。',
+        ephemeral: true,
+      });
+      return;
+    }
+    await interaction.deferUpdate();
+    await interaction.editReply(
+      buildSlipReviewV2Payload({ userId, extraFlags: slipReviewExtraFlags() }),
+    );
+    return;
+  }
 
   if (customId.startsWith('race_bet_slip_confirm|')) {
     const raceId = safeParseRaceId(customId);
@@ -208,19 +341,64 @@ export default async function betFlowButtons(interaction) {
       });
       return;
     }
+    if (String(pending.anchorRaceId) !== String(raceId)) {
+      await interaction.reply({
+        content: '❌ このメッセージは古いです。もう一度開き直してください。',
+        ephemeral: true,
+      });
+      return;
+    }
+
     await interaction.deferUpdate();
+
+    if (!canBypassSalesClosed(userId)) {
+      const { closed } = await partitionPendingItemsBySalesClosed(userId, pending.items);
+      if (closed.length > 0) {
+        const extraFlags = slipReviewExtraFlags();
+        const lines = closed.map((it, i) => {
+          const title = String(it.raceTitle || it.raceId || 'レース').slice(0, 120);
+          const sel = String(it.selectionLine || '(内容不明)').slice(0, 240);
+          return `${i + 1}. **${title}**\n└ ${sel}`;
+        });
+        const headline = [
+          '⚠️ **発売が締め切られている買い目があるため、この内容では確定できません。**',
+          '',
+          '次の行は、発売終了・発走済み、または結果確定と判定されています。',
+          '',
+          ...lines,
+          '',
+          '**締切分のみ削除**でこれらだけを一覧から外します。残りがあれば、もう一度 **この内容で確定** を押してください。',
+        ]
+          .join('\n')
+          .slice(0, 3900);
+
+        const anchor = pending.anchorRaceId || raceId;
+        const row = new ActionRowBuilder().addComponents(
+          new ButtonBuilder()
+            .setCustomId(`race_bet_slip_remove_closed|${anchor}`)
+            .setLabel('締切分のみ削除')
+            .setStyle(ButtonStyle.Danger),
+          new ButtonBuilder()
+            .setCustomId(`race_bet_slip_dismiss_closed_warn|${anchor}`)
+            .setLabel('確認画面に戻る')
+            .setStyle(ButtonStyle.Secondary),
+        );
+        await interaction.editReply(
+          buildTextAndRowsV2Payload({
+            headline,
+            actionRows: [row],
+            extraFlags,
+          }),
+        );
+        return;
+      }
+    }
+
     const headline = buildBetSlipBatchV2Headline({ items: pending.items });
     const anchor = pending.anchorRaceId || raceId;
     clearSlipPending(userId);
     clearBetFlow(userId, anchor);
-    let extraFlags = 0;
-    try {
-      if (interaction.message?.flags?.has(MessageFlags.Ephemeral)) {
-        extraFlags |= MessageFlags.Ephemeral;
-      }
-    } catch (_) {
-      /* ignore */
-    }
+    const extraFlags = slipReviewExtraFlags();
     await interaction.editReply(
       buildTextAndRowsV2Payload({
         headline,
@@ -231,46 +409,10 @@ export default async function betFlowButtons(interaction) {
     return;
   }
 
-  if (customId.startsWith('race_bet_slip_unit_modal_open|')) {
-    const raceId = safeParseRaceId(customId);
-    const pending = getSlipPendingReview(userId);
-    if (!pending?.items?.length) {
-      await interaction.reply({
-        content: '❌ 買い目の確認セッションが無効です。',
-        ephemeral: true,
-      });
-      return;
-    }
-    const modal = new ModalBuilder()
-      .setCustomId(`race_bet_slip_unit_modal|${raceId}`)
-      .setTitle('金額変更（番号指定）');
-    const noInput = new TextInputBuilder()
-      .setCustomId('item_no')
-      .setLabel('買い目の番号（1から順）')
-      .setStyle(TextInputStyle.Short)
-      .setRequired(true)
-      .setMinLength(1)
-      .setMaxLength(2)
-      .setPlaceholder(`1〜${pending.items.length}`);
-    const yenInput = new TextInputBuilder()
-      .setCustomId('unit_yen')
-      .setLabel('1点あたりの金額（円）')
-      .setStyle(TextInputStyle.Short)
-      .setRequired(true)
-      .setMinLength(1)
-      .setMaxLength(7)
-      .setValue(String(pending.items[0]?.unitYen ?? 100));
-    modal.addComponents(
-      new ActionRowBuilder().addComponents(noInput),
-      new ActionRowBuilder().addComponents(yenInput),
-    );
-    await interaction.showModal(modal);
-    return;
-  }
-
   if (
     !customId.startsWith('race_bet_add_to_cart|') &&
     !customId.startsWith('race_bet_cart_checkout|') &&
+    !customId.startsWith('race_bet_slip_open_review|') &&
     !customId.startsWith('race_bet_cart_clear|') &&
     !customId.startsWith('race_bet_unit_edit|') &&
     !customId.startsWith('race_bet_back|') &&
@@ -280,34 +422,10 @@ export default async function betFlowButtons(interaction) {
 
   const raceId = safeParseRaceId(customId);
 
-  if (customId.startsWith('race_bet_cart_checkout|')) {
-    const flowOpt = getBetFlow(userId, raceId);
-    const saved = getSlipSavedItems(userId);
-    const merged = [...saved];
-    if (flowOpt?.purchase) {
-      merged.push(slipItemFromLiveFlow(flowOpt, raceId));
-    }
-    if (!merged.length) {
-      await interaction.reply({
-        content:
-          '❌ 買い目がありません。「買い目に追加」で溜めた分か、今のサマリーの買い目が必要です。',
-        ephemeral: true,
-      });
-      return;
-    }
-    if (merged.length > SLIP_MAX_ITEMS) {
-      await interaction.reply({
-        content: `❌ 一度にまとめられる買い目は最大${SLIP_MAX_ITEMS}件です。`,
-        ephemeral: true,
-      });
-      return;
-    }
-    await interaction.deferUpdate();
-    clearSlipSaved(userId);
-    setSlipPendingReview(userId, { items: merged, anchorRaceId: raceId });
-    if (flowOpt) {
-      resetFlowAfterSlipAction(userId, raceId);
-    }
+  if (
+    customId.startsWith('race_bet_cart_checkout|') ||
+    customId.startsWith('race_bet_slip_open_review|')
+  ) {
     let extraFlags = 0;
     try {
       if (interaction.message?.flags?.has(MessageFlags.Ephemeral)) {
@@ -316,7 +434,7 @@ export default async function betFlowButtons(interaction) {
     } catch (_) {
       /* ignore */
     }
-    await interaction.editReply(buildSlipReviewV2Payload({ userId, extraFlags }));
+    await runOpenBetSlipReviewScreen(interaction, { userId, raceId, extraFlags });
     return;
   }
 
@@ -350,7 +468,7 @@ export default async function betFlowButtons(interaction) {
     });
     if (!added.ok && added.reason === 'full') {
       await interaction.reply({
-        content: `❌ 買い目は最大${SLIP_MAX_ITEMS}件までです。まとめて購入するか、保存を空にしてください。`,
+        content: `❌ 買い目は最大${SLIP_MAX_ITEMS}件までです。**買い目**で確認するか、追加済みを空にしてください。`,
         ephemeral: true,
       });
       return;
@@ -374,7 +492,7 @@ export default async function betFlowButtons(interaction) {
       /* ignore */
     }
 
-    const head = `✅ 買い目に追加しました（保存: **${added.count}**件）\n\n同じレースで別の式別を選ぶか、他レースから追加できます。**まとめて購入** で今のサマリーも含めて確認できます。`;
+    const head = `✅ 買い目に追加しました（保存: **${added.count}**件）\n\n同じレースで別の式別を選ぶか、他レースから追加できます。**買い目** ボタンで一覧・まとめて確認できます。`;
     await interaction.editReply(
       buildRaceCardV2Payload({
         result: flowNext.result,
@@ -486,11 +604,20 @@ export default async function betFlowButtons(interaction) {
       if (hasScheduleContext(flowRoot)) {
         components.push(scheduleRaceListBackRow(raceId));
       }
+      let extraRoot = 0;
+      try {
+        if (interaction.message?.flags?.has(MessageFlags.Ephemeral)) {
+          extraRoot |= MessageFlags.Ephemeral;
+        }
+      } catch (_) {
+        /* ignore */
+      }
       await interaction.editReply(
         buildRaceCardV2Payload({
           result: flowRoot.result,
           headline: lastLine ? `購入前（戻り）\n${lastLine}` : '購入前（戻り）',
           actionRows: components.filter(Boolean),
+          extraFlags: extraRoot,
         }),
       );
       return;

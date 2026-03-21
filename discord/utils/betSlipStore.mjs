@@ -53,11 +53,24 @@ export function clearSlipSaved(userId) {
   savedMap.delete(userId);
 }
 
+/** 買い目確認を開く前の「追加済み」をそのまま戻す */
+export function restoreSlipSavedItems(userId, items) {
+  if (!items?.length) {
+    savedMap.delete(userId);
+    return;
+  }
+  savedMap.set(userId, {
+    items: items.map((it) => ({ ...it })),
+    createdAt: ts(),
+  });
+}
+
 /** まとめて購入（仮）の編集中 */
-export function setSlipPendingReview(userId, { items, anchorRaceId }) {
+export function setSlipPendingReview(userId, { items, anchorRaceId, restore = null }) {
   pendingMap.set(userId, {
     items: items.map((it) => ({ ...it })),
     anchorRaceId,
+    restore,
     createdAt: ts(),
   });
 }

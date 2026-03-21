@@ -9,6 +9,35 @@ import {
 import { netkeibaOriginFromFlow } from './netkeibaUrls.mjs';
 import { buildSlipReviewV2Payload } from './betSlipReview.mjs';
 
+/** 馬番 → 枠番（買い目表示の絵文字用） */
+export function horseNumToFrameFromResult(result) {
+  const o = {};
+  for (const h of result?.horses || []) {
+    const u = String(h.horseNumber ?? '').replace(/\D/g, '');
+    if (!u) continue;
+    o[u] = String(h.frameNumber ?? '');
+  }
+  return o;
+}
+
+/** 3連複フォーメーションの群（買い目表示用。絵文字のみの selectionLine でも使える） */
+export function trifukuFormationSnapshotFromFlow(flow) {
+  const formA = flow?.trifukuFormA;
+  const formB = flow?.trifukuFormB;
+  if (!Array.isArray(formA) || !Array.isArray(formB) || !formA.length || !formB.length) {
+    return null;
+  }
+  const pid = flow?.purchase?.lastMenuCustomId;
+  if (!pid || !String(pid).startsWith('race_bet_trifuku_formC|')) return null;
+  const formC = flow?.stepSelections?.[pid];
+  if (!Array.isArray(formC) || !formC.length) return null;
+  return {
+    a: formA.map(String),
+    b: formB.map(String),
+    c: formC.map(String),
+  };
+}
+
 export function slipItemFromLiveFlow(flow, raceId) {
   const origin = netkeibaOriginFromFlow(flow);
   return {
@@ -23,6 +52,8 @@ export function slipItemFromLiveFlow(flow, raceId) {
     netkeibaOrigin: origin,
     betType: flow.betType ?? '',
     tickets: Array.isArray(flow.purchase?.tickets) ? flow.purchase.tickets : [],
+    horseNumToFrame: horseNumToFrameFromResult(flow.result),
+    trifukuFormation: trifukuFormationSnapshotFromFlow(flow),
   };
 }
 

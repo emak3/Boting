@@ -95,6 +95,40 @@ export function formatWakurenNumsWithEmoji(nums, joiner) {
   return parts.join(sep);
 }
 
+/**
+ * 枠連の並びをカンマ区切り（買い目一覧用）
+ * @param {string[]} nums 枠番
+ */
+export function formatWakurenNumsCommaEmoji(nums) {
+  if (!nums?.length) return '—';
+  const parts = nums.map((n) => {
+    const w = parseInt(String(n).replace(/\D/g, ''), 10);
+    if (!Number.isFinite(w)) return String(n);
+    return wakuUmaEmoji(w, w) ?? String(n);
+  });
+  return parts.join(', ');
+}
+
+/**
+ * 馬番の並びをカンマ区切り（買い目一覧用）
+ * @param {string[]} nums
+ * @param {Record<string, string>|Map<string, string>} horseNumToFrame
+ */
+export function formatHorseNumsCommaEmoji(nums, horseNumToFrame) {
+  if (!nums?.length) return '—';
+  const map =
+    horseNumToFrame instanceof Map
+      ? horseNumToFrame
+      : new Map(Object.entries(horseNumToFrame || {}));
+  const parts = nums.map((n) => {
+    const key = normalizeUmaKey(n);
+    const frame = map.get(key);
+    const em = frame != null ? wakuUmaEmoji(frame, n) : null;
+    return em ?? String(n);
+  });
+  return parts.join(', ');
+}
+
 /** Discord String Select の option.label 上限 */
 export const DISCORD_SELECT_OPTION_LABEL_MAX = 100;
 

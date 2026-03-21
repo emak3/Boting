@@ -71,8 +71,22 @@ export function setSlipPendingReview(userId, { items, anchorRaceId, restore = nu
     items: items.map((it) => ({ ...it })),
     anchorRaceId,
     restore,
+    reviewPage: 0,
     createdAt: ts(),
   });
+}
+
+/** まとめて購入確認のページ（0 始まり） */
+export function setSlipPendingReviewPage(userId, page) {
+  const e = getSlipPendingReview(userId);
+  if (!e) return false;
+  const n = Math.max(0, Math.floor(Number(page) || 0));
+  pendingMap.set(userId, {
+    ...e,
+    reviewPage: n,
+    createdAt: ts(),
+  });
+  return true;
 }
 
 export function getSlipPendingReview(userId) {

@@ -11,8 +11,8 @@ import { netkeibaResultUrl } from './netkeibaUrls.mjs';
 import { buildRaceResultV2Sections } from './raceResultEmbed.mjs';
 
 /** Discord Display Components: 全 Text Display 合計 4000 文字まで */
-const V2_TEXT_TOTAL_MAX = 3900;
-const V2_SINGLE_CHUNK = 3500;
+export const V2_TEXT_TOTAL_MAX = 3900;
+export const V2_SINGLE_CHUNK = 3500;
 
 export const RACE_CARD_V2_FLAGS = MessageFlags.IsComponentsV2;
 

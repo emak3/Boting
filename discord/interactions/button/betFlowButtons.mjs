@@ -14,6 +14,7 @@ import {
   clearSlipPending,
   replaceSlipPendingItems,
   restoreSlipSavedItems,
+  setSlipPendingReviewPage,
   SLIP_MAX_ITEMS,
 } from '../../utils/betSlipStore.mjs';
 import { canBypassSalesClosed } from '../../utils/raceDebugBypass.mjs';
@@ -22,6 +23,8 @@ import { buildSlipReviewV2Payload } from '../../utils/betSlipReview.mjs';
 import { netkeibaOriginFromFlow } from '../../utils/netkeibaUrls.mjs';
 import { buildBetSlipBatchV2Headline } from '../../utils/betPurchaseEmbed.mjs';
 import {
+  horseNumToFrameFromResult,
+  trifukuFormationSnapshotFromFlow,
   resetFlowAfterSlipAction,
   runOpenBetSlipReviewScreen,
 } from '../../utils/betSlipOpenReview.mjs';
@@ -270,6 +273,43 @@ export default async function betFlowButtons(interaction) {
       /* ignore */
     }
     return extraFlags;
+  }
+
+  if (customId.startsWith('race_bet_slip_pg|')) {
+    const parts = customId.split('|');
+    const anchor = parts[1];
+    const dir = parts[2];
+    const pending = getSlipPendingReview(userId);
+    if (!pending?.items?.length) {
+      await interaction.reply({
+        content: '❌ 買い目の確認セッションが無効です。',
+        ephemeral: true,
+      });
+      return;
+    }
+    if (!anchor || String(pending.anchorRaceId) !== String(anchor)) {
+      await interaction.reply({
+        content: '❌ このメッセージは古いです。もう一度開き直してください。',
+        ephemeral: true,
+      });
+      return;
+    }
+    if (dir !== 'prev' && dir !== 'next') {
+      await interaction.reply({
+        content: '❌ 操作が無効です。',
+        ephemeral: true,
+      });
+      return;
+    }
+    await interaction.deferUpdate();
+    const cur = pending.reviewPage ?? 0;
+    const next =
+      dir === 'prev' ? Math.max(0, cur - 1) : cur + 1;
+    setSlipPendingReviewPage(userId, next);
+    await interaction.editReply(
+      await buildSlipReviewV2Payload({ userId, extraFlags: slipReviewExtraFlags() }),
+    );
+    return;
   }
 
   if (customId.startsWith('race_bet_slip_remove_closed|')) {
@@ -546,6 +586,8 @@ export default async function betFlowButtons(interaction) {
       netkeibaOrigin: origin,
       betType: flow.betType ?? '',
       tickets: flow.purchase.tickets,
+      horseNumToFrame: horseNumToFrameFromResult(flow.result),
+      trifukuFormation: trifukuFormationSnapshotFromFlow(flow),
     });
     if (!added.ok && added.reason === 'full') {
       await interaction.reply({

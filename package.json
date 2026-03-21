@@ -5,7 +5,7 @@
   "description": "さんええ",
   "main": "index.mjs",
   "scripts": {
-    "start": "node index.mjs",
+    "start": "node --env-file=dev.env index.mjs",
     "dev": "nodemon --env-file=dev.env index.mjs"
   },
   "devDependencies": {

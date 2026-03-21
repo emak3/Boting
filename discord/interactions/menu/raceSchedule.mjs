@@ -42,6 +42,10 @@ import {
   SCHEDULE_KIND_MENU_ID,
   scheduleBackToKindSelectButtonRow,
 } from '../../utils/scheduleKindUi.mjs';
+import {
+  filterBetTypesForJraSale,
+  isJraBetTypeAllowedForFlow,
+} from '../../utils/jraBetAvailability.mjs';
 
 const VENUE_MENU_ID = 'race_menu_venue';
 const RACE_MENU_ID = 'race_menu_race';
@@ -277,13 +281,18 @@ function scheduleRaceListBackIfScheduled(userId, raceId) {
   return null;
 }
 
-function betTypeSelectRow(raceId, selectedBetTypeId = null) {
-  const sel = selectedBetTypeId != null ? String(selectedBetTypeId) : null;
+function betTypeSelectRow(raceId, selectedBetTypeId = null, flow = null) {
+  const types = filterBetTypesForJraSale(BET_TYPES, {
+    source: flow?.source,
+    result: flow?.result,
+  });
+  const selRaw = selectedBetTypeId != null ? String(selectedBetTypeId) : null;
+  const sel = selRaw && types.some((t) => t.id === selRaw) ? selRaw : null;
   const menu = new StringSelectMenuBuilder()
     .setCustomId(`${BET_TYPE_MENU_PREFIX}${raceId}`)
     .setPlaceholder('賭ける方式を選択')
     .addOptions(
-      BET_TYPES.map((t) => {
+      types.map((t) => {
         const o = new StringSelectMenuOptionBuilder()
           .setLabel(t.label)
           .setValue(t.id)
@@ -1128,7 +1137,7 @@ export default async function raceScheduleMenu(interaction) {
           result,
           headline: '',
           actionRows: [
-            betTypeSelectRow(raceId, betTypeDefault),
+            betTypeSelectRow(raceId, betTypeDefault, flowAfter),
             flowCtx.kaisaiId ? scheduleBackToRaceListButtonRow(raceId) : null,
           ].filter(Boolean),
           extraFlags: v2ExtraFlags(interaction),
@@ -1182,6 +1191,20 @@ export default async function raceScheduleMenu(interaction) {
       const result = await scraper.scrapeRaceCard(raceId);
       setBetFlow(userId, raceId, { result });
       flow = getBetFlow(userId, raceId);
+    }
+    if (!isJraBetTypeAllowedForFlow(betType, flow)) {
+      await interaction.editReply(
+        buildRaceCardV2Payload({
+          result: flow.result,
+          headline:
+            '❌ この出走頭数ではその券種は発売されません（JRAの発売頭数ルール）。別の券種を選んでください。',
+          actionRows: [
+            betTypeSelectRow(raceId, null, flow),
+            scheduleRaceListBackIfScheduled(userId, raceId),
+          ].filter(Boolean),
+        }),
+      );
+      return;
     }
     patchBetFlow(userId, raceId, {
       betType,

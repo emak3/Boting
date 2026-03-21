@@ -17,6 +17,7 @@ import {
   selectFrameLabel,
   wakuUmaEmojiResolvable,
 } from '../../utils/raceNumberEmoji.mjs';
+import { filterBetTypesForJraSale } from '../../utils/jraBetAvailability.mjs';
 
 const BET_TYPES = [
   { id: 'win', label: '単勝' },
@@ -381,13 +382,21 @@ function defaultBetTypeIdFromFlow(raceId, flow) {
 }
 
 export function buildBetTypeMenuRow(raceId, flow = null) {
-  const sel = defaultBetTypeIdFromFlow(raceId, flow);
+  const selRaw = defaultBetTypeIdFromFlow(raceId, flow);
+  const types = filterBetTypesForJraSale(BET_TYPES, {
+    source: flow?.source,
+    result: flow?.result,
+  });
+  const sel =
+    selRaw != null && types.some((t) => t.id === String(selRaw))
+      ? String(selRaw)
+      : null;
   return new ActionRowBuilder().addComponents(
     new StringSelectMenuBuilder()
       .setCustomId(`race_bet_type|${raceId}`)
       .setPlaceholder('賭ける方式を選択')
       .addOptions(
-        BET_TYPES.map((t) => {
+        types.map((t) => {
           const o = new StringSelectMenuOptionBuilder()
             .setLabel(t.label)
             .setValue(t.id)

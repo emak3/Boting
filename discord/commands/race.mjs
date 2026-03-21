@@ -17,6 +17,7 @@ import { buildRaceResultEmbeds } from '../utils/raceResultEmbed.mjs';
 import { setBetFlow } from '../utils/betFlowStore.mjs';
 import { canBypassSalesClosed } from '../utils/raceDebugBypass.mjs';
 import { scheduleKindSelectRow } from '../utils/scheduleKindUi.mjs';
+import { filterBetTypesForJraSale } from '../utils/jraBetAvailability.mjs';
 
 function venueSelectRow(scheduleKind, kaisaiDate, currentGroup, venues) {
   const menu = new StringSelectMenuBuilder()
@@ -38,7 +39,7 @@ function venueSelectRow(scheduleKind, kaisaiDate, currentGroup, venues) {
   return new ActionRowBuilder().addComponents(menu);
 }
 
-function betTypeSelectRow(raceId, selectedBetTypeId = null) {
+function betTypeSelectRow(raceId, selectedBetTypeId = null, saleCtx = null) {
   const BET_TYPES = [
     { id: 'win', label: '単勝' },
     { id: 'place', label: '複勝' },
@@ -51,12 +52,14 @@ function betTypeSelectRow(raceId, selectedBetTypeId = null) {
     { id: 'tritan', label: '3連単' },
   ];
 
-  const sel = selectedBetTypeId != null ? String(selectedBetTypeId) : null;
+  const types = filterBetTypesForJraSale(BET_TYPES, saleCtx || {});
+  const selRaw = selectedBetTypeId != null ? String(selectedBetTypeId) : null;
+  const sel = selRaw && types.some((t) => t.id === selRaw) ? selRaw : null;
   const menu = new StringSelectMenuBuilder()
     .setCustomId(`race_bet_type|${raceId}`)
     .setPlaceholder('賭ける方式を選択')
     .addOptions(
-      BET_TYPES.map((t) => {
+      types.map((t) => {
         const o = new StringSelectMenuOptionBuilder()
           .setLabel(t.label)
           .setValue(t.id)
@@ -139,11 +142,15 @@ const commandObject = {
           flowPatch.source = result.netkeibaOrigin;
         }
         setBetFlow(interaction.user.id, raceId, flowPatch);
+        const saleCtx = {
+          source: flowPatch.source,
+          result,
+        };
         await interaction.editReply(
           buildRaceCardV2Payload({
             result,
             headline: '',
-            actionRows: [betTypeSelectRow(raceId)],
+            actionRows: [betTypeSelectRow(raceId, null, saleCtx)],
             extraFlags: MessageFlags.Ephemeral,
           }),
         );

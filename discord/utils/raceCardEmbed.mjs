@@ -2,6 +2,15 @@ import { wakuUmaEmoji } from './raceNumberEmoji.mjs';
 
 /** @param {{ raceInfo?: object, horses: object[], totalHorses: number, oddsOfficialTime?: string }} result */
 export function buildRaceCardEmbed(result) {
+  if (!result?.horses?.length) {
+    return {
+      color: 0x95a5a6,
+      title: '🐎 出馬表',
+      description:
+        '出馬表データがありません。セッションが切れたか取得に失敗しています。もう一度 /race から開き直してください。',
+    };
+  }
+
   const raceId = result?.raceId;
   const isResult = !!result?.isResult;
   const resultUrl = raceId
@@ -10,7 +19,7 @@ export function buildRaceCardEmbed(result) {
 
   const embed = {
     color: isResult ? 0xf1c40f : 0x0099ff,
-    title: `${isResult ? '🏁' : '🐎'} ${result.raceInfo?.title || 'レース情報'}`,
+    title: `${isResult ? '🏁' : '🐎'} ${result?.raceInfo?.title || 'レース情報'}`,
     description: `**日程:** ${result.raceInfo?.date || 'N/A'}\n**コース:** ${result.raceInfo?.course || 'N/A'}`,
     fields: result.horses.slice(0, 18).map((horse) => {
       const place = horse.placeOddsMin ? ` / 複勝〜${horse.placeOddsMin}` : '';

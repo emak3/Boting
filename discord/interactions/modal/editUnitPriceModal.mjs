@@ -1,5 +1,9 @@
 import { TextInputStyle } from 'discord.js';
 import { getBetFlow, patchBetFlow } from '../../utils/betFlowStore.mjs';
+import {
+  buildTextAndRowsV2Payload,
+  extractTopLevelActionRowsFromMessage,
+} from '../../utils/raceCardDisplay.mjs';
 
 function safeParseRaceId(customId) {
   // race_bet_unit_modal|{raceId}
@@ -40,8 +44,11 @@ export default async function editUnitPriceModal(interaction) {
   const newLine = formatTotal(points, unitYen);
   const newContent = `${selectionLine}\n${newLine}`;
 
-  await interaction.update({
-    content: newContent,
-  });
+  await interaction.update(
+    buildTextAndRowsV2Payload({
+      headline: newContent,
+      actionRows: extractTopLevelActionRowsFromMessage(interaction.message),
+    }),
+  );
 }
 

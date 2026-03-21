@@ -13,9 +13,10 @@ import {
   findRaceMetaForToday,
   getRaceSalesStatus,
 } from '../../cheerio/netkeibaSchedule.mjs';
-import { buildRaceCardEmbed } from '../utils/raceCardEmbed.mjs';
+import { buildRaceCardV2Payload } from '../utils/raceCardDisplay.mjs';
 import { buildRaceResultEmbeds } from '../utils/raceResultEmbed.mjs';
 import { setBetFlow } from '../utils/betFlowStore.mjs';
+import { canBypassSalesClosed } from '../utils/raceDebugBypass.mjs';
 
 function venueSelectRow(kaisaiDate, currentGroup, venues) {
   const menu = new StringSelectMenuBuilder()
@@ -32,7 +33,7 @@ function venueSelectRow(kaisaiDate, currentGroup, venues) {
   return new ActionRowBuilder().addComponents(menu);
 }
 
-function betTypeSelectRow(raceId) {
+function betTypeSelectRow(raceId, selectedBetTypeId = null) {
   const BET_TYPES = [
     { id: 'win', label: '単勝' },
     { id: 'place', label: '複勝' },
@@ -45,16 +46,19 @@ function betTypeSelectRow(raceId) {
     { id: 'tritan', label: '3連単' },
   ];
 
+  const sel = selectedBetTypeId != null ? String(selectedBetTypeId) : null;
   const menu = new StringSelectMenuBuilder()
     .setCustomId(`race_bet_type|${raceId}`)
     .setPlaceholder('賭ける方式を選択')
     .addOptions(
-      BET_TYPES.map((t) =>
-        new StringSelectMenuOptionBuilder()
+      BET_TYPES.map((t) => {
+        const o = new StringSelectMenuOptionBuilder()
           .setLabel(t.label)
           .setValue(t.id)
-          .setDescription('選択後に馬番/枠番を指定します'),
-      ),
+          .setDescription('選択後に馬番/枠番を指定します');
+        if (sel && t.id === sel) o.setDefault(true);
+        return o;
+      }),
     );
 
   return new ActionRowBuilder().addComponents(menu);
@@ -87,8 +91,9 @@ const commandObject = {
       }
       const scraper = new NetkeibaScraper();
       try {
+        const salesBypass = canBypassSalesClosed(interaction.user.id);
         const resultSnap = await scraper.scrapeRaceResult(raceId);
-        if (resultSnap.confirmed) {
+        if (resultSnap.confirmed && !salesBypass) {
           await interaction.editReply({
             content: '',
             embeds: buildRaceResultEmbeds(resultSnap),
@@ -100,7 +105,7 @@ const commandObject = {
         const meta = await findRaceMetaForToday(raceId);
         if (meta) {
           const st = getRaceSalesStatus(meta.race, meta.kaisaiDateYmd);
-          if (meta.race.isResult) {
+          if (meta.race.isResult && !salesBypass) {
             await interaction.editReply({
               content:
                 '❌ レース結果の取得に失敗しました。時間をおいて再度お試しください。',
@@ -109,7 +114,7 @@ const commandObject = {
             });
             return;
           }
-          if (st.closed) {
+          if (st.closed && !salesBypass) {
             await interaction.editReply({
               content:
                 '⏳ 発売は締め切られています。レース結果の確定までお待ちください。',
@@ -123,10 +128,14 @@ const commandObject = {
         const result = await scraper.scrapeRaceCard(raceId);
         result.raceId = raceId;
         setBetFlow(interaction.user.id, raceId, { result });
-        await interaction.editReply({
-          embeds: [buildRaceCardEmbed(result)],
-          components: [betTypeSelectRow(raceId)],
-        });
+        await interaction.editReply(
+          buildRaceCardV2Payload({
+            result,
+            headline: '',
+            actionRows: [betTypeSelectRow(raceId)],
+            extraFlags: MessageFlags.Ephemeral,
+          }),
+        );
       } catch (error) {
         console.error('Race command error:', error);
         await interaction.editReply({

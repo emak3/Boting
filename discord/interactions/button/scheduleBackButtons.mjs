@@ -4,6 +4,7 @@ import {
   ButtonStyle,
   StringSelectMenuBuilder,
   StringSelectMenuOptionBuilder,
+  MessageFlags,
 } from 'discord.js';
 import {
   fetchRaceListSub,
@@ -12,6 +13,18 @@ import {
   getRaceSalesStatus,
 } from '../../../cheerio/netkeibaSchedule.mjs';
 import { getBetFlow } from '../../utils/betFlowStore.mjs';
+import { buildTextAndRowsV2Payload } from '../../utils/raceCardDisplay.mjs';
+
+function v2ExtraFlags(interaction) {
+  try {
+    if (interaction.message?.flags?.has(MessageFlags.Ephemeral)) {
+      return MessageFlags.Ephemeral;
+    }
+  } catch (_) {
+    /* ignore */
+  }
+  return 0;
+}
 
 const VENUE_BACK_PREFIX = 'race_sched_back_to_venue|';
 const RACE_LIST_BACK_PREFIX = 'race_sched_back_to_race_list|';
@@ -72,7 +85,13 @@ export default async function scheduleBackButtons(interaction) {
     if (isVenueBack) {
       const [, kaisaiDateYmd, currentGroup] = customId.split('|');
       if (!kaisaiDateYmd || !currentGroup) {
-        await interaction.editReply({ content: '❌ 戻れません。', embeds: [], components: [] });
+        await interaction.editReply(
+          buildTextAndRowsV2Payload({
+            headline: '❌ 戻れません。',
+            actionRows: [],
+            extraFlags: v2ExtraFlags(interaction),
+          }),
+        );
         return;
       }
 
@@ -80,19 +99,27 @@ export default async function scheduleBackButtons(interaction) {
       const { venues } = parseRaceListSub(html, kaisaiDateYmd);
       const row = venueSelectRow(kaisaiDateYmd, currentGroup, venues);
 
-      await interaction.editReply({
-        content:
-          '開催場を選ぶと、その場のレース一覧（発走時刻・発売状態）が表示されます。続けてレースを選ぶと出馬表を表示します。',
-        embeds: [],
-        components: [row],
-      });
+      await interaction.editReply(
+        buildTextAndRowsV2Payload({
+          headline:
+            '開催場を選ぶと、その場のレース一覧（発走時刻・発売状態）が表示されます。続けてレースを選ぶと出馬表を表示します。',
+          actionRows: [row],
+          extraFlags: v2ExtraFlags(interaction),
+        }),
+      );
       return;
     }
 
     // RACE_LIST_BACK_PREFIX
     const [, raceId] = customId.split('|');
     if (!raceId) {
-      await interaction.editReply({ content: '❌ 戻れません。', embeds: [], components: [] });
+      await interaction.editReply(
+        buildTextAndRowsV2Payload({
+          headline: '❌ 戻れません。',
+          actionRows: [],
+          extraFlags: v2ExtraFlags(interaction),
+        }),
+      );
       return;
     }
 
@@ -102,11 +129,14 @@ export default async function scheduleBackButtons(interaction) {
     const kaisaiId = flow?.kaisaiId;
 
     if (!kaisaiDateYmd || !currentGroup || !kaisaiId) {
-      await interaction.editReply({
-        content: '❌ 戻れません（開催情報が見つかりません）。もう一度 /race から試してください。',
-        embeds: [],
-        components: [],
-      });
+      await interaction.editReply(
+        buildTextAndRowsV2Payload({
+          headline:
+            '❌ 戻れません（開催情報が見つかりません）。もう一度 /race から試してください。',
+          actionRows: [],
+          extraFlags: v2ExtraFlags(interaction),
+        }),
+      );
       return;
     }
 
@@ -122,28 +152,33 @@ export default async function scheduleBackButtons(interaction) {
     let description = lines.join('\n\n');
     if (description.length > 4090) description = `${description.slice(0, 4087)}…`;
 
-    const embed = {
-      color: 0x0099ff,
-      title: '🏇 レース一覧',
+    const headline = [
+      '🏇 **レース一覧**',
+      '',
       description,
-      footer: { text: `開催日 ${kaisaiDateYmd}（日本時間）` },
-    };
+      '',
+      `開催日 ${kaisaiDateYmd}（日本時間）`,
+    ].join('\n');
 
-    await interaction.editReply({
-      content: '',
-      embeds: [embed],
-      components: [
-        raceSelectRow(kaisaiDateYmd, races),
-        scheduleBackToVenueButtonRow(kaisaiDateYmd, currentGroup),
-      ],
-    });
+    await interaction.editReply(
+      buildTextAndRowsV2Payload({
+        headline,
+        actionRows: [
+          raceSelectRow(kaisaiDateYmd, races),
+          scheduleBackToVenueButtonRow(kaisaiDateYmd, currentGroup),
+        ],
+        extraFlags: v2ExtraFlags(interaction),
+      }),
+    );
   } catch (e) {
     console.error(e);
-    await interaction.editReply({
-      content: `❌ 戻る処理に失敗: ${e.message}`,
-      embeds: [],
-      components: [],
-    });
+    await interaction.editReply(
+      buildTextAndRowsV2Payload({
+        headline: `❌ 戻る処理に失敗: ${e.message}`,
+        actionRows: [],
+        extraFlags: v2ExtraFlags(interaction),
+      }),
+    );
   }
 }
 

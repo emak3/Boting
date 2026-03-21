@@ -7,10 +7,11 @@ import {
   ButtonStyle,
   StringSelectMenuBuilder,
   StringSelectMenuOptionBuilder,
+  MessageFlags,
 } from 'discord.js';
 import { getBetFlow, clearBetFlow, patchBetFlow } from '../../utils/betFlowStore.mjs';
-import { buildBetPurchaseEmbed } from '../../utils/betPurchaseEmbed.mjs';
-import { buildRaceCardEmbed } from '../../utils/raceCardEmbed.mjs';
+import { buildBetPurchaseV2Headline } from '../../utils/betPurchaseEmbed.mjs';
+import { buildRaceCardV2Payload, buildTextAndRowsV2Payload } from '../../utils/raceCardDisplay.mjs';
 import {
   selectHorseLabel,
   selectFrameLabel,
@@ -109,13 +110,23 @@ export default async function betFlowButtons(interaction) {
       return;
     }
     await interaction.deferUpdate();
-    const embed = buildBetPurchaseEmbed({ flow });
+    const headline = buildBetPurchaseV2Headline({ flow });
     clearBetFlow(userId, raceId);
-    await interaction.editReply({
-      content: '',
-      embeds: [embed],
-      components: [],
-    });
+    let extraFlags = 0;
+    try {
+      if (interaction.message?.flags?.has(MessageFlags.Ephemeral)) {
+        extraFlags |= MessageFlags.Ephemeral;
+      }
+    } catch (_) {
+      /* ignore */
+    }
+    await interaction.editReply(
+      buildTextAndRowsV2Payload({
+        headline,
+        actionRows: [],
+        extraFlags,
+      }),
+    );
     return;
   }
 
@@ -138,15 +149,17 @@ export default async function betFlowButtons(interaction) {
         backMenuIndex: -1,
         resumeBackFromSummary: false,
       });
-      const components = [buildBetTypeMenuRow(raceId)];
+      const components = [buildBetTypeMenuRow(raceId, flow)];
       if (hasScheduleContext(flow)) {
         components.push(scheduleRaceListBackRow(raceId));
       }
-      await interaction.editReply({
-        content: lastLine ? `購入前（戻り）\n${lastLine}` : '購入前（戻り）',
-        embeds: [buildRaceCardEmbed(flow.result)],
-        components: components.filter(Boolean),
-      });
+      await interaction.editReply(
+        buildRaceCardV2Payload({
+          result: flow.result,
+          headline: lastLine ? `購入前（戻り）\n${lastLine}` : '購入前（戻り）',
+          actionRows: components.filter(Boolean),
+        }),
+      );
       return;
     }
 
@@ -194,14 +207,14 @@ export default async function betFlowButtons(interaction) {
     // セレクトは常に1行だけ（賭け方と馬番を同時に出さない）
     const menuRow =
       currentMenuCustomId === betTypeMenuId
-        ? buildBetTypeMenuRow(raceId)
+        ? buildBetTypeMenuRow(raceId, flow)
         : buildMenuRowFromCustomId({
             menuCustomId: currentMenuCustomId,
             flow,
             result: flow.result,
           });
     if (menuRow) components.push(menuRow);
-    else components.push(buildBetTypeMenuRow(raceId));
+    else components.push(buildBetTypeMenuRow(raceId, flow));
 
     if (nextIndex >= 0) {
       components.push(
@@ -219,11 +232,13 @@ export default async function betFlowButtons(interaction) {
     }
 
     await interaction.deferUpdate();
-    await interaction.editReply({
-      content: lastLine ? `購入前（戻り）\n${lastLine}` : '購入前（戻り）',
-      embeds: [buildRaceCardEmbed(flow.result)],
-      components: components.filter(Boolean),
-    });
+    await interaction.editReply(
+      buildRaceCardV2Payload({
+        result: flow.result,
+        headline: lastLine ? `購入前（戻り）\n${lastLine}` : '購入前（戻り）',
+        actionRows: components.filter(Boolean),
+      }),
+    );
     return;
   }
 
@@ -251,17 +266,43 @@ export default async function betFlowButtons(interaction) {
   }
 }
 
-function buildBetTypeMenuRow(raceId) {
+function defaultBetTypeIdFromFlow(raceId, flow) {
+  if (!flow) return null;
+  const fromSteps = flow.stepSelections?.[`race_bet_type|${raceId}`]?.[0];
+  if (fromSteps) return String(fromSteps);
+  if (flow.betType) return String(flow.betType);
+  return null;
+}
+
+export function buildBetTypeMenuRow(raceId, flow = null) {
+  const sel = defaultBetTypeIdFromFlow(raceId, flow);
   return new ActionRowBuilder().addComponents(
     new StringSelectMenuBuilder()
       .setCustomId(`race_bet_type|${raceId}`)
       .setPlaceholder('賭ける方式を選択')
       .addOptions(
-        BET_TYPES.map((t) =>
-          new StringSelectMenuOptionBuilder().setLabel(t.label).setValue(t.id).setDescription('選択後に馬番/枠番を指定します'),
-        ),
+        BET_TYPES.map((t) => {
+          const o = new StringSelectMenuOptionBuilder()
+            .setLabel(t.label)
+            .setValue(t.id)
+            .setDescription('選択後に馬番/枠番を指定します');
+          if (sel && t.id === sel) o.setDefault(true);
+          return o;
+        }),
       ),
   );
+}
+
+function modeOptionsList(modeDefs, selectedId) {
+  const sel = selectedId != null && selectedId !== '' ? String(selectedId) : null;
+  return modeDefs.map((m) => {
+    const o = new StringSelectMenuOptionBuilder()
+      .setLabel(m.label)
+      .setValue(m.id)
+      .setDescription('次で馬番/枠番を選びます');
+    if (sel && m.id === sel) o.setDefault(true);
+    return o;
+  });
 }
 
 function horseOptionsFromResult(result, selectedValues = [], cap = 25) {
@@ -273,13 +314,13 @@ function horseOptionsFromResult(result, selectedValues = [], cap = 25) {
     .sort((a, b) => Number(a.num) - Number(b.num))
     .slice(0, cap);
   return arr.map(({ num, horse }) => {
-    const suffix = selectedSet.has(String(num)) ? '（選択中）' : '';
     const opt = new StringSelectMenuOptionBuilder()
-      .setLabel(selectHorseLabel(horse, suffix))
+      .setLabel(selectHorseLabel(horse, ''))
       .setValue(String(num))
       .setDescription(`${horse.jockey}`.slice(0, 70));
     const em = wakuUmaEmojiResolvable(horse.frameNumber, horse.horseNumber);
     if (em) opt.setEmoji({ id: em.id, name: em.name });
+    if (selectedSet.has(String(num))) opt.setDefault(true);
     return opt;
   });
 }
@@ -300,19 +341,19 @@ function frameOptionsFromResult(result, selectedValues = [], cap = 25) {
     .slice(0, cap);
   return arr.map(({ frame, count, horses }) => {
     const ex = horses?.[0]?.name || '';
-    const suffix = selectedSet.has(String(frame)) ? '（選択中）' : '';
     const f = parseInt(String(frame).replace(/\D/g, ''), 10);
     const opt = new StringSelectMenuOptionBuilder()
-      .setLabel(selectFrameLabel(frame, suffix))
+      .setLabel(selectFrameLabel(frame, ''))
       .setValue(String(frame))
       .setDescription(`${count}頭${ex ? `（例: ${ex}）` : ''}`.slice(0, 70));
     const em = Number.isFinite(f) ? wakuUmaEmojiResolvable(f, f) : null;
     if (em) opt.setEmoji({ id: em.id, name: em.name });
+    if (selectedSet.has(String(frame))) opt.setDefault(true);
     return opt;
   });
 }
 
-function buildMenuRowFromCustomId({ menuCustomId, flow, result }) {
+export function buildMenuRowFromCustomId({ menuCustomId, flow, result }) {
   const parts = menuCustomId.split('|');
   const kind = parts[0];
   const raceId = parts[1];
@@ -356,17 +397,14 @@ function buildMenuRowFromCustomId({ menuCustomId, flow, result }) {
   }
 
   if (kind === 'race_bet_pair_mode') {
+    const modeSel = selectedValues[0] ?? flow?.pairMode ?? null;
     return new ActionRowBuilder().addComponents(
       new StringSelectMenuBuilder()
         .setCustomId(menuCustomId)
         .setPlaceholder('投票形式を選択')
         .setMinValues(1)
         .setMaxValues(1)
-        .addOptions(
-          PAIR_MODE_OPTIONS.map((m) =>
-            new StringSelectMenuOptionBuilder().setLabel(m.label).setValue(m.id).setDescription('次で馬番/枠番を選びます'),
-          ),
-        ),
+        .addOptions(modeOptionsList(PAIR_MODE_OPTIONS, modeSel)),
     );
   }
 
@@ -443,15 +481,14 @@ function buildMenuRowFromCustomId({ menuCustomId, flow, result }) {
   }
 
   if (kind === 'race_bet_umatan_mode') {
+    const modeSel = selectedValues[0] ?? flow?.umatanMode ?? null;
     return new ActionRowBuilder().addComponents(
       new StringSelectMenuBuilder()
         .setCustomId(menuCustomId)
         .setPlaceholder('投票形式を選択')
         .setMinValues(1)
         .setMaxValues(1)
-        .addOptions(
-          UMATAN_MODE_OPTIONS.map((m) => new StringSelectMenuOptionBuilder().setLabel(m.label).setValue(m.id).setDescription('次で馬番を選びます')),
-        ),
+        .addOptions(modeOptionsList(UMATAN_MODE_OPTIONS, modeSel)),
     );
   }
 
@@ -519,17 +556,14 @@ function buildMenuRowFromCustomId({ menuCustomId, flow, result }) {
 
   // 3連複
   if (kind === 'race_bet_trifuku_mode') {
+    const modeSel = selectedValues[0] ?? flow?.trifukuMode ?? null;
     return new ActionRowBuilder().addComponents(
       new StringSelectMenuBuilder()
         .setCustomId(menuCustomId)
         .setPlaceholder('投票形式を選択')
         .setMinValues(1)
         .setMaxValues(1)
-        .addOptions(
-          TRIFUKU_MODE_OPTIONS.map((m) =>
-            new StringSelectMenuOptionBuilder().setLabel(m.label).setValue(m.id).setDescription('次で馬番を選びます'),
-          ),
-        ),
+        .addOptions(modeOptionsList(TRIFUKU_MODE_OPTIONS, modeSel)),
     );
   }
 
@@ -620,37 +654,15 @@ function buildMenuRowFromCustomId({ menuCustomId, flow, result }) {
 
   // 3連単
   if (kind === 'race_bet_tritan_mode') {
-    const selectedMode = flow?.tritanMode;
-    const defaultValues = selectedMode ? [String(selectedMode)] : null;
-
-    const menu = new StringSelectMenuBuilder()
-      .setCustomId(menuCustomId)
-      .setPlaceholder('投票形式を選択')
-      .setMinValues(1)
-      .setMaxValues(1)
-      .addOptions(
-        TRITAN_MODE_OPTIONS.map((m) => {
-          const annotatedLabel =
-            selectedMode && String(m.id) === String(selectedMode)
-              ? `${m.label}（選択中）`
-              : m.label;
-          return new StringSelectMenuOptionBuilder()
-            .setLabel(annotatedLabel)
-            .setValue(m.id)
-            .setDescription('次で馬番を選びます');
-        }),
-      );
-
-    // discord.js のバージョン差分で setDefaultValues が無いことがあるためガード
-    if (
-      defaultValues &&
-      defaultValues.length &&
-      typeof menu.setDefaultValues === 'function'
-    ) {
-      menu.setDefaultValues(defaultValues);
-    }
-
-    return new ActionRowBuilder().addComponents(menu);
+    const modeSel = selectedValues[0] ?? flow?.tritanMode ?? null;
+    return new ActionRowBuilder().addComponents(
+      new StringSelectMenuBuilder()
+        .setCustomId(menuCustomId)
+        .setPlaceholder('投票形式を選択')
+        .setMinValues(1)
+        .setMaxValues(1)
+        .addOptions(modeOptionsList(TRITAN_MODE_OPTIONS, modeSel)),
+    );
   }
 
   // tritan pick handlers (horses only)

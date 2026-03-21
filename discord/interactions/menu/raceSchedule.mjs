@@ -4,6 +4,7 @@ import {
   StringSelectMenuOptionBuilder,
   ButtonBuilder,
   ButtonStyle,
+  ComponentType,
 } from 'discord.js';
 import NetkeibaScraper from '../../../cheerio/netkeibaScraper.mjs';
 import {
@@ -13,7 +14,11 @@ import {
   getRaceSalesStatus,
   findRaceMetaForToday,
 } from '../../../cheerio/netkeibaSchedule.mjs';
-import { buildRaceCardEmbed } from '../../utils/raceCardEmbed.mjs';
+import {
+  buildRaceCardV2Payload,
+  buildTextAndRowsV2Payload,
+} from '../../utils/raceCardDisplay.mjs';
+import { canBypassSalesClosed } from '../../utils/raceDebugBypass.mjs';
 import { buildRaceResultEmbeds } from '../../utils/raceResultEmbed.mjs';
 import {
   selectHorseLabel,
@@ -23,6 +28,10 @@ import {
   DISCORD_SELECT_OPTION_LABEL_RESERVE_POST_SELECTION,
 } from '../../utils/raceNumberEmoji.mjs';
 import { getBetFlow, setBetFlow, patchBetFlow, clearBetFlow } from '../../utils/betFlowStore.mjs';
+import {
+  buildMenuRowFromCustomId,
+  buildBetTypeMenuRow,
+} from '../button/betFlowButtons.mjs';
 
 const VENUE_MENU_ID = 'race_menu_venue';
 const RACE_MENU_ID = 'race_menu_race';
@@ -224,17 +233,20 @@ function scheduleRaceListBackIfScheduled(userId, raceId) {
   return null;
 }
 
-function betTypeSelectRow(raceId) {
+function betTypeSelectRow(raceId, selectedBetTypeId = null) {
+  const sel = selectedBetTypeId != null ? String(selectedBetTypeId) : null;
   const menu = new StringSelectMenuBuilder()
     .setCustomId(`${BET_TYPE_MENU_PREFIX}${raceId}`)
     .setPlaceholder('賭ける方式を選択')
     .addOptions(
-      BET_TYPES.map((t) =>
-        new StringSelectMenuOptionBuilder()
+      BET_TYPES.map((t) => {
+        const o = new StringSelectMenuOptionBuilder()
           .setLabel(t.label)
           .setValue(t.id)
-          .setDescription('選択後に馬番/枠番を指定します'),
-      ),
+          .setDescription('選択後に馬番/枠番を指定します');
+        if (sel && t.id === sel) o.setDefault(true);
+        return o;
+      }),
     );
   return new ActionRowBuilder().addComponents(menu);
 }
@@ -248,40 +260,32 @@ function buildSelectionRow({
   defaultValues,
   selectedValues,
 }) {
+  const defaultSet = new Set(
+    (defaultValues?.length ? defaultValues : selectedValues || []).map((v) =>
+      String(v),
+    ),
+  );
+
+  const mappedOptions = (options || []).map((opt) => {
+    const json = typeof opt?.toJSON === 'function' ? opt.toJSON() : null;
+    if (!json) return opt;
+    const value = String(json.value);
+    const builder = new StringSelectMenuOptionBuilder()
+      .setLabel(json.label)
+      .setValue(value);
+    if (json.description) builder.setDescription(json.description);
+    if (json.emoji?.id) builder.setEmoji(json.emoji);
+    if (defaultSet.has(value)) builder.setDefault(true);
+    return builder;
+  });
+
   const menu = new StringSelectMenuBuilder()
     .setCustomId(customId)
     .setPlaceholder(placeholder)
     .setMinValues(minValues)
     .setMaxValues(maxValues)
-    .addOptions(
-      (() => {
-        if (!selectedValues || !selectedValues.length) return options;
-        const selectedSet = new Set(selectedValues.map((v) => String(v)));
-        return options.map((opt) => {
-          const json = typeof opt?.toJSON === 'function' ? opt.toJSON() : null;
-          if (!json) return opt;
-          const value = String(json.value);
-          if (!selectedSet.has(value)) return opt;
-          const annotatedLabel = json.label ? `${json.label}（選択中）` : '選択中';
-          const desc = json.description ? json.description : undefined;
-          const builder = new StringSelectMenuOptionBuilder()
-            .setLabel(annotatedLabel)
-            .setValue(value);
-          if (desc) builder.setDescription(desc);
-          if (json.emoji?.id) builder.setEmoji(json.emoji);
-          return builder;
-        });
-      })(),
-    );
+    .addOptions(mappedOptions);
 
-  // discord.js のバージョンによって setDefaultValues が未実装のため、安全にガード
-  if (
-    defaultValues &&
-    defaultValues.length &&
-    typeof menu.setDefaultValues === 'function'
-  ) {
-    menu.setDefaultValues(defaultValues.map((v) => String(v)));
-  }
   return new ActionRowBuilder().addComponents(menu);
 }
 
@@ -475,8 +479,22 @@ function computeBackMenuIds({ raceId, flow, betType, lastMenuCustomId }) {
   return finalizeBackMenuIds(ids, lastMenuCustomId);
 }
 
+/** 購入前サマリー用: セレクトは表示のみ（操作で状態が変わらないよう無効化） */
+function disableStringSelectRow(row) {
+  if (!row) return row;
+  const j = row.toJSON();
+  const comp = j.components?.[0];
+  if (comp && comp.type === ComponentType.StringSelect) {
+    return ActionRowBuilder.from({
+      type: ComponentType.ActionRow,
+      components: [{ ...comp, disabled: true }],
+    });
+  }
+  return row;
+}
+
 /**
- * 最終確定画面（本文に選択・点数、ボタンのみ。セレクトは出さない）
+ * 最終確定画面（式別〜最後の馬番までのメニューを表示 + 購入・戻る等）
  */
 async function renderFinalSelection({
   interaction,
@@ -528,15 +546,32 @@ async function renderFinalSelection({
     resultUrl ? `\n結果: ${resultUrl}` : ''
   }`;
 
-  await interaction.editReply({
-    content,
-    embeds: [],
-    components: [
-      finalButtonsRow(raceId),
-      backButtonRow(raceId, backMenuIndex),
-      scheduleRaceListBackIfScheduled(userId, raceId),
-    ].filter(Boolean),
-  });
+  const flowAfter = getBetFlow(userId, raceId);
+  const betTypeMenuId = `race_bet_type|${raceId}`;
+  const summaryMenuRows = [];
+  for (const menuId of backMenuIds) {
+    const row =
+      menuId === betTypeMenuId
+        ? buildBetTypeMenuRow(raceId, flowAfter)
+        : buildMenuRowFromCustomId({
+            menuCustomId: menuId,
+            flow: flowAfter,
+            result,
+          });
+    if (row) summaryMenuRows.push(disableStringSelectRow(row));
+  }
+
+  await interaction.editReply(
+    buildTextAndRowsV2Payload({
+      headline: content,
+      actionRows: [
+        ...summaryMenuRows,
+        finalButtonsRow(raceId),
+        backButtonRow(raceId, backMenuIndex),
+        scheduleRaceListBackIfScheduled(userId, raceId),
+      ].filter(Boolean),
+    }),
+  );
 }
 
 function horseOptionsFromResult(result, cap = 25) {
@@ -764,8 +799,10 @@ export default async function raceScheduleMenu(interaction) {
         kaisaiId: lastVenue?.kaisaiId,
       };
 
+      const salesBypass = canBypassSalesClosed(userId);
+
       const resultSnap = await scraper.scrapeRaceResult(raceId);
-      if (resultSnap.confirmed) {
+      if (resultSnap.confirmed && !salesBypass) {
         setBetFlow(userId, raceId, flowCtx);
         await interaction.editReply({
           content: '',
@@ -777,7 +814,7 @@ export default async function raceScheduleMenu(interaction) {
         return;
       }
 
-      if (isResult) {
+      if (isResult && !salesBypass) {
         setBetFlow(userId, raceId, flowCtx);
         await interaction.editReply({
           content:
@@ -790,7 +827,7 @@ export default async function raceScheduleMenu(interaction) {
         return;
       }
 
-      if (salesStatus?.closed) {
+      if (salesStatus?.closed && !salesBypass) {
         setBetFlow(userId, raceId, flowCtx);
         await interaction.editReply({
           content:
@@ -811,14 +848,21 @@ export default async function raceScheduleMenu(interaction) {
         ...flowCtx,
       });
 
-      await interaction.editReply({
-        content: '',
-        embeds: [buildRaceCardEmbed(result)],
-        components: [
-          betTypeSelectRow(raceId),
-          lastVenue?.kaisaiId ? scheduleBackToRaceListButtonRow(raceId) : null,
-        ].filter(Boolean),
-      });
+      const flowAfter = getBetFlow(userId, raceId);
+      const betTypeDefault =
+        flowAfter?.stepSelections?.[`race_bet_type|${raceId}`]?.[0] ??
+        flowAfter?.betType ??
+        null;
+      await interaction.editReply(
+        buildRaceCardV2Payload({
+          result,
+          headline: '',
+          actionRows: [
+            betTypeSelectRow(raceId, betTypeDefault),
+            lastVenue?.kaisaiId ? scheduleBackToRaceListButtonRow(raceId) : null,
+          ].filter(Boolean),
+        }),
+      );
     } catch (e) {
       console.error(e);
       await interaction.editReply({
@@ -831,13 +875,23 @@ export default async function raceScheduleMenu(interaction) {
   }
 
   // セレクトでベットフローを前進したら「購入から戻った直後」専用の戻る解釈を解除する
+  // + 戻るボタン再描画用に、各メニューで選んだ値を stepSelections に蓄積（式別〜馬番）
   if (
     customId.startsWith(BET_PREFIX) &&
-    !customId.startsWith(BET_TYPE_MENU_PREFIX)
+    !customId.startsWith(BET_TYPE_MENU_PREFIX) &&
+    userId
   ) {
     const rid = raceIdFromBetFlowSelectCustomId(customId);
-    if (rid && userId) {
-      patchBetFlow(userId, rid, { resumeBackFromSummary: false });
+    if (rid) {
+      const fl = getBetFlow(userId, rid);
+      const patch = { resumeBackFromSummary: false };
+      if (fl && interaction.values?.length) {
+        patch.stepSelections = {
+          ...(fl.stepSelections || {}),
+          [customId]: interaction.values.map((v) => String(v)),
+        };
+      }
+      patchBetFlow(userId, rid, patch);
     }
   }
 
@@ -888,7 +942,7 @@ export default async function raceScheduleMenu(interaction) {
       backMenuIndex: null,
       resumeBackFromSummary: false,
       purchase: null,
-      stepSelections: {},
+      stepSelections: { [`race_bet_type|${raceId}`]: [String(betType)] },
       lastSelectionLine: null,
     });
 
@@ -911,11 +965,12 @@ export default async function raceScheduleMenu(interaction) {
         backMenuIndex:
           backMenuIndex >= 0 ? backMenuIndex : backMenuIds.length - 1,
       });
-      await interaction.editReply({
-        content: `「${BET_TYPE_LABEL[betType]}」の馬番を選択してください。`,
-        embeds: [buildRaceCardEmbed(result)],
-        components: [
-          buildSelectionRow({
+      await interaction.editReply(
+        buildRaceCardV2Payload({
+          result,
+          headline: `「${BET_TYPE_LABEL[betType]}」の馬番を選択してください。`,
+          actionRows: [
+        buildSelectionRow({
             customId: `race_bet_single_pick|${raceId}|${betType}`,
             placeholder: '馬番を1頭選択',
             options,
@@ -925,7 +980,8 @@ export default async function raceScheduleMenu(interaction) {
           backButtonRow(raceId, backMenuIndex),
           scheduleRaceListBackIfScheduled(userId, raceId),
         ].filter(Boolean),
-      });
+        }),
+      );
       return;
     }
 
@@ -933,11 +989,12 @@ export default async function raceScheduleMenu(interaction) {
     if (betType === 'frame_pair' || betType === 'horse_pair' || betType === 'wide') {
       const lastId = `race_bet_pair_mode|${raceId}|${betType}`;
       const bi = setupHorseStepBack(userId, raceId, betType, lastId);
-      await interaction.editReply({
-        content: `「${BET_TYPE_LABEL[betType]}」の投票形式を選択してください。`,
-        embeds: [buildRaceCardEmbed(result)],
-        components: [
-          new ActionRowBuilder().addComponents(
+      await interaction.editReply(
+        buildRaceCardV2Payload({
+          result,
+          headline: `「${BET_TYPE_LABEL[betType]}」の投票形式を選択してください。`,
+          actionRows: [
+        new ActionRowBuilder().addComponents(
             new StringSelectMenuBuilder()
               .setCustomId(lastId)
               .setPlaceholder('投票形式を選択')
@@ -955,7 +1012,8 @@ export default async function raceScheduleMenu(interaction) {
           backButtonRow(raceId, bi),
           scheduleRaceListBackIfScheduled(userId, raceId),
         ].filter(Boolean),
-      });
+        }),
+      );
       return;
     }
 
@@ -963,11 +1021,12 @@ export default async function raceScheduleMenu(interaction) {
     if (betType === 'umatan') {
       const lastId = `race_bet_umatan_mode|${raceId}`;
       const bi = setupHorseStepBack(userId, raceId, 'umatan', lastId);
-      await interaction.editReply({
-        content: '「馬単」の投票形式を選択してください。',
-        embeds: [buildRaceCardEmbed(result)],
-        components: [
-          new ActionRowBuilder().addComponents(
+      await interaction.editReply(
+        buildRaceCardV2Payload({
+          result,
+          headline: '「馬単」の投票形式を選択してください。',
+          actionRows: [
+        new ActionRowBuilder().addComponents(
             new StringSelectMenuBuilder()
               .setCustomId(lastId)
               .setPlaceholder('投票形式を選択')
@@ -985,7 +1044,8 @@ export default async function raceScheduleMenu(interaction) {
           backButtonRow(raceId, bi),
           scheduleRaceListBackIfScheduled(userId, raceId),
         ].filter(Boolean),
-      });
+        }),
+      );
       return;
     }
 
@@ -993,11 +1053,12 @@ export default async function raceScheduleMenu(interaction) {
     if (betType === 'trifuku') {
       const lastId = `race_bet_trifuku_mode|${raceId}`;
       const bi = setupHorseStepBack(userId, raceId, 'trifuku', lastId);
-      await interaction.editReply({
-        content: '「3連複」の投票形式を選択してください。',
-        embeds: [buildRaceCardEmbed(result)],
-        components: [
-          new ActionRowBuilder().addComponents(
+      await interaction.editReply(
+        buildRaceCardV2Payload({
+          result,
+          headline: '「3連複」の投票形式を選択してください。',
+          actionRows: [
+        new ActionRowBuilder().addComponents(
             new StringSelectMenuBuilder()
               .setCustomId(lastId)
               .setPlaceholder('投票形式を選択')
@@ -1015,7 +1076,8 @@ export default async function raceScheduleMenu(interaction) {
           backButtonRow(raceId, bi),
           scheduleRaceListBackIfScheduled(userId, raceId),
         ].filter(Boolean),
-      });
+        }),
+      );
       return;
     }
 
@@ -1023,11 +1085,12 @@ export default async function raceScheduleMenu(interaction) {
     if (betType === 'tritan') {
       const lastId = `race_bet_tritan_mode|${raceId}`;
       const bi = setupHorseStepBack(userId, raceId, 'tritan', lastId);
-      await interaction.editReply({
-        content: '「3連単」の投票形式を選択してください。',
-        embeds: [buildRaceCardEmbed(result)],
-        components: [
-          new ActionRowBuilder().addComponents(
+      await interaction.editReply(
+        buildRaceCardV2Payload({
+          result,
+          headline: '「3連単」の投票形式を選択してください。',
+          actionRows: [
+        new ActionRowBuilder().addComponents(
             new StringSelectMenuBuilder()
               .setCustomId(lastId)
               .setPlaceholder('投票形式を選択')
@@ -1045,15 +1108,20 @@ export default async function raceScheduleMenu(interaction) {
           backButtonRow(raceId, bi),
           scheduleRaceListBackIfScheduled(userId, raceId),
         ].filter(Boolean),
-      });
+        }),
+      );
       return;
     }
 
-    await interaction.editReply({
-      content: '❌ 未対応の賭け方式です。',
-      embeds: [buildRaceCardEmbed(result)],
-      components: [],
-    });
+    await interaction.editReply(
+        buildRaceCardV2Payload({
+          result,
+          headline: '❌ 未対応の賭け方式です。',
+          actionRows: [
+        
+        ].filter(Boolean),
+        }),
+      );
   }
 
   // 4) 単勝/複勝/単勝+複勝: 馬番確定
@@ -1133,11 +1201,12 @@ export default async function raceScheduleMenu(interaction) {
             backMenuIndex >= 0 ? backMenuIndex : backMenuIds.length - 1,
         });
 
-        await interaction.editReply({
-          content: '「通常（枠連）」: 第1枠を1つ選択してください。',
-          embeds: [buildRaceCardEmbed(result)],
-          components: [
-            buildSelectionRow({
+        await interaction.editReply(
+        buildRaceCardV2Payload({
+          result,
+          headline: '「通常（枠連）」: 第1枠を1つ選択してください。',
+          actionRows: [
+        buildSelectionRow({
               customId: lastMenuCustomId,
               placeholder: '第1枠を選択',
               options,
@@ -1146,8 +1215,9 @@ export default async function raceScheduleMenu(interaction) {
             }),
             backButtonRow(raceId, backMenuIndex),
             scheduleRaceListBackIfScheduled(userId, raceId),
-          ].filter(Boolean),
-        });
+        ].filter(Boolean),
+        }),
+      );
         return;
       }
 
@@ -1163,11 +1233,12 @@ export default async function raceScheduleMenu(interaction) {
         backMenuIds,
         backMenuIndex: backMenuIndex >= 0 ? backMenuIndex : backMenuIds.length - 1,
       });
-      await interaction.editReply({
-        content: '「通常」: 馬番を2つまで選択してください。',
-        embeds: [buildRaceCardEmbed(result)],
-        components: [
-          buildSelectionRow({
+      await interaction.editReply(
+        buildRaceCardV2Payload({
+          result,
+          headline: '「通常」: 馬番を2つまで選択してください。',
+          actionRows: [
+        buildSelectionRow({
             customId: lastMenuCustomId,
             placeholder: '馬番を選択（最大2）',
             options,
@@ -1177,7 +1248,8 @@ export default async function raceScheduleMenu(interaction) {
           backButtonRow(raceId, backMenuIndex),
           scheduleRaceListBackIfScheduled(userId, raceId),
         ].filter(Boolean),
-      });
+        }),
+      );
       return;
     }
 
@@ -1195,11 +1267,12 @@ export default async function raceScheduleMenu(interaction) {
         backMenuIds,
         backMenuIndex: backMenuIndex >= 0 ? backMenuIndex : backMenuIds.length - 1,
       });
-      await interaction.editReply({
-        content: `「ながし」: まず軸を${isFrame ? '枠' : '馬番'}で1つ選んでください。`,
-        embeds: [buildRaceCardEmbed(result)],
-        components: [
-          buildSelectionRow({
+      await interaction.editReply(
+        buildRaceCardV2Payload({
+          result,
+          headline: `「ながし」: まず軸を${isFrame ? '枠' : '馬番'}で1つ選んでください。`,
+          actionRows: [
+        buildSelectionRow({
             customId: `race_bet_pair_nagashi_axis|${raceId}|${betType}`,
             placeholder: isFrame ? '軸の枠を選択' : '軸の馬番を選択',
             options,
@@ -1209,7 +1282,8 @@ export default async function raceScheduleMenu(interaction) {
           backButtonRow(raceId, backMenuIndex),
           scheduleRaceListBackIfScheduled(userId, raceId),
         ].filter(Boolean),
-      });
+        }),
+      );
       return;
     }
 
@@ -1227,11 +1301,12 @@ export default async function raceScheduleMenu(interaction) {
         backMenuIds,
         backMenuIndex: backMenuIndex >= 0 ? backMenuIndex : backMenuIds.length - 1,
       });
-      await interaction.editReply({
-        content: `「ボックス」: ${isFrame ? '枠' : '馬番'}を必要数選択してください。`,
-        embeds: [buildRaceCardEmbed(result)],
-        components: [
-          buildSelectionRow({
+      await interaction.editReply(
+        buildRaceCardV2Payload({
+          result,
+          headline: `「ボックス」: ${isFrame ? '枠' : '馬番'}を必要数選択してください。`,
+          actionRows: [
+        buildSelectionRow({
             customId: `race_bet_pair_box|${raceId}|${betType}`,
             placeholder: isFrame ? '枠を選択' : '馬番を選択',
             options,
@@ -1241,7 +1316,8 @@ export default async function raceScheduleMenu(interaction) {
           backButtonRow(raceId, backMenuIndex),
           scheduleRaceListBackIfScheduled(userId, raceId),
         ].filter(Boolean),
-      });
+        }),
+      );
       return;
     }
 
@@ -1259,11 +1335,12 @@ export default async function raceScheduleMenu(interaction) {
         backMenuIds,
         backMenuIndex: backMenuIndex >= 0 ? backMenuIndex : backMenuIds.length - 1,
       });
-      await interaction.editReply({
-        content: `「フォーメーション」: 第1群（${isFrame ? '枠' : '馬番'}）を選択してください。`,
-        embeds: [buildRaceCardEmbed(result)],
-        components: [
-          buildSelectionRow({
+      await interaction.editReply(
+        buildRaceCardV2Payload({
+          result,
+          headline: `「フォーメーション」: 第1群（${isFrame ? '枠' : '馬番'}）を選択してください。`,
+          actionRows: [
+        buildSelectionRow({
             customId: `race_bet_pair_formA|${raceId}|${betType}`,
             placeholder: `第1群${isFrame ? '枠' : '馬番'}`,
             options,
@@ -1273,7 +1350,8 @@ export default async function raceScheduleMenu(interaction) {
           backButtonRow(raceId, backMenuIndex),
           scheduleRaceListBackIfScheduled(userId, raceId),
         ].filter(Boolean),
-      });
+        }),
+      );
       return;
     }
   }
@@ -1303,11 +1381,12 @@ export default async function raceScheduleMenu(interaction) {
         backMenuIds,
         backMenuIndex: backMenuIndex >= 0 ? backMenuIndex : backMenuIds.length - 1,
       });
-      await interaction.editReply({
-        content: '❌ 通常は2つ選択してください。',
-        embeds: [buildRaceCardEmbed(result)],
-        components: [
-          buildSelectionRow({
+      await interaction.editReply(
+        buildRaceCardV2Payload({
+          result,
+          headline: '❌ 通常は2つ選択してください。',
+          actionRows: [
+        buildSelectionRow({
             customId: lastMenuCustomId,
             placeholder: isFrame ? '枠を選択（最大2）' : '馬番を選択（最大2）',
             options,
@@ -1317,7 +1396,8 @@ export default async function raceScheduleMenu(interaction) {
           backButtonRow(raceId, backMenuIndex),
           scheduleRaceListBackIfScheduled(userId, raceId),
         ].filter(Boolean),
-      });
+        }),
+      );
       return;
     }
 
@@ -1367,10 +1447,11 @@ export default async function raceScheduleMenu(interaction) {
     const bi = setupHorseStepBack(userId, raceId, 'frame_pair', lastMenuCustomId);
 
     const options = frameOptionsFromResult(result);
-    await interaction.editReply({
-      content: '次に第2枠を選択してください。',
-      embeds: [buildRaceCardEmbed(result)],
-      components: [
+    await interaction.editReply(
+        buildRaceCardV2Payload({
+          result,
+          headline: '次に第2枠を選択してください。',
+          actionRows: [
         buildSelectionRow({
           customId: lastMenuCustomId,
           placeholder: '第2枠を選択',
@@ -1380,8 +1461,9 @@ export default async function raceScheduleMenu(interaction) {
         }),
         backButtonRow(raceId, bi),
         scheduleRaceListBackIfScheduled(userId, raceId),
-      ].filter(Boolean),
-    });
+        ].filter(Boolean),
+        }),
+      );
     return;
   }
 
@@ -1445,10 +1527,11 @@ export default async function raceScheduleMenu(interaction) {
 
     const lastMenuCustomId = `race_bet_pair_nagashi_opponent|${raceId}|${betType}`;
     const bi = setupHorseStepBack(userId, raceId, betType, lastMenuCustomId);
-    await interaction.editReply({
-      content: `「ながし」: 相手を${isFrame ? '枠' : '馬番'}で選択してください。`,
-      embeds: [buildRaceCardEmbed(result)],
-      components: [
+    await interaction.editReply(
+        buildRaceCardV2Payload({
+          result,
+          headline: `「ながし」: 相手を${isFrame ? '枠' : '馬番'}で選択してください。`,
+          actionRows: [
         buildSelectionRow({
           customId: lastMenuCustomId,
           placeholder: '相手を選択（複数可）',
@@ -1458,8 +1541,9 @@ export default async function raceScheduleMenu(interaction) {
         }),
         backButtonRow(raceId, bi),
         scheduleRaceListBackIfScheduled(userId, raceId),
-      ].filter(Boolean),
-    });
+        ].filter(Boolean),
+        }),
+      );
     return;
   }
 
@@ -1555,10 +1639,11 @@ export default async function raceScheduleMenu(interaction) {
 
     const lastMenuCustomId = `race_bet_pair_formB|${raceId}|${betType}`;
     const bi = setupHorseStepBack(userId, raceId, betType, lastMenuCustomId);
-    await interaction.editReply({
-      content: `「フォーメーション」: 第2群（${isFrame ? '枠' : '馬番'}）を選択してください。`,
-      embeds: [buildRaceCardEmbed(result)],
-      components: [
+    await interaction.editReply(
+        buildRaceCardV2Payload({
+          result,
+          headline: `「フォーメーション」: 第2群（${isFrame ? '枠' : '馬番'}）を選択してください。`,
+          actionRows: [
         buildSelectionRow({
           customId: lastMenuCustomId,
           placeholder: `第2群${isFrame ? '枠' : '馬番'}`,
@@ -1568,8 +1653,9 @@ export default async function raceScheduleMenu(interaction) {
         }),
         backButtonRow(raceId, bi),
         scheduleRaceListBackIfScheduled(userId, raceId),
-      ].filter(Boolean),
-    });
+        ].filter(Boolean),
+        }),
+      );
     return;
   }
 
@@ -1628,11 +1714,12 @@ export default async function raceScheduleMenu(interaction) {
     if (mode === 'normal') {
       const lastId = `race_bet_umatan_normal_1|${raceId}`;
       const bi = setupHorseStepBack(userId, raceId, 'umatan', lastId);
-      await interaction.editReply({
-        content: '「馬単 通常」: まず1着を選択してください。',
-        embeds: [buildRaceCardEmbed(result)],
-        components: [
-          buildSelectionRow({
+      await interaction.editReply(
+        buildRaceCardV2Payload({
+          result,
+          headline: '「馬単 通常」: まず1着を選択してください。',
+          actionRows: [
+        buildSelectionRow({
             customId: lastId,
             placeholder: '1着（1頭）',
             options,
@@ -1642,18 +1729,20 @@ export default async function raceScheduleMenu(interaction) {
           backButtonRow(raceId, bi),
           scheduleRaceListBackIfScheduled(userId, raceId),
         ].filter(Boolean),
-      });
+        }),
+      );
       return;
     }
 
     if (mode === 'nagashi1') {
       const lastId = `race_bet_umatan_nagashi1_axis|${raceId}`;
       const bi = setupHorseStepBack(userId, raceId, 'umatan', lastId);
-      await interaction.editReply({
-        content: '「1着ながし」: 軸（1着）を選択してください。',
-        embeds: [buildRaceCardEmbed(result)],
-        components: [
-          buildSelectionRow({
+      await interaction.editReply(
+        buildRaceCardV2Payload({
+          result,
+          headline: '「1着ながし」: 軸（1着）を選択してください。',
+          actionRows: [
+        buildSelectionRow({
             customId: lastId,
             placeholder: '軸（1着）',
             options,
@@ -1663,18 +1752,20 @@ export default async function raceScheduleMenu(interaction) {
           backButtonRow(raceId, bi),
           scheduleRaceListBackIfScheduled(userId, raceId),
         ].filter(Boolean),
-      });
+        }),
+      );
       return;
     }
 
     if (mode === 'nagashi2') {
       const lastId = `race_bet_umatan_nagashi2_axis|${raceId}`;
       const bi = setupHorseStepBack(userId, raceId, 'umatan', lastId);
-      await interaction.editReply({
-        content: '「2着ながし」: 軸（2着）を選択してください。',
-        embeds: [buildRaceCardEmbed(result)],
-        components: [
-          buildSelectionRow({
+      await interaction.editReply(
+        buildRaceCardV2Payload({
+          result,
+          headline: '「2着ながし」: 軸（2着）を選択してください。',
+          actionRows: [
+        buildSelectionRow({
             customId: lastId,
             placeholder: '軸（2着）',
             options,
@@ -1684,18 +1775,20 @@ export default async function raceScheduleMenu(interaction) {
           backButtonRow(raceId, bi),
           scheduleRaceListBackIfScheduled(userId, raceId),
         ].filter(Boolean),
-      });
+        }),
+      );
       return;
     }
 
     if (mode === 'box') {
       const lastId = `race_bet_umatan_box|${raceId}`;
       const bi = setupHorseStepBack(userId, raceId, 'umatan', lastId);
-      await interaction.editReply({
-        content: '「馬単 ボックス」: 馬番を必要数選択してください。',
-        embeds: [buildRaceCardEmbed(result)],
-        components: [
-          buildSelectionRow({
+      await interaction.editReply(
+        buildRaceCardV2Payload({
+          result,
+          headline: '「馬単 ボックス」: 馬番を必要数選択してください。',
+          actionRows: [
+        buildSelectionRow({
             customId: lastId,
             placeholder: '馬番を選択（複数可）',
             options,
@@ -1705,18 +1798,20 @@ export default async function raceScheduleMenu(interaction) {
           backButtonRow(raceId, bi),
           scheduleRaceListBackIfScheduled(userId, raceId),
         ].filter(Boolean),
-      });
+        }),
+      );
       return;
     }
 
     if (mode === 'formation') {
       const lastId = `race_bet_umatan_formA|${raceId}`;
       const bi = setupHorseStepBack(userId, raceId, 'umatan', lastId);
-      await interaction.editReply({
-        content: '「馬単 フォーメーション」: 第1群（1着候補）を選択してください。',
-        embeds: [buildRaceCardEmbed(result)],
-        components: [
-          buildSelectionRow({
+      await interaction.editReply(
+        buildRaceCardV2Payload({
+          result,
+          headline: '「馬単 フォーメーション」: 第1群（1着候補）を選択してください。',
+          actionRows: [
+        buildSelectionRow({
             customId: lastId,
             placeholder: '第1群（1着）',
             options,
@@ -1726,7 +1821,8 @@ export default async function raceScheduleMenu(interaction) {
           backButtonRow(raceId, bi),
           scheduleRaceListBackIfScheduled(userId, raceId),
         ].filter(Boolean),
-      });
+        }),
+      );
       return;
     }
   }
@@ -1745,10 +1841,11 @@ export default async function raceScheduleMenu(interaction) {
 
     const lastId = `race_bet_umatan_normal_2|${raceId}`;
     const bi = setupHorseStepBack(userId, raceId, 'umatan', lastId);
-    await interaction.editReply({
-      content: '次に2着を選択してください。',
-      embeds: [buildRaceCardEmbed(result)],
-      components: [
+    await interaction.editReply(
+        buildRaceCardV2Payload({
+          result,
+          headline: '次に2着を選択してください。',
+          actionRows: [
         buildSelectionRow({
           customId: lastId,
           placeholder: '2着（1頭）',
@@ -1758,8 +1855,9 @@ export default async function raceScheduleMenu(interaction) {
         }),
         backButtonRow(raceId, bi),
         scheduleRaceListBackIfScheduled(userId, raceId),
-      ].filter(Boolean),
-    });
+        ].filter(Boolean),
+        }),
+      );
     return;
   }
 
@@ -1813,10 +1911,11 @@ export default async function raceScheduleMenu(interaction) {
 
     const lastId = `race_bet_umatan_nagashi1_opp|${raceId}`;
     const bi = setupHorseStepBack(userId, raceId, 'umatan', lastId);
-    await interaction.editReply({
-      content: '相手（2着）を選択してください（複数可）。',
-      embeds: [buildRaceCardEmbed(result)],
-      components: [
+    await interaction.editReply(
+        buildRaceCardV2Payload({
+          result,
+          headline: '相手（2着）を選択してください（複数可）。',
+          actionRows: [
         buildSelectionRow({
           customId: lastId,
           placeholder: '相手（2着）',
@@ -1826,8 +1925,9 @@ export default async function raceScheduleMenu(interaction) {
         }),
         backButtonRow(raceId, bi),
         scheduleRaceListBackIfScheduled(userId, raceId),
-      ].filter(Boolean),
-    });
+        ].filter(Boolean),
+        }),
+      );
     return;
   }
 
@@ -1880,10 +1980,11 @@ export default async function raceScheduleMenu(interaction) {
 
     const lastId = `race_bet_umatan_nagashi2_opp|${raceId}`;
     const bi = setupHorseStepBack(userId, raceId, 'umatan', lastId);
-    await interaction.editReply({
-      content: '相手（1着）を選択してください（複数可）。',
-      embeds: [buildRaceCardEmbed(result)],
-      components: [
+    await interaction.editReply(
+        buildRaceCardV2Payload({
+          result,
+          headline: '相手（1着）を選択してください（複数可）。',
+          actionRows: [
         buildSelectionRow({
           customId: lastId,
           placeholder: '相手（1着）',
@@ -1893,8 +1994,9 @@ export default async function raceScheduleMenu(interaction) {
         }),
         backButtonRow(raceId, bi),
         scheduleRaceListBackIfScheduled(userId, raceId),
-      ].filter(Boolean),
-    });
+        ].filter(Boolean),
+        }),
+      );
     return;
   }
 
@@ -1984,10 +2086,11 @@ export default async function raceScheduleMenu(interaction) {
 
     const lastId = `race_bet_umatan_formB|${raceId}`;
     const bi = setupHorseStepBack(userId, raceId, 'umatan', lastId);
-    await interaction.editReply({
-      content: '第2群（2着候補）を選択してください。',
-      embeds: [buildRaceCardEmbed(result)],
-      components: [
+    await interaction.editReply(
+        buildRaceCardV2Payload({
+          result,
+          headline: '第2群（2着候補）を選択してください。',
+          actionRows: [
         buildSelectionRow({
           customId: lastId,
           placeholder: '第2群（2着）',
@@ -1997,8 +2100,9 @@ export default async function raceScheduleMenu(interaction) {
         }),
         backButtonRow(raceId, bi),
         scheduleRaceListBackIfScheduled(userId, raceId),
-      ].filter(Boolean),
-    });
+        ].filter(Boolean),
+        }),
+      );
     return;
   }
 
@@ -2053,11 +2157,12 @@ export default async function raceScheduleMenu(interaction) {
     if (mode === 'normal') {
       const lastId = `race_bet_trifuku_normal|${raceId}`;
       const bi = setupHorseStepBack(userId, raceId, 'trifuku', lastId);
-      await interaction.editReply({
-        content: '「3連複 通常」: 馬番を3つ（3頭）選択してください。',
-        embeds: [buildRaceCardEmbed(result)],
-        components: [
-          buildSelectionRow({
+      await interaction.editReply(
+        buildRaceCardV2Payload({
+          result,
+          headline: '「3連複 通常」: 馬番を3つ（3頭）選択してください。',
+          actionRows: [
+        buildSelectionRow({
             customId: lastId,
             placeholder: '3頭を選択',
             options,
@@ -2067,18 +2172,20 @@ export default async function raceScheduleMenu(interaction) {
           backButtonRow(raceId, bi),
           scheduleRaceListBackIfScheduled(userId, raceId),
         ].filter(Boolean),
-      });
+        }),
+      );
       return;
     }
 
     if (mode === 'nagashi1') {
       const lastId = `race_bet_trifuku_n1_axis|${raceId}`;
       const bi = setupHorseStepBack(userId, raceId, 'trifuku', lastId);
-      await interaction.editReply({
-        content: '「軸1頭ながし」: 軸を1頭選択してください。',
-        embeds: [buildRaceCardEmbed(result)],
-        components: [
-          buildSelectionRow({
+      await interaction.editReply(
+        buildRaceCardV2Payload({
+          result,
+          headline: '「軸1頭ながし」: 軸を1頭選択してください。',
+          actionRows: [
+        buildSelectionRow({
             customId: lastId,
             placeholder: '軸（1頭）',
             options,
@@ -2088,18 +2195,20 @@ export default async function raceScheduleMenu(interaction) {
           backButtonRow(raceId, bi),
           scheduleRaceListBackIfScheduled(userId, raceId),
         ].filter(Boolean),
-      });
+        }),
+      );
       return;
     }
 
     if (mode === 'nagashi2') {
       const lastId = `race_bet_trifuku_n2_axis|${raceId}`;
       const bi = setupHorseStepBack(userId, raceId, 'trifuku', lastId);
-      await interaction.editReply({
-        content: '「軸2頭ながし」: 軸を2頭選択してください。',
-        embeds: [buildRaceCardEmbed(result)],
-        components: [
-          buildSelectionRow({
+      await interaction.editReply(
+        buildRaceCardV2Payload({
+          result,
+          headline: '「軸2頭ながし」: 軸を2頭選択してください。',
+          actionRows: [
+        buildSelectionRow({
             customId: lastId,
             placeholder: '軸（2頭）',
             options,
@@ -2109,18 +2218,20 @@ export default async function raceScheduleMenu(interaction) {
           backButtonRow(raceId, bi),
           scheduleRaceListBackIfScheduled(userId, raceId),
         ].filter(Boolean),
-      });
+        }),
+      );
       return;
     }
 
     if (mode === 'box') {
       const lastId = `race_bet_trifuku_box|${raceId}`;
       const bi = setupHorseStepBack(userId, raceId, 'trifuku', lastId);
-      await interaction.editReply({
-        content: '「3連複 ボックス」: 馬番を必要数選択してください（3頭以上）。',
-        embeds: [buildRaceCardEmbed(result)],
-        components: [
-          buildSelectionRow({
+      await interaction.editReply(
+        buildRaceCardV2Payload({
+          result,
+          headline: '「3連複 ボックス」: 馬番を必要数選択してください（3頭以上）。',
+          actionRows: [
+        buildSelectionRow({
             customId: lastId,
             placeholder: '馬番（複数可）',
             options,
@@ -2130,18 +2241,20 @@ export default async function raceScheduleMenu(interaction) {
           backButtonRow(raceId, bi),
           scheduleRaceListBackIfScheduled(userId, raceId),
         ].filter(Boolean),
-      });
+        }),
+      );
       return;
     }
 
     if (mode === 'formation') {
       const lastId = `race_bet_trifuku_formA|${raceId}`;
       const bi = setupHorseStepBack(userId, raceId, 'trifuku', lastId);
-      await interaction.editReply({
-        content: '「3連複 フォーメーション」: 第1群を選択してください。',
-        embeds: [buildRaceCardEmbed(result)],
-        components: [
-          buildSelectionRow({
+      await interaction.editReply(
+        buildRaceCardV2Payload({
+          result,
+          headline: '「3連複 フォーメーション」: 第1群を選択してください。',
+          actionRows: [
+        buildSelectionRow({
             customId: lastId,
             placeholder: '第1群',
             options,
@@ -2151,7 +2264,8 @@ export default async function raceScheduleMenu(interaction) {
           backButtonRow(raceId, bi),
           scheduleRaceListBackIfScheduled(userId, raceId),
         ].filter(Boolean),
-      });
+        }),
+      );
       return;
     }
   }
@@ -2202,10 +2316,11 @@ export default async function raceScheduleMenu(interaction) {
     const options = horseOptionsFromResult(result);
     const lastId = `race_bet_trifuku_n1_opp|${raceId}`;
     const bi = setupHorseStepBack(userId, raceId, 'trifuku', lastId);
-    await interaction.editReply({
-      content: '相手（2頭分）を選択してください（複数可）。',
-      embeds: [buildRaceCardEmbed(result)],
-      components: [
+    await interaction.editReply(
+        buildRaceCardV2Payload({
+          result,
+          headline: '相手（2頭分）を選択してください（複数可）。',
+          actionRows: [
         buildSelectionRow({
           customId: lastId,
           placeholder: '相手（複数可）',
@@ -2215,8 +2330,9 @@ export default async function raceScheduleMenu(interaction) {
         }),
         backButtonRow(raceId, bi),
         scheduleRaceListBackIfScheduled(userId, raceId),
-      ].filter(Boolean),
-    });
+        ].filter(Boolean),
+        }),
+      );
     return;
   }
 
@@ -2266,10 +2382,11 @@ export default async function raceScheduleMenu(interaction) {
     const options = horseOptionsFromResult(result);
     const lastId = `race_bet_trifuku_n2_opp|${raceId}`;
     const bi = setupHorseStepBack(userId, raceId, 'trifuku', lastId);
-    await interaction.editReply({
-      content: '相手（残り1頭）を選択してください（複数可）。',
-      embeds: [buildRaceCardEmbed(result)],
-      components: [
+    await interaction.editReply(
+        buildRaceCardV2Payload({
+          result,
+          headline: '相手（残り1頭）を選択してください（複数可）。',
+          actionRows: [
         buildSelectionRow({
           customId: lastId,
           placeholder: '相手（複数可）',
@@ -2279,8 +2396,9 @@ export default async function raceScheduleMenu(interaction) {
         }),
         backButtonRow(raceId, bi),
         scheduleRaceListBackIfScheduled(userId, raceId),
-      ].filter(Boolean),
-    });
+        ].filter(Boolean),
+        }),
+      );
     return;
   }
 
@@ -2364,10 +2482,11 @@ export default async function raceScheduleMenu(interaction) {
     const options = horseOptionsFromResult(result);
     const lastId = `race_bet_trifuku_formB|${raceId}`;
     const bi = setupHorseStepBack(userId, raceId, 'trifuku', lastId);
-    await interaction.editReply({
-      content: '第2群を選択してください。',
-      embeds: [buildRaceCardEmbed(result)],
-      components: [
+    await interaction.editReply(
+        buildRaceCardV2Payload({
+          result,
+          headline: '第2群を選択してください。',
+          actionRows: [
         buildSelectionRow({
           customId: lastId,
           placeholder: '第2群',
@@ -2377,8 +2496,9 @@ export default async function raceScheduleMenu(interaction) {
         }),
         backButtonRow(raceId, bi),
         scheduleRaceListBackIfScheduled(userId, raceId),
-      ].filter(Boolean),
-    });
+        ].filter(Boolean),
+        }),
+      );
     return;
   }
 
@@ -2393,10 +2513,11 @@ export default async function raceScheduleMenu(interaction) {
     const options = horseOptionsFromResult(result);
     const lastId = `race_bet_trifuku_formC|${raceId}`;
     const bi = setupHorseStepBack(userId, raceId, 'trifuku', lastId);
-    await interaction.editReply({
-      content: '第3群を選択してください。',
-      embeds: [buildRaceCardEmbed(result)],
-      components: [
+    await interaction.editReply(
+        buildRaceCardV2Payload({
+          result,
+          headline: '第3群を選択してください。',
+          actionRows: [
         buildSelectionRow({
           customId: lastId,
           placeholder: '第3群',
@@ -2406,8 +2527,9 @@ export default async function raceScheduleMenu(interaction) {
         }),
         backButtonRow(raceId, bi),
         scheduleRaceListBackIfScheduled(userId, raceId),
-      ].filter(Boolean),
-    });
+        ].filter(Boolean),
+        }),
+      );
     return;
   }
 
@@ -2461,11 +2583,12 @@ export default async function raceScheduleMenu(interaction) {
     if (mode === 'normal') {
       const lastId = `race_bet_tritan_normal_1|${raceId}`;
       const bi = setupHorseStepBack(userId, raceId, 'tritan', lastId);
-      await interaction.editReply({
-        content: '「3連単 通常」: まず1着を選択してください。',
-        embeds: [buildRaceCardEmbed(result)],
-        components: [
-          buildSelectionRow({
+      await interaction.editReply(
+        buildRaceCardV2Payload({
+          result,
+          headline: '「3連単 通常」: まず1着を選択してください。',
+          actionRows: [
+        buildSelectionRow({
             customId: lastId,
             placeholder: '1着（1頭）',
             options,
@@ -2475,18 +2598,20 @@ export default async function raceScheduleMenu(interaction) {
           backButtonRow(raceId, bi),
           scheduleRaceListBackIfScheduled(userId, raceId),
         ].filter(Boolean),
-      });
+        }),
+      );
       return;
     }
 
     if (mode === 'nagashi1') {
       const lastId = `race_bet_tritan_nagashi1_axis|${raceId}`;
       const bi = setupHorseStepBack(userId, raceId, 'tritan', lastId);
-      await interaction.editReply({
-        content: '「1着ながし」: 軸（1着）を選択してください。',
-        embeds: [buildRaceCardEmbed(result)],
-        components: [
-          buildSelectionRow({
+      await interaction.editReply(
+        buildRaceCardV2Payload({
+          result,
+          headline: '「1着ながし」: 軸（1着）を選択してください。',
+          actionRows: [
+        buildSelectionRow({
             customId: lastId,
             placeholder: '軸（1着）',
             options,
@@ -2496,18 +2621,20 @@ export default async function raceScheduleMenu(interaction) {
           backButtonRow(raceId, bi),
           scheduleRaceListBackIfScheduled(userId, raceId),
         ].filter(Boolean),
-      });
+        }),
+      );
       return;
     }
 
     if (mode === 'nagashi2') {
       const lastId = `race_bet_tritan_nagashi2_axis|${raceId}`;
       const bi = setupHorseStepBack(userId, raceId, 'tritan', lastId);
-      await interaction.editReply({
-        content: '「2着ながし」: 軸（2着）を選択してください。',
-        embeds: [buildRaceCardEmbed(result)],
-        components: [
-          buildSelectionRow({
+      await interaction.editReply(
+        buildRaceCardV2Payload({
+          result,
+          headline: '「2着ながし」: 軸（2着）を選択してください。',
+          actionRows: [
+        buildSelectionRow({
             customId: lastId,
             placeholder: '軸（2着）',
             options,
@@ -2517,18 +2644,20 @@ export default async function raceScheduleMenu(interaction) {
           backButtonRow(raceId, bi),
           scheduleRaceListBackIfScheduled(userId, raceId),
         ].filter(Boolean),
-      });
+        }),
+      );
       return;
     }
 
     if (mode === 'nagashi3') {
       const lastId = `race_bet_tritan_nagashi3_axis|${raceId}`;
       const bi = setupHorseStepBack(userId, raceId, 'tritan', lastId);
-      await interaction.editReply({
-        content: '「3着ながし」: 軸（3着）を選択してください。',
-        embeds: [buildRaceCardEmbed(result)],
-        components: [
-          buildSelectionRow({
+      await interaction.editReply(
+        buildRaceCardV2Payload({
+          result,
+          headline: '「3着ながし」: 軸（3着）を選択してください。',
+          actionRows: [
+        buildSelectionRow({
             customId: lastId,
             placeholder: '軸（3着）',
             options,
@@ -2538,18 +2667,20 @@ export default async function raceScheduleMenu(interaction) {
           backButtonRow(raceId, bi),
           scheduleRaceListBackIfScheduled(userId, raceId),
         ].filter(Boolean),
-      });
+        }),
+      );
       return;
     }
 
     if (mode === 'nagashi12') {
       const lastId = `race_bet_tritan_n12_a1|${raceId}`;
       const bi = setupHorseStepBack(userId, raceId, 'tritan', lastId);
-      await interaction.editReply({
-        content: '「1・2着ながし」: まず1着を選択してください。',
-        embeds: [buildRaceCardEmbed(result)],
-        components: [
-          buildSelectionRow({
+      await interaction.editReply(
+        buildRaceCardV2Payload({
+          result,
+          headline: '「1・2着ながし」: まず1着を選択してください。',
+          actionRows: [
+        buildSelectionRow({
             customId: lastId,
             placeholder: '1着（1頭）',
             options,
@@ -2559,18 +2690,20 @@ export default async function raceScheduleMenu(interaction) {
           backButtonRow(raceId, bi),
           scheduleRaceListBackIfScheduled(userId, raceId),
         ].filter(Boolean),
-      });
+        }),
+      );
       return;
     }
 
     if (mode === 'nagashi13') {
       const lastId = `race_bet_tritan_n13_a1|${raceId}`;
       const bi = setupHorseStepBack(userId, raceId, 'tritan', lastId);
-      await interaction.editReply({
-        content: '「1・3着ながし」: まず1着を選択してください。',
-        embeds: [buildRaceCardEmbed(result)],
-        components: [
-          buildSelectionRow({
+      await interaction.editReply(
+        buildRaceCardV2Payload({
+          result,
+          headline: '「1・3着ながし」: まず1着を選択してください。',
+          actionRows: [
+        buildSelectionRow({
             customId: lastId,
             placeholder: '1着（1頭）',
             options,
@@ -2580,18 +2713,20 @@ export default async function raceScheduleMenu(interaction) {
           backButtonRow(raceId, bi),
           scheduleRaceListBackIfScheduled(userId, raceId),
         ].filter(Boolean),
-      });
+        }),
+      );
       return;
     }
 
     if (mode === 'nagashi23') {
       const lastId = `race_bet_tritan_n23_a2|${raceId}`;
       const bi = setupHorseStepBack(userId, raceId, 'tritan', lastId);
-      await interaction.editReply({
-        content: '「2・3着ながし」: まず2着を選択してください。',
-        embeds: [buildRaceCardEmbed(result)],
-        components: [
-          buildSelectionRow({
+      await interaction.editReply(
+        buildRaceCardV2Payload({
+          result,
+          headline: '「2・3着ながし」: まず2着を選択してください。',
+          actionRows: [
+        buildSelectionRow({
             customId: lastId,
             placeholder: '2着（1頭）',
             options,
@@ -2601,18 +2736,20 @@ export default async function raceScheduleMenu(interaction) {
           backButtonRow(raceId, bi),
           scheduleRaceListBackIfScheduled(userId, raceId),
         ].filter(Boolean),
-      });
+        }),
+      );
       return;
     }
 
     if (mode === 'box') {
       const lastId = `race_bet_tritan_box|${raceId}`;
       const bi = setupHorseStepBack(userId, raceId, 'tritan', lastId);
-      await interaction.editReply({
-        content: '「3連単 ボックス」: 馬番を必要数選択してください（3頭以上）。',
-        embeds: [buildRaceCardEmbed(result)],
-        components: [
-          buildSelectionRow({
+      await interaction.editReply(
+        buildRaceCardV2Payload({
+          result,
+          headline: '「3連単 ボックス」: 馬番を必要数選択してください（3頭以上）。',
+          actionRows: [
+        buildSelectionRow({
             customId: lastId,
             placeholder: '馬番（複数可）',
             options,
@@ -2622,18 +2759,20 @@ export default async function raceScheduleMenu(interaction) {
           backButtonRow(raceId, bi),
           scheduleRaceListBackIfScheduled(userId, raceId),
         ].filter(Boolean),
-      });
+        }),
+      );
       return;
     }
 
     if (mode === 'formation') {
       const lastId = `race_bet_tritan_formA|${raceId}`;
       const bi = setupHorseStepBack(userId, raceId, 'tritan', lastId);
-      await interaction.editReply({
-        content: '「3連単 フォーメーション」: 第1群（1着候補）を選択してください。',
-        embeds: [buildRaceCardEmbed(result)],
-        components: [
-          buildSelectionRow({
+      await interaction.editReply(
+        buildRaceCardV2Payload({
+          result,
+          headline: '「3連単 フォーメーション」: 第1群（1着候補）を選択してください。',
+          actionRows: [
+        buildSelectionRow({
             customId: lastId,
             placeholder: '第1群（1着）',
             options,
@@ -2643,7 +2782,8 @@ export default async function raceScheduleMenu(interaction) {
           backButtonRow(raceId, bi),
           scheduleRaceListBackIfScheduled(userId, raceId),
         ].filter(Boolean),
-      });
+        }),
+      );
     }
     return;
   }
@@ -2660,10 +2800,11 @@ export default async function raceScheduleMenu(interaction) {
     const options = horseOptionsFromResult(result);
     const lastId = `race_bet_tritan_normal_2|${raceId}`;
     const bi = setupHorseStepBack(userId, raceId, 'tritan', lastId);
-    await interaction.editReply({
-      content: '次に2着を選択してください。',
-      embeds: [buildRaceCardEmbed(result)],
-      components: [
+    await interaction.editReply(
+        buildRaceCardV2Payload({
+          result,
+          headline: '次に2着を選択してください。',
+          actionRows: [
         buildSelectionRow({
           customId: lastId,
           placeholder: '2着（1頭）',
@@ -2673,8 +2814,9 @@ export default async function raceScheduleMenu(interaction) {
         }),
         backButtonRow(raceId, bi),
         scheduleRaceListBackIfScheduled(userId, raceId),
-      ].filter(Boolean),
-    });
+        ].filter(Boolean),
+        }),
+      );
     return;
   }
 
@@ -2689,10 +2831,11 @@ export default async function raceScheduleMenu(interaction) {
     const options = horseOptionsFromResult(result);
     const lastId = `race_bet_tritan_normal_3|${raceId}`;
     const bi = setupHorseStepBack(userId, raceId, 'tritan', lastId);
-    await interaction.editReply({
-      content: '最後に3着を選択してください。',
-      embeds: [buildRaceCardEmbed(result)],
-      components: [
+    await interaction.editReply(
+        buildRaceCardV2Payload({
+          result,
+          headline: '最後に3着を選択してください。',
+          actionRows: [
         buildSelectionRow({
           customId: lastId,
           placeholder: '3着（1頭）',
@@ -2702,8 +2845,9 @@ export default async function raceScheduleMenu(interaction) {
         }),
         backButtonRow(raceId, bi),
         scheduleRaceListBackIfScheduled(userId, raceId),
-      ].filter(Boolean),
-    });
+        ].filter(Boolean),
+        }),
+      );
     return;
   }
 
@@ -2754,10 +2898,11 @@ export default async function raceScheduleMenu(interaction) {
     const options = horseOptionsFromResult(result);
     const lastId = `race_bet_tritan_nagashi1_opp|${raceId}`;
     const bi = setupHorseStepBack(userId, raceId, 'tritan', lastId);
-    await interaction.editReply({
-      content: '相手（2着・3着）を選択してください（複数可）。',
-      embeds: [buildRaceCardEmbed(result)],
-      components: [
+    await interaction.editReply(
+        buildRaceCardV2Payload({
+          result,
+          headline: '相手（2着・3着）を選択してください（複数可）。',
+          actionRows: [
         buildSelectionRow({
           customId: lastId,
           placeholder: '相手',
@@ -2767,8 +2912,9 @@ export default async function raceScheduleMenu(interaction) {
         }),
         backButtonRow(raceId, bi),
         scheduleRaceListBackIfScheduled(userId, raceId),
-      ].filter(Boolean),
-    });
+        ].filter(Boolean),
+        }),
+      );
     return;
   }
   if (customId.startsWith('race_bet_tritan_nagashi1_opp|')) {
@@ -2818,10 +2964,11 @@ export default async function raceScheduleMenu(interaction) {
     const options = horseOptionsFromResult(result);
     const lastId = `race_bet_tritan_nagashi2_opp|${raceId}`;
     const bi = setupHorseStepBack(userId, raceId, 'tritan', lastId);
-    await interaction.editReply({
-      content: '相手（1着・3着）を選択してください（複数可）。',
-      embeds: [buildRaceCardEmbed(result)],
-      components: [
+    await interaction.editReply(
+        buildRaceCardV2Payload({
+          result,
+          headline: '相手（1着・3着）を選択してください（複数可）。',
+          actionRows: [
         buildSelectionRow({
           customId: lastId,
           placeholder: '相手',
@@ -2831,8 +2978,9 @@ export default async function raceScheduleMenu(interaction) {
         }),
         backButtonRow(raceId, bi),
         scheduleRaceListBackIfScheduled(userId, raceId),
-      ].filter(Boolean),
-    });
+        ].filter(Boolean),
+        }),
+      );
     return;
   }
   if (customId.startsWith('race_bet_tritan_nagashi2_opp|')) {
@@ -2882,10 +3030,11 @@ export default async function raceScheduleMenu(interaction) {
     const options = horseOptionsFromResult(result);
     const lastId = `race_bet_tritan_nagashi3_opp|${raceId}`;
     const bi = setupHorseStepBack(userId, raceId, 'tritan', lastId);
-    await interaction.editReply({
-      content: '相手（1着・2着）を選択してください（複数可）。',
-      embeds: [buildRaceCardEmbed(result)],
-      components: [
+    await interaction.editReply(
+        buildRaceCardV2Payload({
+          result,
+          headline: '相手（1着・2着）を選択してください（複数可）。',
+          actionRows: [
         buildSelectionRow({
           customId: lastId,
           placeholder: '相手',
@@ -2895,8 +3044,9 @@ export default async function raceScheduleMenu(interaction) {
         }),
         backButtonRow(raceId, bi),
         scheduleRaceListBackIfScheduled(userId, raceId),
-      ].filter(Boolean),
-    });
+        ].filter(Boolean),
+        }),
+      );
     return;
   }
   if (customId.startsWith('race_bet_tritan_nagashi3_opp|')) {
@@ -2946,10 +3096,11 @@ export default async function raceScheduleMenu(interaction) {
     const options = horseOptionsFromResult(result);
     const lastId = `race_bet_tritan_n12_a2|${raceId}`;
     const bi = setupHorseStepBack(userId, raceId, 'tritan', lastId);
-    await interaction.editReply({
-      content: '次に2着を選択してください。',
-      embeds: [buildRaceCardEmbed(result)],
-      components: [
+    await interaction.editReply(
+        buildRaceCardV2Payload({
+          result,
+          headline: '次に2着を選択してください。',
+          actionRows: [
         buildSelectionRow({
           customId: lastId,
           placeholder: '2着（1頭）',
@@ -2959,8 +3110,9 @@ export default async function raceScheduleMenu(interaction) {
         }),
         backButtonRow(raceId, bi),
         scheduleRaceListBackIfScheduled(userId, raceId),
-      ].filter(Boolean),
-    });
+        ].filter(Boolean),
+        }),
+      );
     return;
   }
   if (customId.startsWith('race_bet_tritan_n12_a2|')) {
@@ -2974,10 +3126,11 @@ export default async function raceScheduleMenu(interaction) {
     const options = horseOptionsFromResult(result);
     const lastId = `race_bet_tritan_n12_opp3|${raceId}`;
     const bi = setupHorseStepBack(userId, raceId, 'tritan', lastId);
-    await interaction.editReply({
-      content: '次に3着（相手）を選択してください（複数可）。',
-      embeds: [buildRaceCardEmbed(result)],
-      components: [
+    await interaction.editReply(
+        buildRaceCardV2Payload({
+          result,
+          headline: '次に3着（相手）を選択してください（複数可）。',
+          actionRows: [
         buildSelectionRow({
           customId: lastId,
           placeholder: '3着相手',
@@ -2987,8 +3140,9 @@ export default async function raceScheduleMenu(interaction) {
         }),
         backButtonRow(raceId, bi),
         scheduleRaceListBackIfScheduled(userId, raceId),
-      ].filter(Boolean),
-    });
+        ].filter(Boolean),
+        }),
+      );
     return;
   }
   if (customId.startsWith('race_bet_tritan_n12_opp3|')) {
@@ -3038,10 +3192,11 @@ export default async function raceScheduleMenu(interaction) {
     const options = horseOptionsFromResult(result);
     const lastId = `race_bet_tritan_n13_a3|${raceId}`;
     const bi = setupHorseStepBack(userId, raceId, 'tritan', lastId);
-    await interaction.editReply({
-      content: '次に3着を選択してください。',
-      embeds: [buildRaceCardEmbed(result)],
-      components: [
+    await interaction.editReply(
+        buildRaceCardV2Payload({
+          result,
+          headline: '次に3着を選択してください。',
+          actionRows: [
         buildSelectionRow({
           customId: lastId,
           placeholder: '3着（1頭）',
@@ -3051,8 +3206,9 @@ export default async function raceScheduleMenu(interaction) {
         }),
         backButtonRow(raceId, bi),
         scheduleRaceListBackIfScheduled(userId, raceId),
-      ].filter(Boolean),
-    });
+        ].filter(Boolean),
+        }),
+      );
     return;
   }
   if (customId.startsWith('race_bet_tritan_n13_a3|')) {
@@ -3066,10 +3222,11 @@ export default async function raceScheduleMenu(interaction) {
     const options = horseOptionsFromResult(result);
     const lastId = `race_bet_tritan_n13_opp2|${raceId}`;
     const bi = setupHorseStepBack(userId, raceId, 'tritan', lastId);
-    await interaction.editReply({
-      content: '次に2着（相手）を選択してください（複数可）。',
-      embeds: [buildRaceCardEmbed(result)],
-      components: [
+    await interaction.editReply(
+        buildRaceCardV2Payload({
+          result,
+          headline: '次に2着（相手）を選択してください（複数可）。',
+          actionRows: [
         buildSelectionRow({
           customId: lastId,
           placeholder: '2着相手',
@@ -3079,8 +3236,9 @@ export default async function raceScheduleMenu(interaction) {
         }),
         backButtonRow(raceId, bi),
         scheduleRaceListBackIfScheduled(userId, raceId),
-      ].filter(Boolean),
-    });
+        ].filter(Boolean),
+        }),
+      );
     return;
   }
   if (customId.startsWith('race_bet_tritan_n13_opp2|')) {
@@ -3130,10 +3288,11 @@ export default async function raceScheduleMenu(interaction) {
     const options = horseOptionsFromResult(result);
     const lastId = `race_bet_tritan_n23_a3|${raceId}`;
     const bi = setupHorseStepBack(userId, raceId, 'tritan', lastId);
-    await interaction.editReply({
-      content: '次に3着を選択してください。',
-      embeds: [buildRaceCardEmbed(result)],
-      components: [
+    await interaction.editReply(
+        buildRaceCardV2Payload({
+          result,
+          headline: '次に3着を選択してください。',
+          actionRows: [
         buildSelectionRow({
           customId: lastId,
           placeholder: '3着（1頭）',
@@ -3143,8 +3302,9 @@ export default async function raceScheduleMenu(interaction) {
         }),
         backButtonRow(raceId, bi),
         scheduleRaceListBackIfScheduled(userId, raceId),
-      ].filter(Boolean),
-    });
+        ].filter(Boolean),
+        }),
+      );
     return;
   }
   if (customId.startsWith('race_bet_tritan_n23_a3|')) {
@@ -3158,10 +3318,11 @@ export default async function raceScheduleMenu(interaction) {
     const options = horseOptionsFromResult(result);
     const lastId = `race_bet_tritan_n23_opp1|${raceId}`;
     const bi = setupHorseStepBack(userId, raceId, 'tritan', lastId);
-    await interaction.editReply({
-      content: '次に1着（相手）を選択してください（複数可）。',
-      embeds: [buildRaceCardEmbed(result)],
-      components: [
+    await interaction.editReply(
+        buildRaceCardV2Payload({
+          result,
+          headline: '次に1着（相手）を選択してください（複数可）。',
+          actionRows: [
         buildSelectionRow({
           customId: lastId,
           placeholder: '1着相手',
@@ -3171,8 +3332,9 @@ export default async function raceScheduleMenu(interaction) {
         }),
         backButtonRow(raceId, bi),
         scheduleRaceListBackIfScheduled(userId, raceId),
-      ].filter(Boolean),
-    });
+        ].filter(Boolean),
+        }),
+      );
     return;
   }
   if (customId.startsWith('race_bet_tritan_n23_opp1|')) {
@@ -3257,10 +3419,11 @@ export default async function raceScheduleMenu(interaction) {
     const options = horseOptionsFromResult(result);
     const lastId = `race_bet_tritan_formB|${raceId}`;
     const bi = setupHorseStepBack(userId, raceId, 'tritan', lastId);
-    await interaction.editReply({
-      content: '第2群（2着候補）を選択してください。',
-      embeds: [buildRaceCardEmbed(result)],
-      components: [
+    await interaction.editReply(
+        buildRaceCardV2Payload({
+          result,
+          headline: '第2群（2着候補）を選択してください。',
+          actionRows: [
         buildSelectionRow({
           customId: lastId,
           placeholder: '第2群（2着）',
@@ -3270,8 +3433,9 @@ export default async function raceScheduleMenu(interaction) {
         }),
         backButtonRow(raceId, bi),
         scheduleRaceListBackIfScheduled(userId, raceId),
-      ].filter(Boolean),
-    });
+        ].filter(Boolean),
+        }),
+      );
     return;
   }
   if (customId.startsWith('race_bet_tritan_formB|')) {
@@ -3285,10 +3449,11 @@ export default async function raceScheduleMenu(interaction) {
     const options = horseOptionsFromResult(result);
     const lastId = `race_bet_tritan_formC|${raceId}`;
     const bi = setupHorseStepBack(userId, raceId, 'tritan', lastId);
-    await interaction.editReply({
-      content: '第3群（3着候補）を選択してください。',
-      embeds: [buildRaceCardEmbed(result)],
-      components: [
+    await interaction.editReply(
+        buildRaceCardV2Payload({
+          result,
+          headline: '第3群（3着候補）を選択してください。',
+          actionRows: [
         buildSelectionRow({
           customId: lastId,
           placeholder: '第3群（3着）',
@@ -3298,8 +3463,9 @@ export default async function raceScheduleMenu(interaction) {
         }),
         backButtonRow(raceId, bi),
         scheduleRaceListBackIfScheduled(userId, raceId),
-      ].filter(Boolean),
-    });
+        ].filter(Boolean),
+        }),
+      );
     return;
   }
   if (customId.startsWith('race_bet_tritan_formC|')) {

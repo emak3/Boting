@@ -1,8 +1,10 @@
 import NetkeibaScraper from './netkeibaScraper.mjs';
+import { pathToFileURL } from 'node:url';
 
 async function testScraper() {
   const scraper = new NetkeibaScraper();
-  const raceId = '202505030211'; // サンプルレースID
+  // トップのピックアップ等、実在する race_id に差し替えて試験してください
+  const raceId = process.env.TEST_RACE_ID || '202606020701';
   
   console.log('🐎 Netkeiba Scraper Test Starting...');
   console.log(`Race ID: ${raceId}`);
@@ -29,7 +31,7 @@ ${result.horses.map((horse, index) => `
 ${index + 1}. **${horse.name}** 
    - Frame: ${horse.frameNumber} | Number: ${horse.horseNumber}
    - Age: ${horse.age} | Weight: ${horse.weight}kg
-   - Odds: ${horse.odds} | Popularity: ${horse.popularity}
+   - Odds: ${horse.odds} | Place〜: ${horse.placeOddsMin ?? 'N/A'} | Popularity: ${horse.popularity}
    - Jockey: ${horse.jockey} | Trainer: ${horse.trainer}
    - Horse ID: ${horse.horseId || 'N/A'}
    - URL: ${horse.url || 'N/A'}
@@ -37,6 +39,7 @@ ${index + 1}. **${horse.name}**
 
 **Scraping Details:**
 - Method Used: ${result.method || 'cheerio'}
+- Odds official time: ${result.oddsOfficialTime || 'N/A'}
 - Scraped At: ${result.scrapedAt}
 - Character Encoding: ${hasMojibake ? '❌ 文字化けが検出されました' : '✅ 正常'}
 - Success: ${hasMojibake ? '⚠️' : '✅'}
@@ -110,9 +113,11 @@ function checkForMojibake(result) {
   return false;
 }
 
-// 実行
-if (import.meta.url === `file://${process.argv[1]}`) {
-  testScraper().then(result => {
+// 実行（Windows でも import.meta.url と argv を正しく突き合わせる）
+const isDirectRun =
+  process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href;
+if (isDirectRun) {
+  testScraper().then((result) => {
     process.exit(result.success ? 0 : 1);
   });
 }

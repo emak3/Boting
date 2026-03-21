@@ -1,0 +1,30 @@
+/** @param {{ raceInfo?: object, horses: object[], totalHorses: number, oddsOfficialTime?: string }} result */
+export function buildRaceCardEmbed(result) {
+  const embed = {
+    color: 0x0099ff,
+    title: `🐎 ${result.raceInfo?.title || 'レース情報'}`,
+    description: `**日程:** ${result.raceInfo?.date || 'N/A'}\n**コース:** ${result.raceInfo?.course || 'N/A'}`,
+    fields: result.horses.slice(0, 18).map((horse) => {
+      const place = horse.placeOddsMin ? ` / 複勝〜${horse.placeOddsMin}` : '';
+      const ninki = horse.popularity && horse.popularity !== 'N/A' ? ` | ${horse.popularity}人気` : '';
+      return {
+        name: `${horse.horseNumber}. ${horse.name}`,
+        value: `枠${horse.frameNumber} | ${horse.age} | ${horse.weight}kg\n${horse.jockey}${ninki}\n単勝 ${horse.odds}${place}`,
+        inline: true,
+      };
+    }),
+    footer: {
+      text: `全${result.totalHorses}頭${result.oddsOfficialTime ? ` | オッズ時刻 ${result.oddsOfficialTime}` : ''}`,
+    },
+  };
+
+  if (result.horses.length > 18) {
+    embed.fields.push({
+      name: '注意',
+      value: `Embedの都合で先頭18頭のみ表示しています（全${result.totalHorses}頭取得済み）。`,
+      inline: false,
+    });
+  }
+
+  return embed;
+}

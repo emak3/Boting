@@ -14,8 +14,13 @@ class NetkeibaScraper {
       'Accept-Encoding': 'gzip, deflate, br',
       'Connection': 'keep-alive',
       'Upgrade-Insecure-Requests': '1',
+      'Referer': 'https://race.netkeiba.com/top/',
     };
   }
+
+  /** 出馬表の馬行のみ（予想ラップ等の別テーブルの HorseList を除外） */
+  static shutubaHorseRowSelector =
+    '.Shutuba_Table.ShutubaTable:not(.PredictRap_Table) tr.HorseList, .Shutuba_Table.RaceTable01.ShutubaTable:not(.PredictRap_Table) tr[id^="tr_"]';
 
   /**
    * メインの出馬表データ取得メソッド
@@ -27,12 +32,15 @@ class NetkeibaScraper {
       // まずCheerioでの取得を試行
       const result = await this.scrapeWithCheerio(url);
       if (result && result.horses.length > 0) {
+        await this.mergeJraOddsFromApi(raceId, result);
         return result;
       }
       
       // Cheerioで失敗した場合はPuppeteerを使用
       console.log('Cheerio approach failed, falling back to Puppeteer...');
-      return await this.scrapeWithPuppeteer(url);
+      const puppetResult = await this.scrapeWithPuppeteer(url);
+      await this.mergeJraOddsFromApi(raceId, puppetResult);
+      return puppetResult;
       
     } catch (error) {
       console.error('Error scraping race card:', error);
@@ -87,7 +95,7 @@ class NetkeibaScraper {
     const raceInfo = this.extractRaceInfo($);
 
     // 各馬のデータを抽出 - より柔軟なセレクタを使用
-    $('.HorseList, tr[id^="tr_"], .RaceTable01 tr, .ShutubaTable tr').each((index, element) => {
+    $(NetkeibaScraper.shutubaHorseRowSelector).each((index, element) => {
       const $row = $(element);
       
       // ヘッダー行をスキップ
@@ -106,6 +114,7 @@ class NetkeibaScraper {
         age: this.extractAge($row, $),
         weight: this.extractWeight($row, $),
         odds: this.extractOdds($row, $),
+        placeOddsMin: null,
         popularity: this.extractPopularity($row, $),
         jockey: this.extractJockey($row, $),
         trainer: this.extractTrainer($row, $),
@@ -216,7 +225,7 @@ class NetkeibaScraper {
    * オッズの抽出（動的コンテンツのため初期値は取得困難）
    */
   extractOdds($row, $) {
-    const oddsElement = $row.find('[id^="odds-"], .Popular span, .odds, td.odds').first();
+    const oddsElement = $row.find('span[id^="odds-1_"], td.Txt_R.Popular span[id^="odds-"]').first();
     const oddsText = oddsElement.text().trim();
     return oddsText && oddsText !== '---.-' && oddsText !== '**' && oddsText !== '' ? oddsText : 'N/A';
   }
@@ -225,8 +234,8 @@ class NetkeibaScraper {
    * 人気の抽出
    */
   extractPopularity($row, $) {
-    const popularityElement = $row.find('[id^="ninki-"], .Popular_Ninki span, td.ninki').first();
-    const popularityText = popularityElement.text().trim();
+    const popularityElement = $row.find('span[id^="ninki-1_"], [id^="ninki-"], .Popular_Ninki span, td.ninki').first();
+    let popularityText = popularityElement.text().trim().replace(/^\(|\)$/g, '');
     return popularityText && popularityText !== '**' && popularityText !== '' ? popularityText : 'N/A';
   }
 
@@ -260,6 +269,67 @@ class NetkeibaScraper {
     if (!url) return null;
     const match = url.match(/horse\/(\d+)/);
     return match ? match[1] : null;
+  }
+
+  /**
+   * JRA 単勝・複勝オッズ API（ページの jquery.odds_update と同系統）
+   * @see https://race.netkeiba.com/api/api_get_jra_odds.html
+   */
+  async fetchJraOddsPayload(raceId) {
+    const params = new URLSearchParams({
+      pid: 'api_get_jra_odds',
+      input: 'UTF-8',
+      output: 'json',
+      race_id: String(raceId),
+      type: '1',
+      action: 'init',
+      sort: 'odds',
+      compress: '0',
+    });
+    const apiUrl = `${this.baseUrl}/api/api_get_jra_odds.html?${params.toString()}`;
+    const { data } = await axios.get(apiUrl, {
+      headers: this.headers,
+      timeout: 15000,
+    });
+    if (data?.status === 'NG' || !data?.data?.odds) {
+      return null;
+    }
+    return data.data;
+  }
+
+  /**
+   * horses に API の単勝・複勝（下限）・人気を上書きマージ
+   */
+  async mergeJraOddsFromApi(raceId, result) {
+    if (!result?.horses?.length) return;
+    let payload;
+    try {
+      payload = await this.fetchJraOddsPayload(raceId);
+    } catch (e) {
+      console.warn('JRA odds API failed:', e.message);
+      return;
+    }
+    if (!payload?.odds) return;
+
+    const win = payload.odds['1'] || {};
+    const place = payload.odds['2'] || {};
+    for (const horse of result.horses) {
+      const num = String(horse.horseNumber).replace(/\D/g, '');
+      if (!num) continue;
+      const key = num.padStart(2, '0');
+      const winRow = win[key];
+      if (winRow && winRow[0] != null && String(winRow[0]).trim() !== '') {
+        horse.odds = String(winRow[0]).trim();
+      }
+      if (winRow && winRow[2] != null && String(winRow[2]).trim() !== '') {
+        horse.popularity = String(winRow[2]).trim();
+      }
+      const placeRow = place[key];
+      if (placeRow && placeRow[0] != null && String(placeRow[0]).trim() !== '') {
+        horse.placeOddsMin = String(placeRow[0]).trim();
+      }
+    }
+    result.oddsOfficialTime = payload.official_datetime || null;
   }
 
   /**

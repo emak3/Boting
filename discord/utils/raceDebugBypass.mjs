@@ -24,6 +24,11 @@ export function isDebugSalesBypassEnabled() {
   return debugSalesBypassEnabled;
 }
 
+/** デバッグON時に /daily の日次境界を無視して10bpを何度でも（許可ユーザーのみ） */
+export function canBypassDailyCooldown(userId) {
+  return debugSalesBypassEnabled && userId === DEBUG_BYPASS_USER_ID;
+}
+
 /**
  * 発売が締切かどうか。判定不能時は null（従来どおり購入フローを阻害しない）。
  * @param {string} raceId

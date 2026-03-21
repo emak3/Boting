@@ -353,7 +353,7 @@ export default async function betFlowButtons(interaction) {
 
     const modal = new ModalBuilder()
       .setCustomId(`race_bet_unit_modal|${modalRaceId}`)
-      .setTitle('1点単価を編集');
+      .setTitle('金額変更');
 
     const input = new TextInputBuilder()
       .setCustomId('unit_yen')

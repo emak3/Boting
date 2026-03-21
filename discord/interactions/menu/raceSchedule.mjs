@@ -300,20 +300,18 @@ function buildSelectionRow({
   return new ActionRowBuilder().addComponents(menu);
 }
 
-/** 購入サマリー下部: 1行にボタン1つずつ */
+/** 購入サマリー下部: 金額変更（左）・購入（右）を同一行、その下に戻る・レース一覧 */
 function summaryPurchaseButtonRows(raceId, userId, backMenuIndex) {
   const rows = [
     new ActionRowBuilder().addComponents(
       new ButtonBuilder()
+        .setCustomId(`race_bet_unit_edit|${raceId}`)
+        .setLabel('金額変更')
+        .setStyle(ButtonStyle.Primary),
+      new ButtonBuilder()
         .setCustomId(`race_bet_purchase|${raceId}`)
         .setLabel('購入')
         .setStyle(ButtonStyle.Success),
-    ),
-    new ActionRowBuilder().addComponents(
-      new ButtonBuilder()
-        .setCustomId(`race_bet_unit_edit|${raceId}`)
-        .setLabel('1点単価')
-        .setStyle(ButtonStyle.Primary),
     ),
   ];
   const br = backButtonRow(raceId, backMenuIndex);

@@ -33,7 +33,7 @@ export default async function editUnitPriceModal(interaction) {
   const unitYen = parseInt(raw, 10);
 
   if (!Number.isFinite(unitYen) || unitYen <= 0) {
-    await interaction.reply({ content: '❌ 1点単価は正の整数で入力してください。', ephemeral: true });
+    await interaction.reply({ content: '❌ 金額は正の整数で入力してください。', ephemeral: true });
     return;
   }
 

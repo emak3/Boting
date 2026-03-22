@@ -184,7 +184,7 @@ const commandObject = {
     .addStringOption((option) =>
       option
         .setName('action')
-        .setDescription('省略時はメニュー（bp 残高とボタン）を表示')
+        .setDescription('省略時は BP 詳細（/bp_rank user と同様）と操作ボタンを表示')
         .setRequired(false)
         .addChoices(
           { name: '馬券を購入', value: 'purchase' },
@@ -265,7 +265,8 @@ const commandObject = {
     try {
       await interaction.editReply(
         await buildRaceHubV2Payload({
-          userId,
+          user: interaction.user,
+          guild: interaction.guild,
           extraFlags: MessageFlags.Ephemeral,
         }),
       );

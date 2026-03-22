@@ -3,34 +3,19 @@ import {
   InteractionContextType,
   MessageFlags,
   EmbedBuilder,
+  ActionRowBuilder,
+  ButtonBuilder,
+  ButtonStyle,
 } from 'discord.js';
-import {
-  fetchFirstLedgerAt,
-} from '../utils/userPointsStore.mjs';
-import { fetchUserRaceBetAggregates } from '../utils/raceBetRecords.mjs';
 import {
   fetchAllUsersByBalanceDesc,
   computeBpRank,
 } from '../utils/bpLeaderboard.mjs';
 import { runPendingRaceRefundsForUser } from '../utils/raceBetRefundSweep.mjs';
-
-function formatJst(d) {
-  return d.toLocaleString('ja-JP', {
-    timeZone: 'Asia/Tokyo',
-    dateStyle: 'medium',
-    timeStyle: 'short',
-  });
-}
-
-function pct(r) {
-  if (r == null || !Number.isFinite(r)) return '—';
-  return `${(r * 100).toFixed(2)}%`;
-}
-
-function earliestDate(a, b) {
-  if (a && b) return a < b ? a : b;
-  return a || b || null;
-}
+import {
+  buildBpRankUserDetailV2Container,
+  BP_RANK_USER_HISTORY_PREFIX,
+} from '../utils/bpRankUserDetailEmbed.mjs';
 
 const commandObject = {
   command: new SlashCommandBuilder()
@@ -66,90 +51,35 @@ const commandObject = {
       }
 
       await interaction.deferReply();
-      await runPendingRaceRefundsForUser(interaction.user.id);
 
-      let sorted;
+      let container;
       try {
-        sorted = await fetchAllUsersByBalanceDesc();
+        container = await buildBpRankUserDetailV2Container(
+          targetUser,
+          interaction.guild,
+          interaction.user.id,
+        );
       } catch (e) {
-        console.error('bp_rank / fetchAllUsersByBalanceDesc:', e);
+        console.error('bp_rank / detail:', e);
         await interaction.editReply({
-          content: `❌ ランキングデータの取得に失敗しました: ${e.message}`,
+          content: `❌ 詳細の取得に失敗しました: ${e.message}`,
         });
         return;
       }
 
-      const { rank, balance, totalUsers } = computeBpRank(
-        sorted,
-        targetUser.id,
+      const historyRow = new ActionRowBuilder().addComponents(
+        new ButtonBuilder()
+          .setCustomId(`${BP_RANK_USER_HISTORY_PREFIX}|${targetUser.id}`)
+          .setLabel('購入履歴')
+          .setStyle(ButtonStyle.Secondary),
       );
 
-      let ledgerFirst;
-      let agg;
-      try {
-        [ledgerFirst, agg] = await Promise.all([
-          fetchFirstLedgerAt(targetUser.id),
-          fetchUserRaceBetAggregates(targetUser.id),
-        ]);
-      } catch (e) {
-        console.error('bp_rank / stats:', e);
-        await interaction.editReply({
-          content: `❌ 統計の取得に失敗しました: ${e.message}`,
-        });
-        return;
-      }
-
-      const firstUse = earliestDate(ledgerFirst, agg.firstPurchasedAt);
-
-      let guildJoinedLine = '—';
-      try {
-        const member = await interaction.guild.members
-          .fetch(targetUser.id)
-          .catch(() => null);
-        if (member?.joinedAt) {
-          guildJoinedLine = formatJst(member.joinedAt);
-        }
-      } catch {
-        /* ignore */
-      }
-
-      const rankLine =
-        rank != null && totalUsers > 0
-          ? `**${rank}** / ${totalUsers} 位（同率は同順位）`
-          : '（ランキング対象外・データなし）';
-
-      const embed = new EmbedBuilder()
-        .setTitle(`BP 詳細 — ${targetUser.username}`)
-        .setColor(0x5865f2)
-        .setThumbnail(targetUser.displayAvatarURL({ size: 128 }))
-        .addFields(
-          { name: '現在の BP', value: `**${balance}** bp`, inline: true },
-          { name: '順位', value: rankLine, inline: true },
-          { name: 'サーバー参加日', value: guildJoinedLine, inline: false },
-          {
-            name: '初回利用（台帳・購入の早い方）',
-            value: firstUse ? formatJst(firstUse) : '—',
-            inline: false,
-          },
-          {
-            name: '競馬購入',
-            value: [
-              `的中件数: **${agg.hitCount}** 件`,
-              `購入件数: **${agg.purchaseCount}** 件`,
-              `購入金額合計: **${agg.totalCostBp}** bp`,
-              `1点あたり最大金額: **${agg.maxCostBp}** bp`,
-              `精算済み件数: **${agg.settledCount}** 件`,
-              `最大回収率（精算済み1件あたり）: **${pct(agg.maxRecoveryRate)}**`,
-              `最低回収率（精算済み1件あたり）: **${pct(agg.minRecoveryRate)}**`,
-            ].join('\n'),
-            inline: false,
-          },
-        )
-        .setFooter({
-          text: '回収率 = 払戻 bp ÷ 購入 bp（未確定は集計に含めません）',
-        });
-
-      await interaction.editReply({ embeds: [embed] });
+      await interaction.editReply({
+        content: null,
+        embeds: [],
+        components: [container, historyRow],
+        flags: MessageFlags.IsComponentsV2,
+      });
       return;
     }
 

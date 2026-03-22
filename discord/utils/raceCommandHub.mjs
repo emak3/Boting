@@ -7,6 +7,7 @@ import {
 } from 'discord.js';
 import { getBalance } from './userPointsStore.mjs';
 import { scheduleKindSelectRow } from './scheduleKindUi.mjs';
+import { buildBpRankUserDetailV2Container } from './bpRankUserDetailEmbed.mjs';
 
 export const RACE_CMD_HUB_PREFIX = 'race_cmd_hub';
 
@@ -34,17 +35,12 @@ function fmtBpLine(balance) {
 }
 
 /**
- * /race トップ: bp 表示 + 馬券購入 / 履歴 / 購入予定
- * @param {{ userId: string, extraFlags?: number }} opts
+ * /race トップ: `/bp_rank user:自分` と同じ BP 詳細 + 馬券購入 / 履歴 / 購入予定（常に Components V2。
+ * 購入履歴など V2 画面から戻るとき、フラグを外さないため必須）
+ * @param {{ user: import('discord.js').User, guild: import('discord.js').Guild | null, extraFlags?: number }} opts
  */
-export async function buildRaceHubV2Payload({ userId, extraFlags = 0 }) {
-  const balance = await getBalance(userId);
-  const container = new ContainerBuilder().setAccentColor(HUB_ACCENT);
-  container.addTextDisplayComponents((td) =>
-    td.setContent(
-      [fmtBpLine(balance), '', 'ボタンかコマンドの選択肢から操作してください。'].join('\n'),
-    ),
-  );
+export async function buildRaceHubV2Payload({ user, guild, extraFlags = 0 }) {
+  const container = await buildBpRankUserDetailV2Container(user, guild, user.id);
   const row = new ActionRowBuilder().addComponents(
     new ButtonBuilder()
       .setCustomId(`${RACE_CMD_HUB_PREFIX}|purchase`)

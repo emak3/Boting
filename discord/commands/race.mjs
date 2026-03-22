@@ -24,6 +24,7 @@ import {
 import { buildRacePurchaseHistoryV2Payload } from '../utils/racePurchaseHistoryUi.mjs';
 import { editReplyOpenBetSlipReview } from '../utils/betSlipOpenReview.mjs';
 import { normalizeScheduleVenueDisplayName } from '../utils/netkeibaJraVenueCode.mjs';
+import { runPendingRaceRefundsForUser } from '../utils/raceBetRefundSweep.mjs';
 
 function venueSelectRow(scheduleKind, kaisaiDate, currentGroup, venues) {
   const menu = new StringSelectMenuBuilder()
@@ -204,6 +205,7 @@ const commandObject = {
 
   async execute(interaction) {
     await interaction.deferReply({ flags: MessageFlags.Ephemeral });
+    await runPendingRaceRefundsForUser(interaction.user.id);
 
     const userId = interaction.user.id;
     const raceIdRaw = interaction.options.getString('raceid');

@@ -31,6 +31,7 @@ import {
 import { buildRaceCardV2Payload, buildTextAndRowsV2Payload } from '../../utils/raceCardDisplay.mjs';
 import {
   buildRacePurchaseHistoryV2Payload,
+  RACE_HISTORY_DAY_PREFIX,
   RACE_HISTORY_PAGE_PREFIX,
 } from '../../utils/racePurchaseHistoryUi.mjs';
 import { RACE_PURCHASE_HISTORY_CUSTOM_ID } from '../../utils/betSlipViewUi.mjs';
@@ -39,8 +40,12 @@ import {
   selectFrameLabel,
   wakuUmaEmojiResolvable,
 } from '../../utils/raceNumberEmoji.mjs';
-import { filterBetTypesForJraSale } from '../../utils/jraBetAvailability.mjs';
+import {
+  filterBetTypesForJraSale,
+  frameAllowsWakurenSamePair,
+} from '../../utils/jraBetAvailability.mjs';
 import { tryConfirmRacePurchase } from '../../utils/raceBetRecords.mjs';
+import { deriveRaceHoldYmdFromFlow } from '../../utils/raceHoldDate.mjs';
 import { getBalance } from '../../utils/userPointsStore.mjs';
 import { ticketCountForValidation } from '../../utils/raceBetTickets.mjs';
 import {
@@ -202,14 +207,14 @@ export default async function betFlowButtons(interaction) {
     if (!pending?.restore) {
       await interaction.reply({
         content: '❌ 戻れません。もう一度 /race から開き直してください。',
-        ephemeral: true,
+        flags: MessageFlags.Ephemeral,
       });
       return;
     }
     if (String(pending.anchorRaceId) !== String(parsedRaceId)) {
       await interaction.reply({
         content: '❌ このメッセージは古いです。もう一度開き直してください。',
-        ephemeral: true,
+        flags: MessageFlags.Ephemeral,
       });
       return;
     }
@@ -217,7 +222,7 @@ export default async function betFlowButtons(interaction) {
     if (!rid || !/^\d{12}$/.test(String(rid))) {
       await interaction.reply({
         content: '❌ 戻れません。',
-        ephemeral: true,
+        flags: MessageFlags.Ephemeral,
       });
       return;
     }
@@ -291,6 +296,50 @@ export default async function betFlowButtons(interaction) {
     return;
   }
 
+  if (customId.startsWith(`${RACE_HISTORY_DAY_PREFIX}|`)) {
+    const parts = customId.split('|');
+    const pk = parts[1];
+    const pg = parseInt(parts[2], 10);
+    let meetingFilter = 'all';
+    if (parts.length >= 4 && parts[3] !== undefined && parts[3] !== '') {
+      meetingFilter = parts[3];
+    }
+    if (
+      meetingFilter !== 'all' &&
+      !/^\d{10}$/.test(String(meetingFilter))
+    ) {
+      await interaction.reply({
+        content: '❌ 開催の指定が無効です。',
+        flags: MessageFlags.Ephemeral,
+      });
+      return;
+    }
+    if (!/^\d{8}$/.test(String(pk || '')) || !Number.isFinite(pg) || pg < 0) {
+      await interaction.reply({
+        content: '❌ 日付の指定が無効です。',
+        flags: MessageFlags.Ephemeral,
+      });
+      return;
+    }
+    await interaction.deferUpdate();
+    try {
+      const payload = await buildRacePurchaseHistoryV2Payload({
+        userId,
+        periodKey: pk,
+        page: pg,
+        meetingFilter,
+        extraFlags: MessageFlags.Ephemeral,
+      });
+      await interaction.editReply(payload);
+    } catch (e) {
+      console.error('race_bet_history_day', e);
+      await interaction.editReply({
+        content: `❌ 表示の更新に失敗しました: ${e.message}`,
+      }).catch(() => {});
+    }
+    return;
+  }
+
   if (customId.startsWith(`${RACE_HISTORY_PAGE_PREFIX}|`)) {
     const parts = customId.split('|');
     const pk = parts[1];
@@ -305,14 +354,14 @@ export default async function betFlowButtons(interaction) {
     ) {
       await interaction.reply({
         content: '❌ 開催の指定が無効です。',
-        ephemeral: true,
+        flags: MessageFlags.Ephemeral,
       });
       return;
     }
     if (!/^\d{8}$/.test(String(pk || '')) || !Number.isFinite(pg) || pg < 0) {
       await interaction.reply({
         content: '❌ ページ指定が無効です。',
-        ephemeral: true,
+        flags: MessageFlags.Ephemeral,
       });
       return;
     }
@@ -355,21 +404,21 @@ export default async function betFlowButtons(interaction) {
     if (!pending?.items?.length) {
       await interaction.reply({
         content: '❌ 購入予定の確認セッションが無効です。',
-        ephemeral: true,
+        flags: MessageFlags.Ephemeral,
       });
       return;
     }
     if (!anchor || String(pending.anchorRaceId) !== String(anchor)) {
       await interaction.reply({
         content: '❌ このメッセージは古いです。もう一度開き直してください。',
-        ephemeral: true,
+        flags: MessageFlags.Ephemeral,
       });
       return;
     }
     if (dir !== 'prev' && dir !== 'next') {
       await interaction.reply({
         content: '❌ 操作が無効です。',
-        ephemeral: true,
+        flags: MessageFlags.Ephemeral,
       });
       return;
     }
@@ -390,14 +439,14 @@ export default async function betFlowButtons(interaction) {
     if (!pending?.items?.length) {
       await interaction.reply({
         content: '❌ 購入予定の確認セッションが無効です。',
-        ephemeral: true,
+        flags: MessageFlags.Ephemeral,
       });
       return;
     }
     if (String(pending.anchorRaceId) !== String(anchor)) {
       await interaction.reply({
         content: '❌ このメッセージは古いです。もう一度開き直してください。',
-        ephemeral: true,
+        flags: MessageFlags.Ephemeral,
       });
       return;
     }
@@ -431,14 +480,14 @@ export default async function betFlowButtons(interaction) {
     if (!pending?.items?.length) {
       await interaction.reply({
         content: '❌ 購入予定の確認セッションが無効です。',
-        ephemeral: true,
+        flags: MessageFlags.Ephemeral,
       });
       return;
     }
     if (String(pending.anchorRaceId) !== String(anchor)) {
       await interaction.reply({
         content: '❌ このメッセージは古いです。もう一度開き直してください。',
-        ephemeral: true,
+        flags: MessageFlags.Ephemeral,
       });
       return;
     }
@@ -455,14 +504,14 @@ export default async function betFlowButtons(interaction) {
     if (!pending?.items?.length) {
       await interaction.reply({
         content: '❌ 購入予定の確認セッションが無効です。',
-        ephemeral: true,
+        flags: MessageFlags.Ephemeral,
       });
       return;
     }
     if (String(pending.anchorRaceId) !== String(raceId)) {
       await interaction.reply({
         content: '❌ このメッセージは古いです。もう一度開き直してください。',
-        ephemeral: true,
+        flags: MessageFlags.Ephemeral,
       });
       return;
     }
@@ -546,7 +595,22 @@ export default async function betFlowButtons(interaction) {
       return;
     }
 
-    const purchase = await tryConfirmRacePurchase(userId, pending.items);
+    let purchase;
+    try {
+      purchase = await tryConfirmRacePurchase(userId, pending.items);
+    } catch (e) {
+      console.error('tryConfirmRacePurchase', e);
+      const extraFlags = slipReviewExtraFlags();
+      const detail = e?.message != null ? String(e.message).slice(0, 400) : String(e);
+      await interaction.editReply(
+        buildTextAndRowsV2Payload({
+          headline: `❌ **データベースへの保存に失敗しました**（bp の減算・購入記録は行われていません）。ネットワークや Firebase の状態を確認し、しばらくしてから再度お試しください。\n\`${detail}\``,
+          actionRows: [],
+          extraFlags,
+        }),
+      );
+      return;
+    }
     if (!purchase.ok) {
       const extraFlags = slipReviewExtraFlags();
       let msg = '❌ 購入を完了できませんでした。';
@@ -555,6 +619,13 @@ export default async function betFlowButtons(interaction) {
       } else if (purchase.reason === 'bad_tickets') {
         msg =
           '❌ 購入予定データが不正です。出馬表からやり直し、**購入予定に追加** し直してください。';
+      } else if (purchase.reason === 'bad_race') {
+        msg =
+          '❌ レースIDの形式が不正です。出馬表から開き直し、**購入予定に追加** し直してください。';
+      } else if (purchase.reason === 'bad_points') {
+        msg = '❌ 点数が不正です。出馬表からやり直してください。';
+      } else if (purchase.reason === 'empty') {
+        msg = '❌ 購入対象がありません。';
       }
       await interaction.editReply(
         buildTextAndRowsV2Payload({
@@ -619,7 +690,7 @@ export default async function betFlowButtons(interaction) {
   if (!flow) {
     await interaction.reply({
       content: '❌ セッションが無効です。もう一度 /race から開始してください。',
-      ephemeral: true,
+      flags: MessageFlags.Ephemeral,
     });
     return;
   }
@@ -628,7 +699,7 @@ export default async function betFlowButtons(interaction) {
     if (!flow.purchase) {
       await interaction.reply({
         content: '❌ 追加できません（選択が完了していません）。',
-        ephemeral: true,
+        flags: MessageFlags.Ephemeral,
       });
       return;
     }
@@ -643,7 +714,7 @@ export default async function betFlowButtons(interaction) {
       await interaction.reply({
         content:
           '❌ 購入予定データが古いか不完全です。出馬表から式別を選び直してから **購入予定に追加** してください。',
-        ephemeral: true,
+        flags: MessageFlags.Ephemeral,
       });
       return;
     }
@@ -657,6 +728,8 @@ export default async function betFlowButtons(interaction) {
       oddsOfficialTime: flow.result?.oddsOfficialTime,
       isResult: !!flow.result?.isResult,
       netkeibaOrigin: origin,
+      raceInfoDate: flow.result?.raceInfo?.date ?? '',
+      raceHoldYmd: deriveRaceHoldYmdFromFlow(flow, flow.result?.raceId || raceId),
       betType: flow.betType ?? '',
       tickets: flow.purchase.tickets,
       horseNumToFrame: horseNumToFrameFromResult(flow.result),
@@ -665,7 +738,7 @@ export default async function betFlowButtons(interaction) {
     if (!added.ok && added.reason === 'full') {
       await interaction.reply({
         content: `❌ 購入予定は最大${SLIP_MAX_ITEMS}件までです。**購入予定**で確認するか、追加済みを空にしてください。`,
-        ephemeral: true,
+        flags: MessageFlags.Ephemeral,
       });
       return;
     }
@@ -715,7 +788,7 @@ export default async function betFlowButtons(interaction) {
     if (!flowFwd) {
       await interaction.reply({
         content: '❌ セッションが無効です。もう一度 /race から試してください。',
-        ephemeral: true,
+        flags: MessageFlags.Ephemeral,
       });
       return;
     }
@@ -724,7 +797,7 @@ export default async function betFlowButtons(interaction) {
     if (vi == null || !backMenuIds.length) {
       await interaction.reply({
         content: '❌ ここからは進めません。',
-        ephemeral: true,
+        flags: MessageFlags.Ephemeral,
       });
       return;
     }
@@ -877,7 +950,7 @@ export default async function betFlowButtons(interaction) {
     if (!flow.purchase) {
       await interaction.reply({
         content: '❌ いまは金額を変えられません。式別と馬番の選択を完了してください。',
-        ephemeral: true,
+        flags: MessageFlags.Ephemeral,
       });
       return;
     }
@@ -958,7 +1031,10 @@ function modeOptionsList(modeDefs, selectedId) {
 function horseOptionsFromResult(result, selectedValues = [], cap = 25) {
   const selectedSet = new Set((selectedValues || []).map((v) => String(v)));
   const unique = new Map();
-  for (const h of result.horses || []) unique.set(String(h.horseNumber), h);
+  for (const h of result.horses || []) {
+    if (h.excluded) continue;
+    unique.set(String(h.horseNumber), h);
+  }
   const arr = Array.from(unique.entries())
     .map(([num, horse]) => ({ num, horse }))
     .sort((a, b) => Number(a.num) - Number(b.num))
@@ -975,11 +1051,13 @@ function horseOptionsFromResult(result, selectedValues = [], cap = 25) {
   });
 }
 
-function frameOptionsFromResult(result, selectedValues = [], cap = 25) {
+function frameOptionsFromResult(result, selectedValues = [], cap = 25, opts = {}) {
   const selectedSet = new Set((selectedValues || []).map((v) => String(v)));
+  const omit = new Set((opts.omitFrames || []).map((x) => String(x)));
   const counts = new Map();
   const frameToHorses = new Map();
   for (const h of result.horses || []) {
+    if (h.excluded) continue;
     const f = String(h.frameNumber);
     counts.set(f, (counts.get(f) || 0) + 1);
     if (!frameToHorses.has(f)) frameToHorses.set(f, []);
@@ -987,6 +1065,7 @@ function frameOptionsFromResult(result, selectedValues = [], cap = 25) {
   }
   const arr = Array.from(counts.entries())
     .map(([frame, count]) => ({ frame, count, horses: frameToHorses.get(frame) || [] }))
+    .filter(({ frame }) => !omit.has(String(frame)))
     .sort((a, b) => Number(a.frame) - Number(b.frame))
     .slice(0, cap);
   return arr.map(({ frame, count, horses }) => {
@@ -1021,7 +1100,21 @@ export function buildMenuRowFromCustomId({ menuCustomId, flow, result }) {
     kind === 'race_bet_frame_pair_normal_first' ||
     kind === 'race_bet_frame_pair_normal_second'
   ) {
-    const options = frameOptionsFromResult(result, selectedValues);
+    let frameOpts = {};
+    if (kind === 'race_bet_frame_pair_normal_second') {
+      const firstId = `race_bet_frame_pair_normal_first|${raceId}`;
+      const first =
+        flow.framePairNormalFirst != null
+          ? String(flow.framePairNormalFirst)
+          : (stepSelections[firstId]?.[0] ?? null);
+      if (
+        first != null &&
+        !frameAllowsWakurenSamePair(result?.horses, first)
+      ) {
+        frameOpts = { omitFrames: [first] };
+      }
+    }
+    const options = frameOptionsFromResult(result, selectedValues, 25, frameOpts);
     const placeholder = kind.endsWith('first')
       ? '第1枠を選択'
       : '第2枠を選択';

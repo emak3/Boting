@@ -31,6 +31,7 @@ import {
   selectHorseLabel,
   selectFrameLabel,
   wakuUmaEmoji,
+  jogaiEmoji,
   wakuUmaEmojiResolvable,
   DISCORD_SELECT_OPTION_LABEL_RESERVE_POST_SELECTION,
 } from '../../utils/raceNumberEmoji.mjs';
@@ -54,6 +55,7 @@ import {
 import {
   filterBetTypesForJraSale,
   isJraBetTypeAllowedForFlow,
+  frameAllowsWakurenSamePair,
 } from '../../utils/jraBetAvailability.mjs';
 import { buildPayoutTicketsFromFlow } from '../../utils/raceBetTickets.mjs';
 import { settleOpenRaceBetsForUser } from '../../utils/raceBetRecords.mjs';
@@ -153,6 +155,51 @@ function countUniquePairsUnordered(a, b) {
     }
   }
   return set.size;
+}
+
+/** 枠連フォーメーション: 同枠同士は当該枠が2頭以上のときのみ1点として数える */
+function countFramePairFormationPoints(picksA, picksB, result) {
+  const horses = result?.horses || [];
+  const A = uniqValues(picksA);
+  const B = uniqValues(picksB);
+  const set = new Set();
+  for (const x of A) {
+    for (const y of B) {
+      if (x === y) {
+        if (frameAllowsWakurenSamePair(horses, x)) set.add(`${x}|${x}`);
+        continue;
+      }
+      const [m1, m2] = x < y ? [x, y] : [y, x];
+      set.add(`${m1}|${m2}`);
+    }
+  }
+  return set.size;
+}
+
+/** 枠連ボックス: 異枠の組み合わせ + 選択枠ごとに同枠同士が可能なら+1 */
+function countFramePairBoxPoints(picks, result) {
+  const uniq = uniqValues(picks);
+  let n = calcComb2(uniq.length);
+  const horses = result?.horses || [];
+  for (const f of uniq) {
+    if (frameAllowsWakurenSamePair(horses, f)) n += 1;
+  }
+  return n;
+}
+
+/** 枠連ながし: 軸と同じ枠を相手に選んだときは同枠同士が可能な場合のみ1点 */
+function countFramePairNagashiPoints(axis, opponents, result) {
+  const opp = uniqValues(opponents);
+  const horses = result?.horses || [];
+  let pts = 0;
+  for (const o of opp) {
+    if (o === axis) {
+      if (frameAllowsWakurenSamePair(horses, o)) pts += 1;
+    } else {
+      pts += 1;
+    }
+  }
+  return pts;
 }
 
 // 馬単(順番ありの2頭) : A(1着)×B(2着) で同一値は除外してカウント
@@ -749,6 +796,7 @@ async function renderFinalSelection({
 function horseOptionsFromResult(result, cap = 25) {
   const unique = new Map(); // horseNumber -> horse
   for (const h of result.horses || []) {
+    if (h.excluded) continue;
     unique.set(String(h.horseNumber), h);
   }
   const arr = Array.from(unique.entries())
@@ -766,10 +814,12 @@ function horseOptionsFromResult(result, cap = 25) {
   });
 }
 
-function frameOptionsFromResult(result, cap = 25) {
+function frameOptionsFromResult(result, cap = 25, opts = {}) {
+  const omit = new Set((opts.omitFrames || []).map((x) => String(x)));
   const counts = new Map();
   const frameToHorses = new Map();
   for (const h of result.horses || []) {
+    if (h.excluded) continue;
     const f = String(h.frameNumber);
     counts.set(f, (counts.get(f) || 0) + 1);
     if (!frameToHorses.has(f)) frameToHorses.set(f, []);
@@ -777,6 +827,7 @@ function frameOptionsFromResult(result, cap = 25) {
   }
   const arr = Array.from(counts.entries())
     .map(([frame, count]) => ({ frame, count, horses: frameToHorses.get(frame) }))
+    .filter(({ frame }) => !omit.has(String(frame)))
     .sort((a, b) => Number(a.frame) - Number(b.frame))
     .slice(0, cap);
 
@@ -802,6 +853,7 @@ function horseNameByNum(result) {
 function frameLabelToHorses(result) {
   const m = new Map();
   for (const h of result.horses || []) {
+    if (h.excluded) continue;
     const f = String(h.frameNumber);
     if (!m.has(f)) m.set(f, []);
     m.get(f).push(h);
@@ -823,7 +875,11 @@ function formatNamesByNums(result, nums) {
       const kn = parseInt(ns.replace(/\D/g, ''), 10);
       const horse = byKey.get(ns) ?? (Number.isFinite(kn) ? byKey.get(String(kn)) : null);
       const nm = horse?.name || nameMap.get(ns) || '不明';
-      const em = horse ? wakuUmaEmoji(horse.frameNumber, horse.horseNumber) : null;
+      const em = horse?.excluded
+        ? jogaiEmoji()
+        : horse
+          ? wakuUmaEmoji(horse.frameNumber, horse.horseNumber)
+          : null;
       if (em) return `${em} ${nm}`.trim();
       return `${n}. ${nm}`;
     })
@@ -1846,7 +1902,9 @@ export default async function raceScheduleMenu(interaction) {
     const lastMenuCustomId = `race_bet_frame_pair_normal_second|${raceId}`;
     const bi = setupHorseStepBack(userId, raceId, 'frame_pair', lastMenuCustomId);
 
-    const options = frameOptionsFromResult(result);
+    const omitFrames =
+      !frameAllowsWakurenSamePair(result.horses, first) ? [String(first)] : [];
+    const options = frameOptionsFromResult(result, 25, { omitFrames });
     await interaction.editReply(
         raceCardPayload(interaction,{
           result,
@@ -1878,9 +1936,44 @@ export default async function raceScheduleMenu(interaction) {
     const result = flow.result;
     const first = flow.framePairNormalFirst;
 
+    if (
+      first != null &&
+      second != null &&
+      String(first) === String(second) &&
+      !frameAllowsWakurenSamePair(result.horses, first)
+    ) {
+      const omitFrames = [String(first)];
+      const options = frameOptionsFromResult(result, 25, { omitFrames });
+      const lastMenuCustomId = `race_bet_frame_pair_normal_second|${raceId}`;
+      const bi = setupHorseStepBack(userId, raceId, 'frame_pair', lastMenuCustomId);
+      await interaction.editReply(
+        raceCardPayload(interaction, {
+          result,
+          headline:
+            '同枠に2頭以上いないため、同枠同士は選べません。第2枠を選び直してください。',
+          actionRows: [
+            buildSelectionRow({
+              customId: lastMenuCustomId,
+              placeholder: '第2枠を選択',
+              options,
+              minValues: 1,
+              maxValues: 1,
+            }),
+            backButtonRow(raceId, bi),
+            scheduleRaceListBackIfScheduled(userId, raceId),
+          ].filter(Boolean),
+        }),
+      );
+      return;
+    }
+
     const points = 1;
     const selectionLine = `選択: 枠連（通常） => ${formatFrames(result, [first, second])}`;
-    const options = frameOptionsFromResult(result);
+    const omitFrames =
+      first != null && !frameAllowsWakurenSamePair(result.horses, first)
+        ? [String(first)]
+        : [];
+    const options = frameOptionsFromResult(result, 25, { omitFrames });
 
     const firstMenuCustomId = `race_bet_frame_pair_normal_first|${raceId}`;
     // 最終確定側の renderFinalSelection で lastMenu 以外も保持したいので先に stepSelections を埋める
@@ -1962,7 +2055,9 @@ export default async function raceScheduleMenu(interaction) {
     const summary = isFrame
       ? `軸: ${formatFrames(result, [axis])} / 相手: ${formatFrames(result, opponents)}`
       : `軸: ${formatNamesByNums(result, [axis])} / 相手: ${formatNamesByNums(result, opponents)}`;
-    const points = distinctCountExcluding(opponents, [axis]);
+    const points = isFrame
+      ? countFramePairNagashiPoints(axis, opponents, result)
+      : distinctCountExcluding(opponents, [axis]);
     const selectionLine = `選択: ${BET_TYPE_LABEL[betType]}（ながし） => ${summary}`;
 
     const options = isFrame ? frameOptionsFromResult(result) : horseOptionsFromResult(result);
@@ -1999,7 +2094,9 @@ export default async function raceScheduleMenu(interaction) {
     const isFrame = betType === 'frame_pair';
 
     const summary = isFrame ? `枠: ${formatFrames(result, picks)}` : `馬番: ${formatNamesByNums(result, picks)}`;
-    const points = calcComb2(uniqValues(picks).length);
+    const points = isFrame
+      ? countFramePairBoxPoints(picks, result)
+      : calcComb2(uniqValues(picks).length);
     const selectionLine = `選択: ${BET_TYPE_LABEL[betType]}（ボックス） => ${summary}`;
 
     const options = isFrame ? frameOptionsFromResult(result) : horseOptionsFromResult(result);
@@ -2074,7 +2171,9 @@ export default async function raceScheduleMenu(interaction) {
     const summary = isFrame
       ? `第1群: ${formatFrames(result, picksA)} / 第2群: ${formatFrames(result, picksB)}`
       : `第1群: ${formatNamesByNums(result, picksA)} / 第2群: ${formatNamesByNums(result, picksB)}`;
-    const points = countUniquePairsUnordered(picksA, picksB);
+    const points = isFrame
+      ? countFramePairFormationPoints(picksA, picksB, result)
+      : countUniquePairsUnordered(picksA, picksB);
     const selectionLine = `選択: ${BET_TYPE_LABEL[betType]}（フォーメーション） => ${summary}`;
 
     const options = isFrame ? frameOptionsFromResult(result) : horseOptionsFromResult(result);

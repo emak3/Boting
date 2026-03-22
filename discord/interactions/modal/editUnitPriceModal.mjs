@@ -1,3 +1,4 @@
+import { MessageFlags } from 'discord.js';
 import { getBetFlow, patchBetFlow } from '../../utils/betFlowStore.mjs';
 import { normalizeUnitYen100 } from '../../utils/unitYenKeypad.mjs';
 import {
@@ -25,7 +26,10 @@ export default async function editUnitPriceModal(interaction) {
   const userId = interaction.user.id;
   const flow = getBetFlow(userId, raceId);
   if (!flow?.purchase) {
-    await interaction.reply({ content: '❌ セッションが無効です。', ephemeral: true });
+    await interaction.reply({
+      content: '❌ セッションが無効です。',
+      flags: MessageFlags.Ephemeral,
+    });
     return;
   }
 
@@ -33,7 +37,10 @@ export default async function editUnitPriceModal(interaction) {
   const parsed = parseInt(raw.trim(), 10);
 
   if (!Number.isFinite(parsed) || parsed <= 0) {
-    await interaction.reply({ content: '❌ bp は正の整数で入力してください。', ephemeral: true });
+    await interaction.reply({
+      content: '❌ bp は正の整数で入力してください。',
+      flags: MessageFlags.Ephemeral,
+    });
     return;
   }
 

@@ -18,3 +18,26 @@ export function netkeibaOriginFromFlow(flow) {
   const o = flow?.result?.netkeibaOrigin || flow?.source || flow?.netkeibaOrigin;
   return o === 'nar' ? 'nar' : 'jra';
 }
+
+/**
+ * race_id 12桁の 9〜10 桁目が netkeiba の場コード。中央は 01〜10、地方は 31 台以降が多い。
+ * フローで nar が欠落し jra で保存された行の補正・履歴側の判定に使う。
+ * @param {string} raceId
+ * @returns {boolean}
+ */
+export function isLikelyLocalNarRaceId(raceId) {
+  if (!/^\d{12}$/.test(String(raceId || ''))) return false;
+  const n = parseInt(String(raceId).slice(8, 10), 10);
+  return Number.isFinite(n) && n >= 31 && n <= 65;
+}
+
+/**
+ * @param {{ raceId?: string, netkeibaOrigin?: string }} it
+ * @returns {'jra' | 'nar'}
+ */
+export function inferNetkeibaOriginForPurchaseItem(it) {
+  if (it?.netkeibaOrigin === 'nar') return 'nar';
+  const rid = String(it?.raceId || '');
+  if (isLikelyLocalNarRaceId(rid)) return 'nar';
+  return 'jra';
+}

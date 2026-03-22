@@ -9,9 +9,7 @@ export function detectEncodingFromResponse(response) {
   const charsetMatch = contentType.match(/charset=([^;]+)/i);
   
   if (charsetMatch) {
-    const charset = charsetMatch[1].trim().toUpperCase();
-    console.log(`Detected charset from header: ${charset}`);
-    return charset;
+    return charsetMatch[1].trim().toUpperCase();
   }
   
   return null;
@@ -27,29 +25,42 @@ export function detectEncodingFromHtml(buffer) {
   // meta charset を探す
   const metaCharsetMatch = sample.match(/<meta[^>]+charset=["']?([^"'\s>]+)/i);
   if (metaCharsetMatch) {
-    const charset = metaCharsetMatch[1].trim().toUpperCase();
-    console.log(`Detected charset from meta tag: ${charset}`);
-    return charset;
+    return metaCharsetMatch[1].trim().toUpperCase();
   }
   
   // meta http-equiv を探す
   const httpEquivMatch = sample.match(/<meta[^>]+content=["'][^"']*charset=([^"'\s;]+)/i);
   if (httpEquivMatch) {
-    const charset = httpEquivMatch[1].trim().toUpperCase();
-    console.log(`Detected charset from http-equiv: ${charset}`);
-    return charset;
+    return httpEquivMatch[1].trim().toUpperCase();
   }
   
   return null;
 }
 
+function requestUrl(response) {
+  return response?.config?.url ?? response?.request?.path ?? null;
+}
+
+function logEncoding(level, message, ctx, extra = {}) {
+  const payload = {
+    label: ctx.label ?? 'handleEncoding',
+    url: ctx.url ?? requestUrl(ctx.response),
+    ...extra,
+  };
+  console[level](`[encoding] ${message}`, payload);
+}
+
 /**
  * エンコーディングを自動検出して変換
+ * @param {Buffer|ArrayBuffer} buffer
+ * @param {object|null} response axios レスポンス（ヘッダ検出用）
+ * @param {{ label?: string, url?: string }} [context] 失敗時ログ用（処理名・URL）
  */
-export function handleEncoding(buffer, response = null) {
+export function handleEncoding(buffer, response = null, context = {}) {
+  const ctx = { ...context, response };
   try {
     let encoding = 'EUC-JP'; // netkeiba のデフォルト
-    
+
     // 1. レスポンスヘッダーから検出を試みる
     if (response) {
       const headerEncoding = detectEncodingFromResponse(response);
@@ -57,62 +68,67 @@ export function handleEncoding(buffer, response = null) {
         encoding = headerEncoding;
       }
     }
-    
+
     // 2. HTMLコンテンツから検出を試みる
     const htmlEncoding = detectEncodingFromHtml(buffer);
     if (htmlEncoding) {
       encoding = htmlEncoding;
     }
-    
-    // エンコーディング名の正規化
+
     encoding = normalizeEncoding(encoding);
-    
-    console.log(`Using encoding: ${encoding}`);
-    
-    // デコード実行
+
     const decoded = iconv.decode(buffer, encoding);
-    
-    // 文字化けチェック
+
     if (containsMojibake(decoded)) {
-      console.warn('Mojibake detected, trying alternative encodings...');
-      
-      // 代替エンコーディングを試す
       const alternatives = ['EUC-JP', 'SHIFT_JIS', 'ISO-2022-JP', 'UTF-8'];
       for (const alt of alternatives) {
         if (alt !== encoding) {
           try {
             const altDecoded = iconv.decode(buffer, alt);
             if (!containsMojibake(altDecoded)) {
-              console.log(`Successfully decoded with ${alt}`);
               return altDecoded;
             }
-          } catch (e) {
+          } catch {
             // 次の代替エンコーディングを試す
           }
         }
       }
+      logEncoding(
+        'warn',
+        'mojibake suspected after primary decode and all alternatives; returning primary decode',
+        ctx,
+        {
+          primaryEncoding: encoding,
+          tried: alternatives.filter((a) => a !== encoding),
+        },
+      );
     }
-    
+
     return decoded;
-    
   } catch (error) {
-    console.error('Encoding conversion failed:', error);
-    // 最後の手段として各種エンコーディングを試す
+    logEncoding('error', 'iconv.decode or detection threw', ctx, {
+      err: error?.message ?? String(error),
+      stack: error?.stack,
+    });
     const fallbackEncodings = ['EUC-JP', 'SHIFT_JIS', 'UTF-8'];
-    
+
     for (const enc of fallbackEncodings) {
       try {
         const decoded = iconv.decode(buffer, enc);
         if (!containsMojibake(decoded)) {
-          console.log(`Fallback successful with ${enc}`);
+          logEncoding('warn', 'recovered using fallback decode after error', ctx, {
+            encoding: enc,
+          });
           return decoded;
         }
-      } catch (e) {
+      } catch {
         continue;
       }
     }
-    
-    // すべて失敗した場合はUTF-8として処理
+
+    logEncoding('warn', 'all fallbacks failed or still suspect; using UTF-8 string', ctx, {
+      tried: fallbackEncodings,
+    });
     return buffer.toString('utf8');
   }
 }
@@ -135,22 +151,13 @@ function normalizeEncoding(encoding) {
 }
 
 /**
- * 文字化けの簡易チェック
+ * 文字化けの簡易チェック（HTML 全体は英字・タグが多く日本語比率が低いため比率判定はしない）
  */
 function containsMojibake(text) {
-  // 一般的な文字化けパターンを検出
   const mojibakePatterns = [
-    /[\uFFFD]/,        // 置換文字
-    /[�]/,             // 置換文字（別表現）
-    /[\x00-\x08\x0B\x0C\x0E-\x1F\x7F]/, // 制御文字（改行・タブ以外）
+    /[\uFFFD]/,
+    /[�]/,
+    /[\x00-\x08\x0B\x0C\x0E-\x1F\x7F]/,
   ];
-  
-  // 日本語が含まれているかチェック
-  const hasJapanese = /[\u3040-\u309F\u30A0-\u30FF\u4E00-\u9FAF]/.test(text);
-  
-  // 文字化けパターンが存在し、かつ日本語が少ない場合は文字化けと判定
-  const hasMojibake = mojibakePatterns.some(pattern => pattern.test(text));
-  const japaneseRatio = (text.match(/[\u3040-\u309F\u30A0-\u30FF\u4E00-\u9FAF]/g) || []).length / text.length;
-  
-  return hasMojibake || (text.length > 100 && japaneseRatio < 0.05);
+  return mojibakePatterns.some((pattern) => pattern.test(text));
 }

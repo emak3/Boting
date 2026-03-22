@@ -15,6 +15,48 @@
         { "fieldPath": "userId", "order": "ASCENDING" },
         { "fieldPath": "status", "order": "ASCENDING" }
       ]
+    },
+    {
+      "collectionGroup": "raceBets",
+      "queryScope": "COLLECTION",
+      "fields": [
+        { "fieldPath": "userId", "order": "ASCENDING" },
+        { "fieldPath": "raceHoldYmd", "order": "ASCENDING" }
+      ]
+    },
+    {
+      "collectionGroup": "raceBets",
+      "queryScope": "COLLECTION",
+      "fields": [
+        { "fieldPath": "userId", "order": "ASCENDING" },
+        { "fieldPath": "raceHoldYmd", "order": "DESCENDING" }
+      ]
+    },
+    {
+      "collectionGroup": "raceBets",
+      "queryScope": "COLLECTION",
+      "fields": [
+        { "fieldPath": "userId", "order": "ASCENDING" },
+        { "fieldPath": "netkeibaOrigin", "order": "ASCENDING" },
+        { "fieldPath": "raceId", "order": "ASCENDING" }
+      ]
+    },
+    {
+      "collectionGroup": "raceBets",
+      "queryScope": "COLLECTION",
+      "fields": [
+        { "fieldPath": "userId", "order": "ASCENDING" },
+        { "fieldPath": "netkeibaOrigin", "order": "ASCENDING" },
+        { "fieldPath": "raceId", "order": "DESCENDING" }
+      ]
+    },
+    {
+      "collectionGroup": "raceBets",
+      "queryScope": "COLLECTION",
+      "fields": [
+        { "fieldPath": "userId", "order": "ASCENDING" },
+        { "fieldPath": "raceId", "order": "ASCENDING" }
+      ]
     }
   ],
   "fieldOverrides": []

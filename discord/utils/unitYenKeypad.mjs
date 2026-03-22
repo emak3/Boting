@@ -70,7 +70,7 @@ export function formatUnitKeypadHeadline({ buffer, subtitle }) {
   const lines = [
     '**1点あたりの金額（100 bp 単位）**',
     subtitle ? String(subtitle) : null,
-    `\`${part}\`00 bp`,
+    `# \`${part}\`00 bp`,
   ].filter(Boolean);
   return lines.join('\n');
 }

@@ -1,3 +1,4 @@
+import { MessageFlags } from 'discord.js';
 import { getBetFlow, patchBetFlow } from './betFlowStore.mjs';
 import {
   getSlipSavedItems,
@@ -9,6 +10,7 @@ import {
   SLIP_MAX_ITEMS,
 } from './betSlipStore.mjs';
 import { netkeibaOriginFromFlow } from './netkeibaUrls.mjs';
+import { deriveRaceHoldYmdFromFlow } from './raceHoldDate.mjs';
 import { buildSlipReviewV2Payload } from './betSlipReview.mjs';
 import { buildTextAndRowsV2Payload } from './raceCardDisplay.mjs';
 import { buildRaceHubBackButtonRow } from './raceCommandHub.mjs';
@@ -62,9 +64,10 @@ export function trifukuFormationSnapshotFromFlow(flow) {
 
 export function slipItemFromLiveFlow(flow, raceId) {
   const origin = netkeibaOriginFromFlow(flow);
+  const rid = flow.result?.raceId || raceId;
   return {
     id: `live_${Date.now()}_${Math.random().toString(36).slice(2, 9)}`,
-    raceId: flow.result?.raceId || raceId,
+    raceId: rid,
     unitYen: flow.unitYen ?? 100,
     points: flow.purchase.points,
     selectionLine: flow.purchase.selectionLine,
@@ -73,6 +76,8 @@ export function slipItemFromLiveFlow(flow, raceId) {
     oddsOfficialTime: flow.result?.oddsOfficialTime,
     isResult: !!flow.result?.isResult,
     netkeibaOrigin: origin,
+    raceInfoDate: flow.result?.raceInfo?.date ?? '',
+    raceHoldYmd: deriveRaceHoldYmdFromFlow(flow, rid),
     betType: flow.betType ?? '',
     tickets: Array.isArray(flow.purchase?.tickets) ? flow.purchase.tickets : [],
     horseNumToFrame: horseNumToFrameFromResult(flow.result),
@@ -145,14 +150,14 @@ export async function runOpenBetSlipReviewScreen(interaction, { userId, raceId, 
     await interaction.reply({
       content:
         '❌ 購入予定がありません。「購入予定に追加」で溜めるか、サマリーまで進めてください。',
-      ephemeral: true,
+      flags: MessageFlags.Ephemeral,
     });
     return false;
   }
   if (merged.length > SLIP_MAX_ITEMS) {
     await interaction.reply({
       content: `❌ 一度にまとめられる購入予定は最大${SLIP_MAX_ITEMS}件です。`,
-      ephemeral: true,
+      flags: MessageFlags.Ephemeral,
     });
     return false;
   }

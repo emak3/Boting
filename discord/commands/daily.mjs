@@ -10,6 +10,7 @@ import {
   getDailyAccountView,
   kindLabelJa,
 } from '../utils/userPointsStore.mjs';
+import { runPendingRaceRefundsForUser } from '../utils/raceBetRefundSweep.mjs';
 
 function formatJst(d) {
   return d.toLocaleString('ja-JP', {
@@ -43,6 +44,7 @@ const commandObject = {
 
   async execute(interaction) {
     await interaction.deferReply({ flags: MessageFlags.Ephemeral });
+    await runPendingRaceRefundsForUser(interaction.user.id);
 
     const debugBypass = canBypassDailyCooldown(interaction.user.id);
     let result;

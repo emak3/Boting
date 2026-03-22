@@ -4,7 +4,13 @@ import { initLogger } from './utils/logger.mjs';
 const log = initLogger();
 import { readdirSync } from "node:fs";
 import './utils/usernameSystem.mjs';
-const client = new Client({ intents: Object.values(GatewayIntentBits), allowedMentions: { parse: ["users", "roles"] }, partials: [Partials.Message, Partials.Channel, Partials.Reaction] });
+const client = new Client({
+    intents: Object.values(GatewayIntentBits),
+    allowedMentions: { parse: ["users", "roles"] },
+    partials: [Partials.Message, Partials.Channel, Partials.Reaction],
+    // 遅い回線・DNS で undici の接続が 10s で落ちることがあるため REST 全体の上限を延ばす
+    rest: { timeout: 60_000 },
+});
 
 client.commands = new Map();
 client.interactions = [];
@@ -42,6 +48,8 @@ for (const file of readdirSync("./discord/commands").filter((file) =>
 for (const file of readdirSync("./discord/interactions").filter((file) =>
     file.endsWith(".mjs"),
 )) {
+    // slash は InteractionCreate で最優先ルート（discord/events/interaction.mjs）。ここには載せない。
+    if (file === "slash.mjs") continue;
     const interactionModule = await import(`./discord/interactions/${file}`);
     const interaction = interactionModule.default;
     client.interactions.push(interaction);

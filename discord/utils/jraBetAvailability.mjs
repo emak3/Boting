@@ -7,9 +7,13 @@
 
 export function getStarterCount(result) {
   if (!result) return 0;
+  const horses = Array.isArray(result.horses) ? result.horses : [];
+  if (horses.some((h) => h.excluded === true)) {
+    return horses.filter((h) => !h.excluded).length;
+  }
   const n = result.totalHorses;
   if (typeof n === 'number' && Number.isFinite(n) && n > 0) return n;
-  return Array.isArray(result.horses) ? result.horses.length : 0;
+  return horses.length;
 }
 
 export function isNarBetContext(ctx = {}) {
@@ -23,11 +27,29 @@ function hasMultiHorseSameFrame(horses) {
   if (!horses?.length) return false;
   const byFrame = new Map();
   for (const h of horses) {
+    if (h.excluded) continue;
     const f = String(h.frameNumber ?? '').trim();
     if (!f) continue;
     byFrame.set(f, (byFrame.get(f) || 0) + 1);
   }
   for (const c of byFrame.values()) {
+    if (c >= 2) return true;
+  }
+  return false;
+}
+
+/**
+ * 枠連で「同枠同士」（例: 3-3）が成立するか。当該枠に2頭以上いるときのみ。
+ * @param {object[]|undefined} horses
+ * @param {string|number} frame
+ */
+export function frameAllowsWakurenSamePair(horses, frame) {
+  const fs = String(frame ?? '').trim();
+  if (!fs) return false;
+  let c = 0;
+  for (const h of horses || []) {
+    if (h.excluded) continue;
+    if (String(h.frameNumber ?? '').trim() === fs) c += 1;
     if (c >= 2) return true;
   }
   return false;

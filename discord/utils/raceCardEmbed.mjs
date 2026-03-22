@@ -1,4 +1,4 @@
-import { wakuUmaEmoji } from './raceNumberEmoji.mjs';
+import { wakuUmaEmoji, jogaiEmoji } from './raceNumberEmoji.mjs';
 import { netkeibaResultUrl } from './netkeibaUrls.mjs';
 
 /** @param {{ raceInfo?: object, horses: object[], totalHorses: number, oddsOfficialTime?: string }} result */
@@ -31,8 +31,9 @@ export function buildRaceCardEmbed(result) {
       const wu = wakuUmaEmoji(horse.frameNumber, horse.horseNumber);
       const numLabel = wu ? `${wu}` : `${horse.horseNumber}.`;
       const wakuPart = wu ? '' : `枠${horse.frameNumber} | `;
+      const jog = horse.excluded ? jogaiEmoji() : null;
       return {
-        name: `${numLabel} ${horse.name}`.trim(),
+        name: `${numLabel} ${horse.name}${jog ? ` ${jog}` : ''}`.trim(),
         value: `${wakuPart}${horse.age} | ${horse.weight}kg\n${horse.jockey}${ninki}\n単勝 ${horse.odds}${place}`,
         inline: true,
       };

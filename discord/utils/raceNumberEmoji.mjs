@@ -6,6 +6,8 @@ const __dirname = dirname(fileURLToPath(import.meta.url));
 
 /** @type {Map<string, { id: string, name: string }> | null} */
 let wakuUmaMap = null;
+/** @type {{ id: string, name: string } | null} */
+let jogaiEmojiCache = null;
 
 function loadEmojiTxt() {
   if (wakuUmaMap) return;
@@ -20,6 +22,12 @@ function loadEmojiTxt() {
   for (const line of text.split(/\r?\n/)) {
     const trimmed = line.trim();
     if (!trimmed) continue;
+
+    const jogaiLine = trimmed.match(/^除外\s+<:(\w+):(\d+)>/);
+    if (jogaiLine) {
+      jogaiEmojiCache = { name: jogaiLine[1], id: jogaiLine[2] };
+      continue;
+    }
 
     const combo = trimmed.match(/^(\d+)枠(\d+)番\s+<:(\w+):(\d+)>/);
     if (combo) {
@@ -36,6 +44,21 @@ function loadEmojiTxt() {
  * @param {string | number | undefined} horseNumber
  * @returns {{ id: string, name: string } | null}
  */
+/**
+ * String Select の .setEmoji() 用（除外馬）
+ * @returns {{ id: string, name: string } | null}
+ */
+export function jogaiEmojiResolvable() {
+  loadEmojiTxt();
+  return jogaiEmojiCache;
+}
+
+/** @returns {string | null} `<:jogai:id>` */
+export function jogaiEmoji() {
+  const r = jogaiEmojiResolvable();
+  return r ? `<:${r.name}:${r.id}>` : null;
+}
+
 export function wakuUmaEmojiResolvable(frameNumber, horseNumber) {
   loadEmojiTxt();
   if (!wakuUmaMap?.size) return null;

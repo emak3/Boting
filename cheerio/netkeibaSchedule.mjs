@@ -25,7 +25,7 @@ async function fetchHtml(url) {
     timeout: 20000,
     maxRedirects: 5,
   });
-  return handleEncoding(response.data, response);
+  return handleEncoding(response.data, response, { label: 'fetchHtml', url });
 }
 
 async function fetchNarHtml(url) {
@@ -35,7 +35,7 @@ async function fetchNarHtml(url) {
     timeout: 20000,
     maxRedirects: 5,
   });
-  return handleEncoding(response.data, response);
+  return handleEncoding(response.data, response, { label: 'fetchNarHtml', url });
 }
 
 /** 日本時間の開催日 YYYYMMDD */

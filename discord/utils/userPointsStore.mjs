@@ -16,6 +16,52 @@ function getJstYmdH(date) {
   };
 }
 
+/** JST の時・分（21:30 境界など） */
+function getJstYmdHm(date) {
+  const shifted = new Date(date.getTime() + 9 * 60 * 60 * 1000);
+  return {
+    y: shifted.getUTCFullYear(),
+    m: shifted.getUTCMonth() + 1,
+    d: shifted.getUTCDate(),
+    h: shifted.getUTCHours(),
+    min: shifted.getUTCMinutes(),
+  };
+}
+
+function pad2(n) {
+  return String(n).padStart(2, '0');
+}
+
+/** 暦の JST 日付 YYYYMMDD（深夜帯もその日のまま） */
+export function getJstCalendarYmd(now = new Date()) {
+  const { y, m, d } = getJstYmdHm(now);
+  return `${y}${pad2(m)}${pad2(d)}`;
+}
+
+/**
+ * JST 暦の YYYYMMDD から n 日加算（負も可）
+ * @param {string} ymd
+ * @param {number} days
+ */
+export function addJstCalendarDays(ymd, days) {
+  const y = parseInt(ymd.slice(0, 4), 10);
+  const mo = parseInt(ymd.slice(4, 6), 10);
+  const da = parseInt(ymd.slice(6, 8), 10);
+  const anchor = new Date(`${y}-${pad2(mo)}-${pad2(da)}T12:00:00+09:00`);
+  const n = new Date(anchor.getTime() + days * 86400000);
+  const shifted = new Date(n.getTime() + 9 * 60 * 60 * 1000);
+  const yy = shifted.getUTCFullYear();
+  const mm = shifted.getUTCMonth() + 1;
+  const dd = shifted.getUTCDate();
+  return `${yy}${pad2(mm)}${pad2(dd)}`;
+}
+
+/** JST 21:30 以降（購入履歴の「明日」切替用） */
+export function isJstAtOrAfter2130(now = new Date()) {
+  const { h, min } = getJstYmdHm(now);
+  return h > 21 || (h === 21 && min >= 30);
+}
+
 /**
  * 日次リセット境界: 毎日 JST 08:00。
  * 返すキーは「その帯が始まった日」の YYYYMMDD（JST）。

@@ -24,7 +24,7 @@ export default async function betSlipMenu(interaction) {
     if (!pending?.items?.length) {
       await interaction.reply({
         content: '❌ 購入予定の確認セッションが無効です。',
-        ephemeral: true,
+        flags: MessageFlags.Ephemeral,
       });
       return;
     }
@@ -33,7 +33,7 @@ export default async function betSlipMenu(interaction) {
     if (!anchorRaceId || !/^\d{12}$/.test(anchorRaceId)) {
       await interaction.reply({
         content: '❌ 操作が無効です。',
-        ephemeral: true,
+        flags: MessageFlags.Ephemeral,
       });
       return;
     }
@@ -42,7 +42,7 @@ export default async function betSlipMenu(interaction) {
     if (!Number.isFinite(idx) || idx < 0 || idx >= pending.items.length) {
       await interaction.reply({
         content: '❌ 選択が無効です。',
-        ephemeral: true,
+        flags: MessageFlags.Ephemeral,
       });
       return;
     }
@@ -85,7 +85,7 @@ export default async function betSlipMenu(interaction) {
   if (!pending?.items?.length) {
     await interaction.reply({
       content: '❌ 購入予定の確認セッションが無効です。',
-      ephemeral: true,
+      flags: MessageFlags.Ephemeral,
     });
     return;
   }
@@ -94,7 +94,7 @@ export default async function betSlipMenu(interaction) {
   if (!Number.isFinite(vi) || vi < 0 || vi >= pending.items.length) {
     await interaction.reply({
       content: '❌ 削除できませんでした。',
-      ephemeral: true,
+      flags: MessageFlags.Ephemeral,
     });
     return;
   }

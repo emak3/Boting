@@ -1,5 +1,6 @@
 import {
   wakuUmaEmoji,
+  jogaiEmoji,
   formatNumsWithWakuUmaEmoji,
   formatWakurenNumsWithEmoji,
 } from './raceNumberEmoji.mjs';
@@ -20,7 +21,12 @@ function formatHorseResultBlock(h) {
   const frame = h.frameNumber != null && h.frameNumber !== 'N/A' ? `枠${h.frameNumber}` : '';
   const num = h.horseNumber != null && h.horseNumber !== 'N/A' ? `${h.horseNumber}番` : '';
   const wakuUma = wu ? `${wu}` : [frame, num].filter(Boolean).join(' ');
-  const head = `**${h.finishRank}着** ${wakuUma} ${h.name || '—'}`.replace(/\s+/g, ' ').trim();
+  const jog = h.excluded ? jogaiEmoji() : null;
+  const rankText =
+    h.excluded || String(h.finishRank || '').includes('除')
+      ? `**除外**${jog ? ` ${jog}` : ''}`
+      : `**${h.finishRank}着**`;
+  const head = `${rankText} ${wakuUma} ${h.name || '—'}`.replace(/\s+/g, ' ').trim();
   const meta = [
     h.jockey && h.jockey !== 'N/A' ? h.jockey : null,
     h.time && h.time !== 'N/A' ? `タイム ${h.time}` : null,

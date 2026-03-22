@@ -73,7 +73,7 @@ export default async function unitYenKeypadButtons(interaction) {
   if (!parsed) {
     await interaction.reply({
       content: '❌ このキーは無効です。金額変更を開き直してください。',
-      ephemeral: true,
+      flags: MessageFlags.Ephemeral,
     });
     return;
   }
@@ -83,7 +83,7 @@ export default async function unitYenKeypadButtons(interaction) {
   if (!draft) {
     await interaction.reply({
       content: '❌ セッションが無効です。画面を開き直してください。',
-      ephemeral: true,
+      flags: MessageFlags.Ephemeral,
     });
     return;
   }

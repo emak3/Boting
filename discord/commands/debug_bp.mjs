@@ -5,6 +5,7 @@ import {
 } from 'discord.js';
 import { canUseDebugCommands } from '../utils/raceDebugBypass.mjs';
 import { applyDebugBpAdjustment } from '../utils/userPointsStore.mjs';
+import { runPendingRaceRefundsForUser } from '../utils/raceBetRefundSweep.mjs';
 
 const commandObject = {
   command: new SlashCommandBuilder()
@@ -44,6 +45,7 @@ const commandObject = {
     }
 
     await interaction.deferReply({ flags: MessageFlags.Ephemeral });
+    await runPendingRaceRefundsForUser(interaction.user.id);
 
     const result = await applyDebugBpAdjustment(target.id, amount);
     if (!result.ok) {

@@ -5,9 +5,17 @@ import {
   ContainerBuilder,
   MessageFlags,
 } from 'discord.js';
-import { fetchUserRaceBetsForDailyPeriod } from './raceBetRecords.mjs';
+import {
+  fetchUserRaceBetsForRaceHoldDateYmd,
+  findAdjacentHoldYmdWithBets,
+  resolveDefaultRaceHistoryHoldYmd,
+} from './raceBetRecords.mjs';
 import { runPendingRaceRefundsForUser } from './raceBetRefundSweep.mjs';
-import { getBalance, getCurrentDailyPeriodKey } from './userPointsStore.mjs';
+import {
+  addJstCalendarDays,
+  getBalance,
+  getJstCalendarYmd,
+} from './userPointsStore.mjs';
 import {
   formatSlipPickDisplayLines,
   BET_TYPE_LABEL,
@@ -19,6 +27,8 @@ import { V2_SINGLE_CHUNK, V2_TEXT_TOTAL_MAX } from './raceCardDisplay.mjs';
 import { buildRaceHubBackButtonRow } from './raceCommandHub.mjs';
 
 export const RACE_HISTORY_PAGE_PREFIX = 'race_bet_history_pg';
+/** 開催日を前後にずらす（customId: day|対象YYYYMMDD|page|meetingFilter） */
+export const RACE_HISTORY_DAY_PREFIX = 'race_bet_history_day';
 
 /** 1ページあたりの買い目件数（レース見出しはカウントに含めない） */
 export const HISTORY_BETS_PER_PAGE = 10;
@@ -247,6 +257,52 @@ function meetingFilterOptionsFromBets(bets) {
 }
 
 /**
+ * 開催日キーに応じた見出し（今日 / 明日 / 日付）
+ * @param {string} holdYmd YYYYMMDD
+ */
+function historyTitleLineForHoldYmd(holdYmd) {
+  const now = new Date();
+  const todayYmd = getJstCalendarYmd(now);
+  const tomorrowYmd = addJstCalendarDays(todayYmd, 1);
+  const yesterdayYmd = addJstCalendarDays(todayYmd, -1);
+  if (holdYmd === todayYmd) return '**今日の購入履歴**';
+  if (holdYmd === tomorrowYmd) return '**明日の購入履歴**';
+  if (holdYmd === yesterdayYmd) return '**昨日の購入履歴**';
+  const y = holdYmd.slice(0, 4);
+  const mo = holdYmd.slice(4, 6);
+  const da = holdYmd.slice(6, 8);
+  return `**${y}-${mo}-${da} 開催の購入履歴**`;
+}
+
+/**
+ * 前後の「購入がある開催日」へ（空の日はスキップ。ページは 0 に戻す）
+ * @param {string} periodKey YYYYMMDD
+ * @param {string} meetingFilter
+ * @param {string | null} prevYmd 前方向に購入がある開催日（無ければ null）
+ * @param {string | null} nextYmd 次方向に購入がある開催日（無ければ null）
+ */
+function historyDayNavRow(periodKey, meetingFilter, prevYmd, nextYmd) {
+  const mf = String(meetingFilter || 'all').trim() || 'all';
+  const dayId = (ymd) =>
+    `${RACE_HISTORY_DAY_PREFIX}|${ymd}|0|${mf}`;
+  /** 無効時も custom_id は行内で一意（Discord は重複を拒否） */
+  const disabledPrevId = `${RACE_HISTORY_DAY_PREFIX}|${periodKey}|0|${mf}|_`;
+  const disabledNextId = `${RACE_HISTORY_DAY_PREFIX}|${periodKey}|0|${mf}|__`;
+  return new ActionRowBuilder().addComponents(
+    new ButtonBuilder()
+      .setCustomId(prevYmd ? dayId(prevYmd) : disabledPrevId)
+      .setLabel('◀ 前の日')
+      .setStyle(ButtonStyle.Secondary)
+      .setDisabled(prevYmd == null),
+    new ButtonBuilder()
+      .setCustomId(nextYmd ? dayId(nextYmd) : disabledNextId)
+      .setLabel('次の日 ▶')
+      .setStyle(ButtonStyle.Secondary)
+      .setDisabled(nextYmd == null),
+  );
+}
+
+/**
  * @param {{ periodKey: string, page: number, totalPages: number, meetingFilter: string, meetings: { key: string, label: string }[] }} opts
  * @returns {import('discord.js').ActionRowBuilder[]}
  */
@@ -317,18 +373,26 @@ function historyFilterAndPaginationRows({
 
 /**
  * @param {{ userId: string, periodKey?: string, page?: number, meetingFilter?: string, extraFlags?: number }} opts
+ * periodKey … レース開催日 YYYYMMDD（JST）。省略時は resolveDefaultRaceHistoryHoldYmd。
  */
 export async function buildRacePurchaseHistoryV2Payload({
   userId,
-  periodKey = getCurrentDailyPeriodKey(),
+  periodKey: periodKeyOpt,
   page = 0,
   meetingFilter = 'all',
   extraFlags = 0,
 }) {
-  await runPendingRaceRefundsForUser(userId);
+  void runPendingRaceRefundsForUser(userId).catch((e) =>
+    console.warn('runPendingRaceRefundsForUser', e),
+  );
+
+  let periodKey =
+    periodKeyOpt != null && /^\d{8}$/.test(String(periodKeyOpt).trim())
+      ? String(periodKeyOpt).trim()
+      : await resolveDefaultRaceHistoryHoldYmd(userId);
 
   const [allBets, bpBalance] = await Promise.all([
-    fetchUserRaceBetsForDailyPeriod(userId, periodKey),
+    fetchUserRaceBetsForRaceHoldDateYmd(userId, periodKey),
     getBalance(userId),
   ]);
   const ymd = `${periodKey.slice(0, 4)}-${periodKey.slice(4, 6)}-${periodKey.slice(6, 8)}`;
@@ -381,8 +445,8 @@ export async function buildRacePurchaseHistoryV2Payload({
   const slice = flat.slice(start, start + HISTORY_BETS_PER_PAGE);
 
   const summaryLines = [
-    '**今日の購入履歴**',
-    `対象: **${ymd}** 日次帯（JST 8:00〜翌 8:00）`,
+    historyTitleLineForHoldYmd(periodKey),
+    `対象: **${ymd}** 開催（中央は開催日を保存、地方はレースID先頭の日付でも照合。前日購入分も含みます）`,
     '',
     `現在のBP残高 **${bpBalance}** bp`,
     '',
@@ -412,7 +476,7 @@ export async function buildRacePurchaseHistoryV2Payload({
   container.addSeparatorComponents((s) => s);
 
   if (!allBets.length) {
-    appendChunkedText(container, '*この日次帯での購入はまだありません。*');
+    appendChunkedText(container, '*この開催日のレースへの購入はまだありません。*');
   } else if (!bets.length) {
     appendChunkedText(container, '*この開催に該当する購入はありません。*');
   } else {
@@ -425,6 +489,16 @@ export async function buildRacePurchaseHistoryV2Payload({
     }
   }
 
+  const [prevNavYmd, nextNavYmd] = await Promise.all([
+    findAdjacentHoldYmdWithBets(userId, periodKey, -1, filterKey),
+    findAdjacentHoldYmdWithBets(userId, periodKey, 1, filterKey),
+  ]);
+  const dayRow = historyDayNavRow(
+    periodKey,
+    filterKey,
+    prevNavYmd,
+    nextNavYmd,
+  );
   const filterRows = historyFilterAndPaginationRows({
     periodKey,
     page: safePage,
@@ -433,7 +507,7 @@ export async function buildRacePurchaseHistoryV2Payload({
     meetings,
   });
   const hubBack = buildRaceHubBackButtonRow();
-  const components = [container, ...filterRows, hubBack];
+  const components = [container, dayRow, ...filterRows, hubBack];
 
   const flags = MessageFlags.IsComponentsV2 | extraFlags;
   return {

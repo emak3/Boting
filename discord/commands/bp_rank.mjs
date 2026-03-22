@@ -12,6 +12,7 @@ import {
   fetchAllUsersByBalanceDesc,
   computeBpRank,
 } from '../utils/bpLeaderboard.mjs';
+import { runPendingRaceRefundsForUser } from '../utils/raceBetRefundSweep.mjs';
 
 function formatJst(d) {
   return d.toLocaleString('ja-JP', {
@@ -65,6 +66,7 @@ const commandObject = {
       }
 
       await interaction.deferReply();
+      await runPendingRaceRefundsForUser(interaction.user.id);
 
       let sorted;
       try {
@@ -152,6 +154,7 @@ const commandObject = {
     }
 
     await interaction.deferReply();
+    await runPendingRaceRefundsForUser(interaction.user.id);
 
     let sorted;
     try {

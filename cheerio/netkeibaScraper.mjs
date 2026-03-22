@@ -107,22 +107,28 @@ class NetkeibaScraper {
         const response = await axios.get(url, {
           headers,
           responseType: 'arraybuffer',
-          timeout: 15000,
+          timeout: 30000,
           maxRedirects: 5,
         });
-        const decodedData = handleEncoding(response.data, response);
+        const decodedData = handleEncoding(response.data, response, {
+          label: 'scrapeRaceResult',
+          url,
+        });
         const $ = cheerio.load(decodedData);
         const horses = this.parseResultHorseRows($);
         if (!horses.length) {
           continue;
         }
+        const excludedBlock = this.parseExcludedResultHorseRows($);
         const raceInfo = this.extractRaceInfo($);
         const payouts = this.parseResultPayouts($);
         return {
           confirmed: true,
           raceId: String(raceId),
           raceInfo,
-          horses,
+          horses: [...horses, ...excludedBlock.horses],
+          excludedHorseNumbers: excludedBlock.excludedHorseNumbers,
+          excludedFrames: excludedBlock.excludedFrames,
           payouts,
           scrapedAt: new Date().toISOString(),
           netkeibaOrigin: origin,
@@ -219,6 +225,92 @@ class NetkeibaScraper {
     return horses;
   }
 
+  /**
+   * 結果テーブルの除外・取消行（着順が数字でない HorseList）
+   * @returns {{ horses: object[], excludedHorseNumbers: string[], excludedFrames: string[] }}
+   */
+  parseExcludedResultHorseRows($) {
+    const horses = [];
+    const nums = [];
+    const frames = [];
+
+    const pushExcluded = ($row, rankLabel) => {
+      let frameNumber = 'N/A';
+      let horseNumber = 'N/A';
+      const $numTds = $row.find('> td.Num');
+      if ($numTds.length >= 2) {
+        frameNumber =
+          $numTds.eq(0).find('div').first().text().trim() ||
+          $numTds.eq(0).text().replace(/\s+/g, ' ').trim() ||
+          'N/A';
+        horseNumber =
+          $numTds.eq(1).find('div').first().text().trim() ||
+          $numTds.eq(1).text().replace(/\s+/g, ' ').trim() ||
+          'N/A';
+      }
+      if (horseNumber === 'N/A' || !/^\d+$/.test(String(horseNumber).replace(/\D/g, ''))) {
+        const $wakuTd = $row.find('td.Num[class*="Waku"]').first();
+        const wakuClass = $wakuTd.attr('class') || '';
+        const wm = wakuClass.match(/Waku(\d)/);
+        frameNumber = wm ? wm[1] : $wakuTd.find('div').first().text().trim() || frameNumber;
+        horseNumber =
+          $row.find('td.Num.Txt_C').first().find('div').first().text().trim() ||
+          $row.find('td.Num.Txt_C').first().text().trim() ||
+          horseNumber;
+      }
+
+      const name =
+        $row.find('.HorseNameSpan').first().text().trim() ||
+        $row.find('.Horse_Name a').first().text().trim() ||
+        $row.find('.Horse_Name').first().text().trim() ||
+        'N/A';
+
+      const jockey =
+        $row.find('.JockeyNameSpan').first().text().trim() ||
+        $row.find('td.Jockey').first().text().trim() ||
+        'N/A';
+
+      const hnNorm = String(horseNumber).replace(/\D/g, '');
+      if (!hnNorm || !/^\d+$/.test(hnNorm)) return;
+
+      const fnNorm = String(frameNumber).replace(/\D/g, '');
+
+      horses.push({
+        finishRank: rankLabel || '除外',
+        frameNumber,
+        horseNumber: hnNorm,
+        name,
+        jockey,
+        time: 'N/A',
+        margin: '',
+        popularity: 'N/A',
+        odds: 'N/A',
+        excluded: true,
+      });
+      nums.push(hnNorm);
+      if (fnNorm && /^\d+$/.test(fnNorm)) frames.push(fnNorm);
+    };
+
+    $('tr.HorseList').each((_, el) => {
+      const $row = $(el);
+      const rank = $row.find('.Result_Num .Rank').first().text().trim();
+      const cls = $row.attr('class') || '';
+      const isExcluded =
+        rank === '除外' ||
+        rank === '取' ||
+        rank === '取消' ||
+        /\bTorikeshi\b/.test(cls);
+      if (!isExcluded) return;
+      pushExcluded($row, rank || '除外');
+    });
+
+    return {
+      horses,
+      excludedHorseNumbers: [...new Set(nums)],
+      excludedFrames: [...new Set(frames)],
+    };
+  }
+
   /** tr.Result 内の span から数字だけ拾う（空は除外） */
   static extractNumSpans($, $root) {
     const out = [];
@@ -227,6 +319,38 @@ class NetkeibaScraper {
       if (t && /^\d+$/.test(t)) out.push(t);
     });
     return out;
+  }
+
+  /**
+   * 3連複: td.Result 内の1つの ul から、的中組（馬番3つ）の配列を取る。
+   * - 1組が <li>×3（各1頭）のパターンと、<li>×1（3頭ぶんspan）や <li>×複数（組が複数行）の両方に対応。
+   * 従来は ul 直下の span を全部つなげており、組が複数あると6個以上になり照合不能になっていた。
+   */
+  static extractFuku3CombosFromUl($, $ul) {
+    const $lis = $ul.children('li');
+    if (!$lis.length) {
+      const nums = NetkeibaScraper.extractNumSpans($, $ul);
+      return nums.length >= 3 ? [nums.slice(0, 3)] : [];
+    }
+    const triplesFromWideLi = [];
+    $lis.each((_, li) => {
+      const nums = NetkeibaScraper.extractNumSpans($, $(li));
+      if (nums.length >= 3) triplesFromWideLi.push(nums.slice(0, 3));
+    });
+    if (triplesFromWideLi.length) return triplesFromWideLi;
+
+    if ($lis.length === 3) {
+      const acc = [];
+      $lis.each((_, li) => {
+        const nums = NetkeibaScraper.extractNumSpans($, $(li));
+        if (nums.length >= 1) acc.push(nums[0]);
+      });
+      if (acc.length === 3) return [acc];
+    }
+
+    const all = NetkeibaScraper.extractNumSpans($, $ul);
+    if (all.length >= 3) return [all.slice(0, 3)];
+    return [];
   }
 
   parseResultPayouts($) {
@@ -327,7 +451,33 @@ class NetkeibaScraper {
             }
           }
 
-          if (kind === 'Umatan' || kind === 'Tan3' || kind === 'Fuku3') {
+          if (kind === 'Fuku3') {
+            const combos = [];
+            $result.find('ul').each((_, ul) => {
+              for (const c of NetkeibaScraper.extractFuku3CombosFromUl($, $(ul))) {
+                combos.push(c);
+              }
+            });
+            if (combos.length === 0) {
+              const ft = NetkeibaScraper.fallbackNumsFromText(resultText);
+              if (ft.length >= 3) combos.push(ft.slice(0, 3));
+            }
+            if (combos.length > 0) {
+              for (let i = 0; i < combos.length; i++) {
+                const payout = payoutParts[i] ?? payoutParts[0] ?? '—';
+                const nk =
+                  ninkiList.length > i
+                    ? ninkiList[i]
+                    : ninkiList.length === 1
+                      ? ninkiList[0]
+                      : ninkiFallback;
+                pushEntry(combos[i], payout, nk);
+              }
+            }
+            return;
+          }
+
+          if (kind === 'Umatan' || kind === 'Tan3') {
             const $uls = $result.find('ul');
             if ($uls.length > 1) {
               const need = kind === 'Umatan' ? 2 : 3;
@@ -398,7 +548,6 @@ class NetkeibaScraper {
             kind === 'Wakuren' ||
             kind === 'Umaren' ||
             kind === 'Umatan' ||
-            kind === 'Fuku3' ||
             kind === 'Tan3'
           ) {
             const $ul = $result.find('ul').first();
@@ -441,7 +590,10 @@ class NetkeibaScraper {
       });
 
       // レスポンスオブジェクトも渡してエンコーディングを適切に処理
-      const decodedData = handleEncoding(response.data, response);
+      const decodedData = handleEncoding(response.data, response, {
+        label: 'scrapeWithCheerio',
+        url,
+      });
       const $ = cheerio.load(decodedData);
 
       // メインテーブルの確認（中央: Shutuba_Table / 地方: RaceTable01 ShutubaTable など）
@@ -489,6 +641,13 @@ class NetkeibaScraper {
       const $horseName = $row.find('.HorseName a, .HorseInfo .HorseName a, td a[href*="/horse/"]').first();
       if (!$horseName.length) return;
 
+      const rowClass = $row.attr('class') || '';
+      const rowText = $row.text();
+      const excluded =
+        /\bCancel\b/.test(rowClass) ||
+        /\bJogai\b/.test(rowClass) ||
+        rowText.includes('除外');
+
       const horse = {
         frameNumber: this.extractFrameNumber($row, $),
         horseNumber: this.extractHorseNumber($row, $),
@@ -502,6 +661,7 @@ class NetkeibaScraper {
         popularity: this.extractPopularity($row, $),
         jockey: this.extractJockey($row, $),
         trainer: this.extractTrainer($row, $),
+        excluded,
       };
 
       if (horse.name && horse.name !== '') {

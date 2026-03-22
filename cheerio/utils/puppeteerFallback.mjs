@@ -90,6 +90,13 @@ function parseHorseDataFromHtml($) {
     
     if (!$horseName.length) return;
 
+    const rowClass = $row.attr('class') || '';
+    const rowText = $row.text();
+    const excluded =
+      /\bCancel\b/.test(rowClass) ||
+      /\bJogai\b/.test(rowClass) ||
+      rowText.includes('除外');
+
     const horse = {
       frameNumber: extractFrameNumber($row),
       horseNumber: extractHorseNumber($row),
@@ -103,6 +110,7 @@ function parseHorseDataFromHtml($) {
       popularity: extractPopularity($row),
       jockey: extractJockey($row),
       trainer: extractTrainer($row),
+      excluded,
     };
 
     if (horse.name && horse.name !== '') {

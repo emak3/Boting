@@ -3,6 +3,8 @@
  * 各チケットは netkeiba parseResultPayouts の kind（Tansho, Fukusho, …）と nums に対応。
  */
 
+import { frameAllowsWakurenSamePair } from './jraBetAvailability.mjs';
+
 function uniqValues(arr) {
   return Array.from(new Set((arr || []).map((v) => String(v))));
 }
@@ -97,8 +99,15 @@ export function buildPayoutTicketsFromFlow(flow, raceId) {
     const kind = pairPayoutKind(bt);
     const axis = f.pairAxis != null ? String(f.pairAxis) : '';
     const opps = ss(f, lastId);
+    const horses = f.result?.horses || [];
     const tickets = [];
     for (const o of opps) {
+      if (bt === 'frame_pair' && o === axis) {
+        if (frameAllowsWakurenSamePair(horses, o)) {
+          tickets.push({ kind, nums: sortedPairNums(axis, o) });
+        }
+        continue;
+      }
       if (o === axis) continue;
       tickets.push({ kind, nums: sortedPairNums(axis, o) });
     }
@@ -110,10 +119,18 @@ export function buildPayoutTicketsFromFlow(flow, raceId) {
     const [, , bt] = lastId.split('|');
     const kind = pairPayoutKind(bt);
     const picks = uniqValues(ss(f, lastId));
+    const horses = f.result?.horses || [];
     const tickets = [];
     for (let i = 0; i < picks.length; i++) {
       for (let j = i + 1; j < picks.length; j++) {
         tickets.push({ kind, nums: sortedPairNums(picks[i], picks[j]) });
+      }
+    }
+    if (bt === 'frame_pair') {
+      for (const fr of picks) {
+        if (frameAllowsWakurenSamePair(horses, fr)) {
+          tickets.push({ kind, nums: sortedPairNums(fr, fr) });
+        }
       }
     }
     return tickets;
@@ -125,11 +142,17 @@ export function buildPayoutTicketsFromFlow(flow, raceId) {
     const kind = pairPayoutKind(bt);
     const A = f.pairFormA || [];
     const B = ss(f, lastId);
+    const horses = f.result?.horses || [];
     const tickets = [];
     const set = new Set();
     for (const x of uniqValues(A)) {
       for (const y of uniqValues(B)) {
-        if (x === y) continue;
+        if (x === y) {
+          if (bt === 'frame_pair' && frameAllowsWakurenSamePair(horses, x)) {
+            set.add(`${x}|${x}`);
+          }
+          continue;
+        }
         const [m1, m2] = x < y ? [x, y] : [y, x];
         set.add(`${m1}|${m2}`);
       }

@@ -26,7 +26,7 @@ export default async function betSlipReviewModal(interaction) {
     await interaction.reply({
       content:
         '❌ このフォームは使えません。**まとめて購入**の画面を開き直し、メニューから金額変更してください。',
-      ephemeral: true,
+      flags: MessageFlags.Ephemeral,
     });
     return;
   }
@@ -36,7 +36,7 @@ export default async function betSlipReviewModal(interaction) {
   if (!pending?.items?.length) {
     await interaction.reply({
       content: '❌ 購入予定の確認セッションが無効です。',
-      ephemeral: true,
+      flags: MessageFlags.Ephemeral,
     });
     return;
   }
@@ -45,14 +45,14 @@ export default async function betSlipReviewModal(interaction) {
   if (pending.anchorRaceId && pending.anchorRaceId !== raceId) {
     await interaction.reply({
       content: '❌ 購入予定の確認セッションが一致しません。',
-      ephemeral: true,
+      flags: MessageFlags.Ephemeral,
     });
     return;
   }
   if (idx < 0 || idx >= pending.items.length) {
     await interaction.reply({
       content: '❌ 対象の購入予定が見つかりません。',
-      ephemeral: true,
+      flags: MessageFlags.Ephemeral,
     });
     return;
   }
@@ -62,7 +62,7 @@ export default async function betSlipReviewModal(interaction) {
   if (!Number.isFinite(parsedYen) || parsedYen <= 0) {
     await interaction.reply({
       content: '❌ bp は正の整数で入力してください。',
-      ephemeral: true,
+      flags: MessageFlags.Ephemeral,
     });
     return;
   }

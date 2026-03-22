@@ -6,7 +6,7 @@ import {
   ComponentType,
   ActionRowBuilder,
 } from 'discord.js';
-import { wakuUmaEmoji } from './raceNumberEmoji.mjs';
+import { wakuUmaEmoji, jogaiEmoji } from './raceNumberEmoji.mjs';
 import { netkeibaResultUrl } from './netkeibaUrls.mjs';
 import { buildRaceResultV2Sections } from './raceResultEmbed.mjs';
 import { maybeInsertRaceBetUtilityRow } from './betSlipViewUi.mjs';
@@ -33,7 +33,8 @@ function horseBlock(horse) {
   const wu = wakuUmaEmoji(horse.frameNumber, horse.horseNumber);
   const numLabel = wu ? `${wu}` : `${horse.horseNumber}.`;
   const wakuPart = wu ? '' : `枠${horse.frameNumber} | `;
-  const head = `**${numLabel} ${horse.name}**`.trim();
+  const jog = horse.excluded ? jogaiEmoji() : null;
+  const head = `**${numLabel} ${horse.name}${jog ? ` ${jog}` : ''}**`.trim();
   const body = `${wakuPart}${horse.age} | ${horse.weight}kg · ${horse.jockey}${ninki}\n単勝 ${horse.odds}${place}`;
   return `${head}\n${body}`;
 }

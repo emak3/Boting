@@ -1,22 +1,26 @@
 import { BaseInteraction, MessageFlags } from "discord.js";
-import { runPendingRaceRefundsForUser } from "../utils/raceBetRefundSweep.mjs";
 
 /**
- * 未精算の競馬払戻を先に実行し、bp 残高・ランキング集計と整合させる
- * @param {string} userId
- */
-async function runPendingRaceRefundsBeforeCommand(userId) {
-    await runPendingRaceRefundsForUser(userId);
-}
-
-/**
+ * 未精算の競馬払戻は各コマンドで deferReply の直後に await する。
+ * execute 内で defer より前に重い await すると 3 秒超えで DiscordAPIError[10062] になる。
+ *
  * @param {BaseInteraction} interaction
  */
 export default async function (interaction) {
     if (!interaction.isCommand()) return;
-    await runPendingRaceRefundsBeforeCommand(interaction.user.id);
     if (interaction.client.commands.has(interaction.commandName)) {
-        await interaction.client.commands.get(interaction.commandName).execute(interaction);
+        try {
+            await interaction.client.commands.get(interaction.commandName).execute(interaction);
+        } catch (e) {
+            if (e?.code === 10062) {
+                console.warn(
+                    "[slash] Unknown interaction (10062); token expired or already acknowledged",
+                    interaction.commandName,
+                );
+                return;
+            }
+            throw e;
+        }
     } else {
         await interaction.reply({ content: "コマンドが存在しない又は、エラーの可能性があります。", flags: MessageFlags.Ephemeral });
     }

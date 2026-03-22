@@ -33,6 +33,7 @@ import {
   buildRacePurchaseHistoryV2Payload,
   RACE_HISTORY_DAY_PREFIX,
   RACE_HISTORY_PAGE_PREFIX,
+  stripRaceHistoryBpCtx,
 } from '../../utils/racePurchaseHistoryUi.mjs';
 import { RACE_PURCHASE_HISTORY_CUSTOM_ID } from '../../utils/betSlipViewUi.mjs';
 import {
@@ -201,6 +202,18 @@ export default async function betFlowButtons(interaction) {
   const customId = interaction.customId;
   const userId = interaction.user.id;
 
+  function extraFlagsFromMessage() {
+    let extra = 0;
+    try {
+      if (interaction.message?.flags?.has(MessageFlags.Ephemeral)) {
+        extra |= MessageFlags.Ephemeral;
+      }
+    } catch (_) {
+      /* ignore */
+    }
+    return extra;
+  }
+
   if (customId.startsWith('race_bet_slip_back|')) {
     const parsedRaceId = safeParseRaceId(customId);
     const pending = getSlipPendingReview(userId);
@@ -297,13 +310,15 @@ export default async function betFlowButtons(interaction) {
   }
 
   if (customId.startsWith(`${RACE_HISTORY_DAY_PREFIX}|`)) {
-    const parts = customId.split('|');
+    const { withoutCtx, bpctxUserId } = stripRaceHistoryBpCtx(customId);
+    const parts = withoutCtx.split('|');
     const pk = parts[1];
     const pg = parseInt(parts[2], 10);
     let meetingFilter = 'all';
     if (parts.length >= 4 && parts[3] !== undefined && parts[3] !== '') {
       meetingFilter = parts[3];
     }
+    const subjectUserId = bpctxUserId || userId;
     if (
       meetingFilter !== 'all' &&
       !/^\d{10}$/.test(String(meetingFilter))
@@ -324,11 +339,12 @@ export default async function betFlowButtons(interaction) {
     await interaction.deferUpdate();
     try {
       const payload = await buildRacePurchaseHistoryV2Payload({
-        userId,
+        userId: subjectUserId,
         periodKey: pk,
         page: pg,
         meetingFilter,
-        extraFlags: MessageFlags.Ephemeral,
+        extraFlags: extraFlagsFromMessage(),
+        bpRankProfileUserId: bpctxUserId || null,
       });
       await interaction.editReply(payload);
     } catch (e) {
@@ -341,13 +357,15 @@ export default async function betFlowButtons(interaction) {
   }
 
   if (customId.startsWith(`${RACE_HISTORY_PAGE_PREFIX}|`)) {
-    const parts = customId.split('|');
+    const { withoutCtx, bpctxUserId } = stripRaceHistoryBpCtx(customId);
+    const parts = withoutCtx.split('|');
     const pk = parts[1];
     const pg = parseInt(parts[2], 10);
     let meetingFilter = 'all';
     if (parts.length >= 4 && parts[3] !== undefined && parts[3] !== '') {
       meetingFilter = parts[3];
     }
+    const subjectUserId = bpctxUserId || userId;
     if (
       meetingFilter !== 'all' &&
       !/^\d{10}$/.test(String(meetingFilter))
@@ -368,11 +386,12 @@ export default async function betFlowButtons(interaction) {
     await interaction.deferUpdate();
     try {
       const payload = await buildRacePurchaseHistoryV2Payload({
-        userId,
+        userId: subjectUserId,
         periodKey: pk,
         page: pg,
         meetingFilter,
-        extraFlags: MessageFlags.Ephemeral,
+        extraFlags: extraFlagsFromMessage(),
+        bpRankProfileUserId: bpctxUserId || null,
       });
       await interaction.editReply(payload);
     } catch (e) {

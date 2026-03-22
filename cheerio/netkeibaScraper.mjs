@@ -2,11 +2,13 @@ import axios from 'axios';
 import * as cheerio from 'cheerio';
 import iconv from 'iconv-lite';
 import { handleEncoding } from './utils/encoding.mjs';
+import { axiosKeepAlive } from './utils/httpAgents.mjs';
 import { scrapWithPuppeteer } from './utils/puppeteerFallback.mjs';
 import {
   normalizeRaceScrapedText,
   splitCourseAndPrize,
 } from './utils/raceTextNormalize.mjs';
+import { shutubaHorseRowSelector } from './utils/shutubaDom.mjs';
 
 const NAR_BASE_URL = 'https://nar.netkeiba.com';
 
@@ -24,9 +26,7 @@ class NetkeibaScraper {
     };
   }
 
-  /** 出馬表の馬行のみ（予想ラップ等の別テーブルの HorseList を除外） */
-  static shutubaHorseRowSelector =
-    '.Shutuba_Table.ShutubaTable:not(.PredictRap_Table) tr.HorseList, .Shutuba_Table.RaceTable01.ShutubaTable:not(.PredictRap_Table) tr[id^="tr_"], table.RaceTable01.ShutubaTable:not(.PredictRap_Table) tr.HorseList, table.RaceTable01.ShutubaTable:not(.PredictRap_Table) tr[id^="tr_"]';
+  static shutubaHorseRowSelector = shutubaHorseRowSelector;
 
   requestHeadersForBase(baseUrl) {
     return {
@@ -109,6 +109,7 @@ class NetkeibaScraper {
           responseType: 'arraybuffer',
           timeout: 30000,
           maxRedirects: 5,
+          ...axiosKeepAlive,
         });
         const decodedData = handleEncoding(response.data, response, {
           label: 'scrapeRaceResult',
@@ -587,6 +588,7 @@ class NetkeibaScraper {
         responseType: 'arraybuffer',
         timeout: 10000,
         maxRedirects: 5,
+        ...axiosKeepAlive,
       });
 
       // レスポンスオブジェクトも渡してエンコーディングを適切に処理
@@ -597,19 +599,37 @@ class NetkeibaScraper {
       const $ = cheerio.load(decodedData);
 
       // メインテーブルの確認（中央: Shutuba_Table / 地方: RaceTable01 ShutubaTable など）
+      // 予測ラップ等は PredictRap_Table 側にも HorseList があるため table 単位で除外する
       const mainTable = $(
-        'table.RaceTable01.ShutubaTable, .Shutuba_Table.ShutubaTable, .ShutubaTable, .RaceTable01, .Shutuba_Table',
+        'table.RaceTable01.ShutubaTable, table.Shutuba_Table.ShutubaTable, table.Shutuba_Table.RaceTable01, .Shutuba_Table.ShutubaTable, .ShutubaTable, .RaceTable01, .Shutuba_Table',
       )
         .not('.PredictRap_Table')
+        .filter((i, el) => (el.tagName || '').toLowerCase() === 'table')
         .first();
-      if (!mainTable.length) {
+      const horseRowsOutsidePredict =
+        $('tr.HorseList').filter(
+          (i, el) => $(el).closest('.PredictRap_Table').length === 0,
+        ).length > 0;
+      const hasHorseRows =
+        $('table:not(.PredictRap_Table) tr.HorseList').length > 0 ||
+        $('table:not(.PredictRap_Table) tr[id^="tr_"]').length > 0 ||
+        horseRowsOutsidePredict;
+      if (!mainTable.length && !hasHorseRows) {
         console.log('Race table not found, checking alternative selectors...');
-        // 代替セレクタもチェック
         const altTable = $('table').filter((i, el) => {
-          const text = $(el).text();
-          return text.includes('枠') || text.includes('馬番') || text.includes('馬名');
+          const $el = $(el);
+          if ($el.is('.PredictRap_Table')) return false;
+          const text = $el.text();
+          const html = $el.html() || '';
+          if ($el.find('tr.HorseList').length) return true;
+          return (
+            text.includes('枠') ||
+            text.includes('馬番') ||
+            text.includes('馬名') ||
+            /HorseList|HorseName|Shutuba_Table|Inner_Shutuba/i.test(html)
+          );
         }).first();
-        
+
         if (!altTable.length) {
           throw new Error('Race table not found');
         }
@@ -855,6 +875,7 @@ class NetkeibaScraper {
     const { data } = await axios.get(apiUrl, {
       headers: this.headers,
       timeout: 15000,
+      ...axiosKeepAlive,
     });
     if (data?.status === 'NG' || !data?.data?.odds) {
       return null;

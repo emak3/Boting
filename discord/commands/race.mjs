@@ -113,7 +113,11 @@ async function runRaceIdFlow(interaction, raceId) {
       return;
     }
 
-    const meta = await findRaceMetaForToday(raceId);
+    const [meta, result] = await Promise.all([
+      findRaceMetaForToday(raceId),
+      scraper.scrapeRaceCard(raceId),
+    ]);
+
     if (meta) {
       const st = getRaceSalesStatus(meta.race, meta.kaisaiDateYmd);
       if (meta.race.isResult && !salesBypass) {
@@ -135,8 +139,6 @@ async function runRaceIdFlow(interaction, raceId) {
         return;
       }
     }
-
-    const result = await scraper.scrapeRaceCard(raceId);
     result.raceId = raceId;
     const flowPatch = { result };
     if (meta?.source === 'nar' || meta?.source === 'jra') {

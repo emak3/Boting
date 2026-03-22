@@ -24,7 +24,24 @@ import {
   venuePrefixForHistoryBet,
 } from './betPurchaseEmbed.mjs';
 import { V2_SINGLE_CHUNK, V2_TEXT_TOTAL_MAX } from './raceCardDisplay.mjs';
-import { buildRaceHubBackButtonRow } from './raceCommandHub.mjs';
+import {
+  buildRaceHubBackButtonRow,
+} from './raceCommandHub.mjs';
+import { buildBpRankProfileBackButtonRow } from './bpRankUiButtons.mjs';
+
+/** `|bpctx|{discordUserId}` — bp_rank 経由で他人の履歴を見ているときのナビ用 */
+export function stripRaceHistoryBpCtx(customId) {
+  const m = String(customId || '').match(/^(.*)\|bpctx\|(\d{17,20})$/);
+  if (m) return { withoutCtx: m[1], bpctxUserId: m[2] };
+  return { withoutCtx: String(customId || ''), bpctxUserId: null };
+}
+
+function historyCtxSuffix(bpRankProfileUserId) {
+  if (bpRankProfileUserId && /^\d{17,20}$/.test(String(bpRankProfileUserId))) {
+    return `|bpctx|${bpRankProfileUserId}`;
+  }
+  return '';
+}
 
 export const RACE_HISTORY_PAGE_PREFIX = 'race_bet_history_pg';
 /** 開催日を前後にずらす（customId: day|対象YYYYMMDD|page|meetingFilter） */
@@ -281,13 +298,20 @@ function historyTitleLineForHoldYmd(holdYmd) {
  * @param {string | null} prevYmd 前方向に購入がある開催日（無ければ null）
  * @param {string | null} nextYmd 次方向に購入がある開催日（無ければ null）
  */
-function historyDayNavRow(periodKey, meetingFilter, prevYmd, nextYmd) {
+function historyDayNavRow(
+  periodKey,
+  meetingFilter,
+  prevYmd,
+  nextYmd,
+  bpRankProfileUserId = null,
+) {
   const mf = String(meetingFilter || 'all').trim() || 'all';
+  const sfx = historyCtxSuffix(bpRankProfileUserId);
   const dayId = (ymd) =>
-    `${RACE_HISTORY_DAY_PREFIX}|${ymd}|0|${mf}`;
+    `${RACE_HISTORY_DAY_PREFIX}|${ymd}|0|${mf}${sfx}`;
   /** 無効時も custom_id は行内で一意（Discord は重複を拒否） */
-  const disabledPrevId = `${RACE_HISTORY_DAY_PREFIX}|${periodKey}|0|${mf}|_`;
-  const disabledNextId = `${RACE_HISTORY_DAY_PREFIX}|${periodKey}|0|${mf}|__`;
+  const disabledPrevId = `${RACE_HISTORY_DAY_PREFIX}|${periodKey}|0|${mf}|_${sfx}`;
+  const disabledNextId = `${RACE_HISTORY_DAY_PREFIX}|${periodKey}|0|${mf}|__${sfx}`;
   return new ActionRowBuilder().addComponents(
     new ButtonBuilder()
       .setCustomId(prevYmd ? dayId(prevYmd) : disabledPrevId)
@@ -312,16 +336,18 @@ function historyFilterAndPaginationRows({
   totalPages,
   meetingFilter,
   meetings,
+  bpRankProfileUserId = null,
 }) {
   const rows = [];
   const showNav = totalPages > 1;
   const showMeetings = meetings.length >= 2;
   if (!showNav && !showMeetings) return rows;
 
+  const sfx = historyCtxSuffix(bpRankProfileUserId);
   const navId = (pg) =>
-    `${RACE_HISTORY_PAGE_PREFIX}|${periodKey}|${pg}|${meetingFilter}`;
+    `${RACE_HISTORY_PAGE_PREFIX}|${periodKey}|${pg}|${meetingFilter}${sfx}`;
   const venueId = (key) =>
-    `${RACE_HISTORY_PAGE_PREFIX}|${periodKey}|0|${key}`;
+    `${RACE_HISTORY_PAGE_PREFIX}|${periodKey}|0|${key}${sfx}`;
 
   const navBtns = showNav
     ? [
@@ -341,7 +367,7 @@ function historyFilterAndPaginationRows({
   const allBtn =
     showMeetings && meetingFilter !== 'all'
       ? new ButtonBuilder()
-          .setCustomId(`${RACE_HISTORY_PAGE_PREFIX}|${periodKey}|0|all`)
+          .setCustomId(`${RACE_HISTORY_PAGE_PREFIX}|${periodKey}|0|all${sfx}`)
           .setLabel('すべて')
           .setStyle(ButtonStyle.Primary)
       : null;
@@ -372,8 +398,9 @@ function historyFilterAndPaginationRows({
 }
 
 /**
- * @param {{ userId: string, periodKey?: string, page?: number, meetingFilter?: string, extraFlags?: number }} opts
+ * @param {{ userId: string, periodKey?: string, page?: number, meetingFilter?: string, extraFlags?: number, bpRankProfileUserId?: string | null }} opts
  * periodKey … レース開催日 YYYYMMDD（JST）。省略時は resolveDefaultRaceHistoryHoldYmd。
+ * bpRankProfileUserId … 設定時は戻るボタンが BP 詳細（/bp_rank user）向けになり、ナビ customId に bpctx が付く。
  */
 export async function buildRacePurchaseHistoryV2Payload({
   userId,
@@ -381,6 +408,7 @@ export async function buildRacePurchaseHistoryV2Payload({
   page = 0,
   meetingFilter = 'all',
   extraFlags = 0,
+  bpRankProfileUserId = null,
 }) {
   void runPendingRaceRefundsForUser(userId).catch((e) =>
     console.warn('runPendingRaceRefundsForUser', e),
@@ -498,6 +526,7 @@ export async function buildRacePurchaseHistoryV2Payload({
     filterKey,
     prevNavYmd,
     nextNavYmd,
+    bpRankProfileUserId,
   );
   const filterRows = historyFilterAndPaginationRows({
     periodKey,
@@ -505,8 +534,11 @@ export async function buildRacePurchaseHistoryV2Payload({
     totalPages,
     meetingFilter: filterKey,
     meetings,
+    bpRankProfileUserId,
   });
-  const hubBack = buildRaceHubBackButtonRow();
+  const hubBack = bpRankProfileUserId
+    ? buildBpRankProfileBackButtonRow(bpRankProfileUserId)
+    : buildRaceHubBackButtonRow();
   const components = [container, dayRow, ...filterRows, hubBack];
 
   const flags = MessageFlags.IsComponentsV2 | extraFlags;

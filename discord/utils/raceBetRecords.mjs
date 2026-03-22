@@ -1,5 +1,6 @@
 import { FieldValue, Timestamp } from 'firebase-admin/firestore';
 import { getAdminFirestore } from '../../utils/firebaseAdmin.mjs';
+import { mapWithConcurrency } from '../../utils/mapWithConcurrency.mjs';
 import {
   appendLedgerTx,
   addJstCalendarDays,
@@ -298,15 +299,23 @@ export async function settlePendingOpenRaceBetsForUser(userId, scrapeRaceResult,
   /** @type {number | null} */
   let balance = null;
 
-  for (const raceId of toProcess) {
-    let parsed;
-    try {
-      parsed = await scrapeRaceResult(raceId);
-    } catch (_) {
-      skippedNoResult += 1;
-      continue;
-    }
-    if (!parsed?.confirmed) {
+  /** 結果取得のみ並列（精算は Firestore トランザクション競合を避けて順次） */
+  const SETTLE_SCRAPE_CONCURRENCY = 3;
+  const scrapeResults = await mapWithConcurrency(
+    toProcess,
+    SETTLE_SCRAPE_CONCURRENCY,
+    async (raceId) => {
+      try {
+        const parsed = await scrapeRaceResult(raceId);
+        return { raceId, parsed, scrapeErr: null };
+      } catch (_) {
+        return { raceId, parsed: null, scrapeErr: true };
+      }
+    },
+  );
+
+  for (const { raceId, parsed, scrapeErr } of scrapeResults) {
+    if (scrapeErr || !parsed?.confirmed) {
       skippedNoResult += 1;
       continue;
     }

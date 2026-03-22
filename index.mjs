@@ -16,7 +16,6 @@ client.commands = new Map();
 client.interactions = [];
 client.messages = [];
 client.modals = [];
-client.buttons = [];
 client.menus = [];
 
 process.on("uncaughtException", (error) => {
@@ -50,6 +49,8 @@ for (const file of readdirSync("./discord/interactions").filter((file) =>
 )) {
     // slash は InteractionCreate で最優先ルート（discord/events/interaction.mjs）。ここには載せない。
     if (file === "slash.mjs") continue;
+    // button / menu / modal は events/interaction.mjs で型別に直接 import（全ハンドラ連鎖を避ける）
+    if (file === "button.mjs" || file === "menu.mjs" || file === "modal.mjs") continue;
     const interactionModule = await import(`./discord/interactions/${file}`);
     const interaction = interactionModule.default;
     client.interactions.push(interaction);
@@ -61,14 +62,6 @@ for (const file of readdirSync("./discord/interactions/modal").filter((file) =>
     const modalModule = await import(`./discord/interactions/modal/${file}`);
     const modal = modalModule.default;
     client.modals.push(modal);
-}
-
-for (const file of readdirSync("./discord/interactions/button").filter((file) =>
-    file.endsWith(".mjs"),
-)) {
-    const buttonModule = await import(`./discord/interactions/button/${file}`);
-    const button = buttonModule.default;
-    client.buttons.push(button);
 }
 
 for (const file of readdirSync("./discord/interactions/menu").filter((file) =>

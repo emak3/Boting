@@ -1,6 +1,8 @@
 import axios from 'axios';
 import * as cheerio from 'cheerio';
 import { handleEncoding } from './utils/encoding.mjs';
+import { axiosKeepAlive } from './utils/httpAgents.mjs';
+import { mapWithConcurrency } from '../utils/mapWithConcurrency.mjs';
 
 const BASE = 'https://race.netkeiba.com';
 export const NAR_BASE = 'https://nar.netkeiba.com';
@@ -24,6 +26,7 @@ async function fetchHtml(url) {
     responseType: 'arraybuffer',
     timeout: 20000,
     maxRedirects: 5,
+    ...axiosKeepAlive,
   });
   return handleEncoding(response.data, response, { label: 'fetchHtml', url });
 }
@@ -34,9 +37,37 @@ async function fetchNarHtml(url) {
     responseType: 'arraybuffer',
     timeout: 20000,
     maxRedirects: 5,
+    ...axiosKeepAlive,
   });
   return handleEncoding(response.data, response, { label: 'fetchNarHtml', url });
 }
+
+/** 同一キーへの同時リクエストは 1 本にまとめ、短時間はメモリに保持（メニュー連打・findRaceMeta の二重取得対策） */
+const SCHEDULE_TTL_MS = 60_000;
+const scheduleMemo = new Map();
+const scheduleInflight = new Map();
+
+async function memoSchedule(key, ttlMs, factory) {
+  const now = Date.now();
+  const hit = scheduleMemo.get(key);
+  if (hit && hit.expires > now) return hit.value;
+  if (scheduleInflight.has(key)) return scheduleInflight.get(key);
+  const p = factory()
+    .then((value) => {
+      scheduleMemo.set(key, { expires: Date.now() + ttlMs, value });
+      scheduleInflight.delete(key);
+      return value;
+    })
+    .catch((e) => {
+      scheduleInflight.delete(key);
+      throw e;
+    });
+  scheduleInflight.set(key, p);
+  return p;
+}
+
+/** NAR 開催場タブの同時取得上限（無制限並列だと netkeiba 側のレート制限に当たりやすい） */
+const NAR_VENUE_FETCH_CONCURRENCY = 5;
 
 /** 日本時間の開催日 YYYYMMDD */
 export function jstYmd(now = new Date()) {
@@ -52,40 +83,100 @@ export function jstYmd(now = new Date()) {
   return `${y}${m}${d}`;
 }
 
+function liHasActiveClass(_, el, $) {
+  return /\bActive\b/i.test($(el).attr('class') || '');
+}
+
+/**
+ * race_list_get_date_list の HTML から JRA の kaisai_date / current_group を取り出す（DOM 変更・空 fragment に耐性）
+ * @returns {{ kaisaiDate: string, currentGroup: string } | null}
+ */
+export function parseJraActiveKaisaiFromDateListHtml(html) {
+  const today = jstYmd();
+  const $ = cheerio.load(html);
+
+  let $items = $('#date_list_sub li[date][group]');
+  if (!$items.length) {
+    $items = $('ul.Tab5 li[date][group]');
+  }
+  if (!$items.length) {
+    $items = $('li[date][group]');
+  }
+
+  let $li = $items.filter((i, el) => liHasActiveClass(i, el, $)).first();
+  if (!$li.length) {
+    $li = $items.filter(`[date="${today}"]`).first();
+  }
+  if (!$li.length) {
+    $li = $items.first();
+  }
+  if ($li.length) {
+    const kaisaiDate = $li.attr('date');
+    const currentGroup = $li.attr('group');
+    if (kaisaiDate && currentGroup) {
+      return { kaisaiDate, currentGroup };
+    }
+  }
+
+  const activeRe =
+    /<li[^>]*\bclass\s*=\s*["'][^"']*\bActive\b[^"']*["'][^>]*\bdate\s*=\s*["'](\d{8})["'][^>]*\bgroup\s*=\s*["'](\d+)["'][^>]*>/i;
+  let am = html.match(activeRe);
+  if (am) {
+    return { kaisaiDate: am[1], currentGroup: am[2] };
+  }
+  const activeRe2 =
+    /<li[^>]*\bdate\s*=\s*["'](\d{8})["'][^>]*\bgroup\s*=\s*["'](\d+)["'][^>]*\bclass\s*=\s*["'][^"']*\bActive\b[^"']*["'][^>]*>/i;
+  am = html.match(activeRe2);
+  if (am) {
+    return { kaisaiDate: am[1], currentGroup: am[2] };
+  }
+
+  const re = /race_list_sub\.html\?kaisai_date=(\d{8})&current_group=(\d+)/g;
+  const pairs = [];
+  let m;
+  while ((m = re.exec(html)) !== null) {
+    pairs.push({ kaisaiDate: m[1], currentGroup: m[2] });
+  }
+  if (pairs.length) {
+    const hit = pairs.find((p) => p.kaisaiDate === today) || pairs[0];
+    return hit;
+  }
+
+  return null;
+}
+
 /**
  * トップの日付タブ HTML を取得し、アクティブ（または本日）の kaisai_date / current_group を返す
  */
 export async function fetchActiveKaisaiTab() {
-  const html = await fetchHtml(`${BASE}/top/race_list_get_date_list.html?encoding=UTF-8`);
-  const $ = cheerio.load(html);
-  const today = jstYmd();
-  let $li = $('#date_list_sub li.Active').first();
-  if (!$li.length) {
-    $li = $(`#date_list_sub li[date="${today}"]`).first();
-  }
-  if (!$li.length) {
-    $li = $('#date_list_sub li').first();
-  }
-  if (!$li.length) {
-    throw new Error('開催日タブが見つかりません');
-  }
-  const kaisaiDate = $li.attr('date');
-  const currentGroup = $li.attr('group');
-  if (!kaisaiDate || !currentGroup) {
-    throw new Error('開催日情報が不正です');
-  }
-  return { kaisaiDate, currentGroup };
+  return memoSchedule('jra:activeTab', SCHEDULE_TTL_MS, async () => {
+    const url = `${BASE}/top/race_list_get_date_list.html?encoding=UTF-8`;
+    let html = await fetchHtml(url);
+    let parsed = parseJraActiveKaisaiFromDateListHtml(html);
+    if (!parsed) {
+      await new Promise((r) => setTimeout(r, 400));
+      html = await fetchHtml(url);
+      parsed = parseJraActiveKaisaiFromDateListHtml(html);
+    }
+    if (!parsed) {
+      throw new Error('開催日タブが見つかりません');
+    }
+    return parsed;
+  });
 }
 
 /**
  * 指定開催日のレース一覧 HTML を取得
  */
 export async function fetchRaceListSub(kaisaiDate, currentGroup) {
-  const q = new URLSearchParams({
-    kaisai_date: kaisaiDate,
-    current_group: currentGroup,
+  const key = `jra:list:${kaisaiDate}:${currentGroup}`;
+  return memoSchedule(key, SCHEDULE_TTL_MS, async () => {
+    const q = new URLSearchParams({
+      kaisai_date: kaisaiDate,
+      current_group: currentGroup,
+    });
+    return fetchHtml(`${BASE}/top/race_list_sub.html?${q.toString()}`);
   });
-  return fetchHtml(`${BASE}/top/race_list_sub.html?${q.toString()}`);
 }
 
 /**
@@ -171,16 +262,23 @@ export function getRaceSalesStatus(race, kaisaiDateYmd, now = new Date()) {
 }
 
 export async function fetchTodayVenuesAndRaces() {
-  const { kaisaiDate, currentGroup } = await fetchActiveKaisaiTab();
-  const subHtml = await fetchRaceListSub(kaisaiDate, currentGroup);
-  const parsed = parseRaceListSub(subHtml, kaisaiDate);
-  return { ...parsed, currentGroup };
+  return memoSchedule('jra:today', SCHEDULE_TTL_MS, async () => {
+    const { kaisaiDate, currentGroup } = await fetchActiveKaisaiTab();
+    const subHtml = await fetchRaceListSub(kaisaiDate, currentGroup);
+    const parsed = parseRaceListSub(subHtml, kaisaiDate);
+    return { ...parsed, currentGroup };
+  });
 }
 
 /** アクティブな開催日タブの一覧から raceId に一致するレースを探す（見つからなければ null） */
 export async function findRaceMetaForToday(raceId) {
-  try {
-    const { venues, kaisaiDateYmd, currentGroup } = await fetchTodayVenuesAndRaces();
+  const [jra, nar] = await Promise.allSettled([
+    fetchTodayVenuesAndRaces(),
+    fetchNarTodayVenuesAndRaces(),
+  ]);
+
+  if (jra.status === 'fulfilled') {
+    const { venues, kaisaiDateYmd, currentGroup } = jra.value;
     for (const v of venues) {
       const hit = v.races.find((r) => r.raceId === raceId);
       if (hit) {
@@ -194,11 +292,12 @@ export async function findRaceMetaForToday(raceId) {
         };
       }
     }
-  } catch (e) {
-    console.warn('findRaceMetaForToday (JRA):', e.message);
+  } else {
+    console.warn('findRaceMetaForToday (JRA):', jra.reason?.message ?? jra.reason);
   }
-  try {
-    const { venues, kaisaiDateYmd } = await fetchNarTodayVenuesAndRaces();
+
+  if (nar.status === 'fulfilled') {
+    const { venues, kaisaiDateYmd } = nar.value;
     for (const v of venues) {
       const hit = v.races.find((r) => r.raceId === raceId);
       if (hit) {
@@ -212,9 +311,10 @@ export async function findRaceMetaForToday(raceId) {
         };
       }
     }
-  } catch (e) {
-    console.warn('findRaceMetaForToday (NAR):', e.message);
+  } else {
+    console.warn('findRaceMetaForToday (NAR):', nar.reason?.message ?? nar.reason);
   }
+
   return null;
 }
 
@@ -225,39 +325,107 @@ export function filterVenueRaces(venues, kaisaiId) {
 
 // ----- 地方競馬 (NAR / nar.netkeiba.com) -----
 
+function narKaisaiIdForDate(html, ymd) {
+  const re = /race_list_sub\.html\?kaisai_date=(\d{8})(?:&kaisai_id=(\d+))?/g;
+  let m;
+  let lastWithId = null;
+  while ((m = re.exec(html)) !== null) {
+    if (m[1] !== ymd) continue;
+    if (m[2]) lastWithId = m[2];
+  }
+  return lastWithId;
+}
+
+/**
+ * NAR race_list_get_date_list の HTML から開催日・kaisai_id（任意）を取り出す
+ * @returns {{ kaisaiDate: string, activeKaisaiId: string | null } | null}
+ */
+export function parseNarActiveKaisaiFromDateListHtml(html) {
+  const today = jstYmd();
+  const $ = cheerio.load(html);
+  let $items = $('#date_list_sub li[date]');
+  if (!$items.length) {
+    $items = $('ul.Tab5 li[date]');
+  }
+  if (!$items.length) {
+    $items = $('li[date]');
+  }
+  let $li = $items.filter((i, el) => liHasActiveClass(i, el, $)).first();
+  if (!$li.length) {
+    $li = $items.filter(`[date="${today}"]`).first();
+  }
+  if (!$li.length) {
+    $li = $items.first();
+  }
+  if ($li.length) {
+    const kaisaiDate = $li.attr('date');
+    if (kaisaiDate) {
+      const ahref = $li.find('a').attr('href') || '';
+      const am = ahref.match(/kaisai_id=(\d+)/);
+      return { kaisaiDate, activeKaisaiId: am ? am[1] : null };
+    }
+  }
+
+  const activeRe =
+    /<li[^>]*\bclass\s*=\s*["'][^"']*\bActive\b[^"']*["'][^>]*\bdate\s*=\s*["'](\d{8})["'][^>]*>/i;
+  let am = html.match(activeRe);
+  if (!am) {
+    const activeRe2 =
+      /<li[^>]*\bdate\s*=\s*["'](\d{8})["'][^>]*\bclass\s*=\s*["'][^"']*\bActive\b[^"']*["'][^>]*>/i;
+    am = html.match(activeRe2);
+  }
+  if (am) {
+    const kaisaiDate = am[1];
+    return { kaisaiDate, activeKaisaiId: narKaisaiIdForDate(html, kaisaiDate) };
+  }
+
+  const re = /race_list_sub\.html\?kaisai_date=(\d{8})(?:&kaisai_id=(\d+))?/g;
+  const pairs = [];
+  let m;
+  while ((m = re.exec(html)) !== null) {
+    pairs.push({ kaisaiDate: m[1], activeKaisaiId: m[2] ?? null });
+  }
+  if (pairs.length) {
+    const hit = pairs.find((p) => p.kaisaiDate === today) || pairs[0];
+    return hit;
+  }
+  return null;
+}
+
 /**
  * NAR トップの日付タブから開催日を取得（href の kaisai_id は任意）
  */
 export async function fetchNarActiveKaisaiTab() {
-  const html = await fetchNarHtml(`${NAR_BASE}/top/race_list_get_date_list.html?encoding=UTF-8`);
-  const $ = cheerio.load(html);
-  const today = jstYmd();
-  let $li = $('#date_list_sub li.Active').first();
-  if (!$li.length) {
-    $li = $(`#date_list_sub li[date="${today}"]`).first();
-  }
-  if (!$li.length) {
-    $li = $('#date_list_sub li').first();
-  }
-  if (!$li.length) {
-    throw new Error('NAR: 開催日タブが見つかりません');
-  }
-  const kaisaiDate = $li.attr('date');
-  if (!kaisaiDate) {
-    throw new Error('NAR: 開催日が不正です');
-  }
-  const ahref = $li.find('a').attr('href') || '';
-  const am = ahref.match(/kaisai_id=(\d+)/);
-  return { kaisaiDate, activeKaisaiId: am ? am[1] : null };
+  return memoSchedule('nar:activeTab', SCHEDULE_TTL_MS, async () => {
+    const url = `${NAR_BASE}/top/race_list_get_date_list.html?encoding=UTF-8`;
+    let html = await fetchNarHtml(url);
+    let parsed = parseNarActiveKaisaiFromDateListHtml(html);
+    if (!parsed) {
+      await new Promise((r) => setTimeout(r, 400));
+      html = await fetchNarHtml(url);
+      parsed = parseNarActiveKaisaiFromDateListHtml(html);
+    }
+    if (!parsed) {
+      throw new Error('NAR: 開催日タブが見つかりません');
+    }
+    const { kaisaiDate, activeKaisaiId } = parsed;
+    if (!kaisaiDate) {
+      throw new Error('NAR: 開催日が不正です');
+    }
+    return { kaisaiDate, activeKaisaiId };
+  });
 }
 
 /**
  * NAR レース一覧（開催場タブ切り替え用の kaisai_id 任意）
  */
 export async function fetchNarRaceListSub(kaisaiDate, kaisaiId = null) {
-  const q = new URLSearchParams({ kaisai_date: kaisaiDate, rf: 'race_list' });
-  if (kaisaiId) q.set('kaisai_id', kaisaiId);
-  return fetchNarHtml(`${NAR_BASE}/top/race_list_sub.html?${q.toString()}`);
+  const key = `nar:list:${kaisaiDate}:${kaisaiId ?? ''}`;
+  return memoSchedule(key, SCHEDULE_TTL_MS, async () => {
+    const q = new URLSearchParams({ kaisai_date: kaisaiDate, rf: 'race_list' });
+    if (kaisaiId) q.set('kaisai_id', kaisaiId);
+    return fetchNarHtml(`${NAR_BASE}/top/race_list_sub.html?${q.toString()}`);
+  });
 }
 
 /**
@@ -339,31 +507,41 @@ export function parseNarRaceListSubToVenue(html, kaisaiDateYmd) {
  * 指定日の地方開催場一覧（タブごとに取得して結合）
  */
 export async function fetchNarVenuesForDate(kaisaiDate) {
-  const html0 = await fetchNarRaceListSub(kaisaiDate);
-  const provinces = extractNarProvinceKaisaiIds(html0);
-  const venues = [];
-  const loaded = new Set();
+  return memoSchedule(`nar:venues:${kaisaiDate}`, SCHEDULE_TTL_MS, async () => {
+    const html0 = await fetchNarRaceListSub(kaisaiDate);
+    const provinces = extractNarProvinceKaisaiIds(html0);
+    const venues = [];
+    const loaded = new Set();
 
-  const v0 = parseNarRaceListSubToVenue(html0, kaisaiDate);
-  if (v0?.races?.length) {
-    venues.push(v0);
-    loaded.add(v0.kaisaiId);
-  }
-
-  for (const { kaisaiId } of provinces) {
-    if (loaded.has(kaisaiId)) continue;
-    const html = await fetchNarRaceListSub(kaisaiDate, kaisaiId);
-    const v = parseNarRaceListSubToVenue(html, kaisaiDate);
-    if (v?.races?.length) {
-      venues.push(v);
-      loaded.add(v.kaisaiId);
+    const v0 = parseNarRaceListSubToVenue(html0, kaisaiDate);
+    if (v0?.races?.length) {
+      venues.push(v0);
+      loaded.add(v0.kaisaiId);
     }
-  }
 
-  return { kaisaiDateYmd: kaisaiDate, venues };
+    const toFetch = provinces.filter(({ kaisaiId }) => !loaded.has(kaisaiId));
+    const fetched = await mapWithConcurrency(
+      toFetch,
+      NAR_VENUE_FETCH_CONCURRENCY,
+      ({ kaisaiId }) =>
+        fetchNarRaceListSub(kaisaiDate, kaisaiId).then((html) => ({ kaisaiId, html })),
+    );
+
+    for (const { kaisaiId, html } of fetched) {
+      const v = parseNarRaceListSubToVenue(html, kaisaiDate);
+      if (v?.races?.length && !loaded.has(v.kaisaiId)) {
+        venues.push(v);
+        loaded.add(v.kaisaiId);
+      }
+    }
+
+    return { kaisaiDateYmd: kaisaiDate, venues };
+  });
 }
 
 export async function fetchNarTodayVenuesAndRaces() {
-  const { kaisaiDate } = await fetchNarActiveKaisaiTab();
-  return fetchNarVenuesForDate(kaisaiDate);
+  return memoSchedule('nar:today', SCHEDULE_TTL_MS, async () => {
+    const { kaisaiDate } = await fetchNarActiveKaisaiTab();
+    return fetchNarVenuesForDate(kaisaiDate);
+  });
 }

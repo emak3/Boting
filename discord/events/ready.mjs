@@ -13,7 +13,7 @@ export default {
         await getConfig();
     
         client.user.setActivity({
-            name: 'test',
+            name: '競馬Botting v1',
             type: ActivityType.Playing
         });
         log.info('online!');

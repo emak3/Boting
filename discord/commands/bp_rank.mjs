@@ -3,19 +3,14 @@ import {
   InteractionContextType,
   MessageFlags,
   EmbedBuilder,
-  ActionRowBuilder,
-  ButtonBuilder,
-  ButtonStyle,
 } from 'discord.js';
 import {
   fetchAllUsersByBalanceDesc,
   computeBpRank,
 } from '../utils/bpLeaderboard.mjs';
 import { runPendingRaceRefundsForUser } from '../utils/raceBetRefundSweep.mjs';
-import {
-  buildBpRankUserDetailV2Container,
-  BP_RANK_USER_HISTORY_PREFIX,
-} from '../utils/bpRankUserDetailEmbed.mjs';
+import { buildBpRankUserDetailV2Container } from '../utils/bpRankUserDetailEmbed.mjs';
+import { buildBpRankProfileButtonsRow } from '../utils/bpRankUiButtons.mjs';
 
 const commandObject = {
   command: new SlashCommandBuilder()
@@ -67,17 +62,12 @@ const commandObject = {
         return;
       }
 
-      const historyRow = new ActionRowBuilder().addComponents(
-        new ButtonBuilder()
-          .setCustomId(`${BP_RANK_USER_HISTORY_PREFIX}|${targetUser.id}`)
-          .setLabel('購入履歴')
-          .setStyle(ButtonStyle.Secondary),
-      );
+      const profileRow = buildBpRankProfileButtonsRow(targetUser.id);
 
       await interaction.editReply({
         content: null,
         embeds: [],
-        components: [container, historyRow],
+        components: [container, profileRow],
         flags: MessageFlags.IsComponentsV2,
       });
       return;

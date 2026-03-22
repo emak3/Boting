@@ -898,6 +898,76 @@ function formatFrames(result, frames) {
 }
 
 /**
+ * レース一覧メニュー: 一覧キャッシュ・フォールバックから raceId のメタを解決。
+ * scrapeRaceResult と Promise.all するため独立した async にしている。
+ */
+async function resolveScheduleMetaForRaceSelection({
+  userId,
+  raceId,
+  isResultFlag,
+  lastVenue,
+}) {
+  let raceMeta = null;
+  let salesStatus = null;
+  let metaFallback = null;
+  let scheduleVenueTitle = '';
+  let isResult =
+    raceResultFlagStore.get(`${userId}|${raceId}`) ?? isResultFlag === '1';
+
+  if (
+    lastVenue?.kaisaiDate &&
+    lastVenue?.kaisaiId &&
+    (lastVenue.source === 'nar' || lastVenue.currentGroup != null)
+  ) {
+    try {
+      if (lastVenue.source === 'nar') {
+        const html = await fetchNarRaceListSub(
+          lastVenue.kaisaiDate,
+          lastVenue.kaisaiId,
+        );
+        const venue = parseNarRaceListSubToVenue(html, lastVenue.kaisaiDate);
+        raceMeta = venue?.races.find((x) => x.raceId === raceId) || null;
+        scheduleVenueTitle = normalizeScheduleVenueDisplayName(
+          (venue?.title || '').replace(/\s+/g, ' ').trim(),
+        );
+      } else {
+        const html = await fetchRaceListSub(
+          lastVenue.kaisaiDate,
+          lastVenue.currentGroup,
+        );
+        const { venues } = parseRaceListSub(html, lastVenue.kaisaiDate);
+        scheduleVenueTitle = normalizeScheduleVenueDisplayName(
+          (
+            venues.find((x) => x.kaisaiId === lastVenue.kaisaiId)?.title || ''
+          ).replace(/\s+/g, ' ').trim(),
+        );
+        const races = filterVenueRaces(venues, lastVenue.kaisaiId);
+        raceMeta = races.find((x) => x.raceId === raceId) || null;
+      }
+      if (raceMeta) {
+        isResult = !!raceMeta.isResult;
+        raceResultFlagStore.set(`${userId}|${raceId}`, isResult);
+        salesStatus = getRaceSalesStatus(raceMeta, lastVenue.kaisaiDate);
+      }
+    } catch (_) {
+      /* 一覧取得失敗時は下で扱う */
+    }
+  }
+
+  if (!raceMeta) {
+    const meta = await findRaceMetaForToday(raceId);
+    if (meta) {
+      raceMeta = meta.race;
+      metaFallback = meta;
+      isResult = !!raceMeta.isResult;
+      salesStatus = getRaceSalesStatus(raceMeta, meta.kaisaiDateYmd);
+    }
+  }
+
+  return { raceMeta, metaFallback, salesStatus, scheduleVenueTitle, isResult };
+}
+
+/**
  * @param {import('discord.js').StringSelectMenuInteraction} interaction
  */
 export default async function raceScheduleMenu(interaction) {
@@ -1125,62 +1195,23 @@ export default async function raceScheduleMenu(interaction) {
       const scraper = new NetkeibaScraper();
       const lastVenue = venueSelectionStore.get(userId);
 
-      let raceMeta = null;
-      let salesStatus = null;
-      let metaFallback = null;
-      let scheduleVenueTitle = '';
-      let isResult =
-        raceResultFlagStore.get(`${userId}|${raceId}`) ?? isResultFlag === '1';
+      const [metaBundle, resultSnap] = await Promise.all([
+        resolveScheduleMetaForRaceSelection({
+          userId,
+          raceId,
+          isResultFlag,
+          lastVenue,
+        }),
+        scraper.scrapeRaceResult(raceId),
+      ]);
 
-      if (
-        lastVenue?.kaisaiDate &&
-        lastVenue?.kaisaiId &&
-        (lastVenue.source === 'nar' || lastVenue.currentGroup != null)
-      ) {
-        try {
-          if (lastVenue.source === 'nar') {
-            const html = await fetchNarRaceListSub(
-              lastVenue.kaisaiDate,
-              lastVenue.kaisaiId,
-            );
-            const venue = parseNarRaceListSubToVenue(html, lastVenue.kaisaiDate);
-            raceMeta = venue?.races.find((x) => x.raceId === raceId) || null;
-            scheduleVenueTitle = normalizeScheduleVenueDisplayName(
-              (venue?.title || '').replace(/\s+/g, ' ').trim(),
-            );
-          } else {
-            const html = await fetchRaceListSub(
-              lastVenue.kaisaiDate,
-              lastVenue.currentGroup,
-            );
-            const { venues } = parseRaceListSub(html, lastVenue.kaisaiDate);
-            scheduleVenueTitle = normalizeScheduleVenueDisplayName(
-              (
-                venues.find((x) => x.kaisaiId === lastVenue.kaisaiId)?.title || ''
-              ).replace(/\s+/g, ' ').trim(),
-            );
-            const races = filterVenueRaces(venues, lastVenue.kaisaiId);
-            raceMeta = races.find((x) => x.raceId === raceId) || null;
-          }
-          if (raceMeta) {
-            isResult = !!raceMeta.isResult;
-            raceResultFlagStore.set(`${userId}|${raceId}`, isResult);
-            salesStatus = getRaceSalesStatus(raceMeta, lastVenue.kaisaiDate);
-          }
-        } catch (_) {
-          /* 一覧取得失敗時は下で扱う */
-        }
-      }
-
-      if (!raceMeta) {
-        const meta = await findRaceMetaForToday(raceId);
-        if (meta) {
-          raceMeta = meta.race;
-          metaFallback = meta;
-          isResult = !!raceMeta.isResult;
-          salesStatus = getRaceSalesStatus(raceMeta, meta.kaisaiDateYmd);
-        }
-      }
+      const {
+        raceMeta,
+        metaFallback,
+        salesStatus,
+        scheduleVenueTitle,
+        isResult,
+      } = metaBundle;
 
       const flowCtx = lastVenue?.kaisaiId
         ? {
@@ -1204,7 +1235,6 @@ export default async function raceScheduleMenu(interaction) {
 
       const salesBypass = canBypassSalesClosed(userId);
 
-      const resultSnap = await scraper.scrapeRaceResult(raceId);
       // デバッグ発売バイパス時も精算・結果表示は行う（バイパスは締切後の購入可否用）
       if (resultSnap.confirmed) {
         let bpFooter = null;

@@ -8,5 +8,6 @@ export default async function (interaction) {
     ) return;
     for (const value of interaction.client.menus) {
         await value(interaction);
+        if (interaction.deferred || interaction.replied) return;
     }
 }

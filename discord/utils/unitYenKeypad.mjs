@@ -125,7 +125,7 @@ export function buildUnitKeypadPayload({
       mk('3', ButtonStyle.Secondary, 'd', '3'),
     ),
     new ActionRowBuilder().addComponents(
-      mk('del', ButtonStyle.Danger, 'del', ''),
+      mk('Del', ButtonStyle.Danger, 'del', ''),
       mk('0', ButtonStyle.Secondary, 'd', '0'),
       mk('決定', ButtonStyle.Success, 'ok', ''),
     ),

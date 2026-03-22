@@ -2,7 +2,7 @@
   "name": "botting",
   "version": "1.0.0",
   "type": "module",
-  "description": "さんええ",
+  "description": "Botting",
   "main": "index.mjs",
   "scripts": {
     "start": "node --env-file=dev.env index.mjs",

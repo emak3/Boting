@@ -19,8 +19,9 @@ concurrency:
 
 jobs:
   deploy:
+    # Pages 既定環境。fromJSON でリテラルを避け、workflow スキーマの誤警告を抑止する。
     environment:
-      name: github-pages
+      name: ${{ fromJSON('["github-pages"]')[0] }}
       url: ${{ steps.deployment.outputs.page_url }}
     runs-on: ubuntu-latest
     steps:

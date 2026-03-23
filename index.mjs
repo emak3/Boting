@@ -1,5 +1,5 @@
 import { Client, Partials, GatewayIntentBits } from "discord.js";
-import { getConfig } from './config/config.mjs';
+import { getConfig, getConfigLogSummary } from './config/config.mjs';
 import { initLogger } from './utils/logger.mjs';
 const log = initLogger();
 import { readdirSync } from "node:fs";
@@ -13,7 +13,6 @@ const client = new Client({
 });
 
 client.commands = new Map();
-client.interactions = [];
 client.messages = [];
 client.modals = [];
 client.menus = [];
@@ -43,23 +42,6 @@ for (const file of readdirSync("./discord/commands").filter((file) =>
     const commandModule = await import(`./discord/commands/${file}`);
     const command = commandModule.default;
     client.commands.set(command.command.name, command);
-}
-
-for (const file of readdirSync("./discord/interactions").filter((file) =>
-    file.endsWith(".mjs"),
-)) {
-    // slash は InteractionCreate で最優先ルート（discord/events/interaction.mjs）。ここには載せない。
-    if (file === "slash.mjs") continue;
-    // button / menu / modal は events/interaction.mjs で型別に直接 import（全ハンドラ連鎖を避ける）
-    if (
-        file === "button.mjs" ||
-        file === "menu.mjs" ||
-        file === "modal.mjs" ||
-        file === "userMenu.mjs"
-    ) continue;
-    const interactionModule = await import(`./discord/interactions/${file}`);
-    const interaction = interactionModule.default;
-    client.interactions.push(interaction);
 }
 
 for (const file of readdirSync("./discord/interactions/modal").filter((file) =>
@@ -94,4 +76,6 @@ for (const file of readdirSync("./discord/messages").filter((file) =>
     client.messages.push(message);
 }
 
-client.login(getConfig().token).then(() => log.info(getConfig()));
+client.login(getConfig().token).then(() =>
+    log.info("Discord client ready.", getConfigLogSummary()),
+);

@@ -33,10 +33,5 @@ export default {
             await modal(interaction);
             return;
         }
-        for (const value of interaction.client.interactions) {
-            if (typeof value === "function") {
-                await value(interaction);
-            }
-        }
-    }
-}
+    },
+};

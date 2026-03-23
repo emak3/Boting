@@ -38,7 +38,7 @@ export function parseNetkeibaRaceDateTextToYmd(raw) {
 }
 
 /**
- * 購入確定時に Firestore へ書く開催日（優先順: 明示 > ページ日付 > オッズAPI時刻 > NAR の race_id）
+ * 購入確定時に DB に書く開催日（優先順: 明示 > ページ日付 > オッズAPI時刻 > NAR の race_id）
  * @param {object} it 購入予定1件
  * @returns {string}
  */

@@ -1,7 +1,11 @@
+/**
+ * 結果ページの払戻テーブルを解析する開発用スクリプト
+ * 実行: node scripts/dev/netkeiba-parse-payout.mjs [race_id]
+ */
 import axios from 'axios';
 import * as cheerio from 'cheerio';
-import { handleEncoding } from './utils/encoding.mjs';
-import NetkeibaScraper from './netkeibaScraper.mjs';
+import { handleEncoding } from '../../cheerio/utils/encoding.mjs';
+import NetkeibaScraper from '../../cheerio/netkeibaScraper.mjs';
 
 const raceId = process.argv[2] || '202446091009';
 const url = `https://nar.netkeiba.com/race/result.html?race_id=${raceId}`;
@@ -14,7 +18,7 @@ const res = await axios.get(url, {
     Referer: 'https://nar.netkeiba.com/',
   },
 });
-const html = handleEncoding(res.data, res, { label: 'tmp', url });
+const html = handleEncoding(res.data, res, { label: 'parse-payout', url });
 const $ = cheerio.load(html);
 $('table.Payout_Detail_Table tbody tr').each((_, tr) => {
   const cls = $(tr).attr('class') || '';

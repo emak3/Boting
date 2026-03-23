@@ -123,7 +123,7 @@ function shortenAxisTagForHistory(tag, label) {
   return tag;
 }
 
-/** Firestore の買い目1件を formatSlipPickDisplayLines 用に正規化 */
+/** 買い目1件を formatSlipPickDisplayLines 用に正規化 */
 function betAsSlipItem(bet) {
   return {
     selectionLine: bet.selectionLine,

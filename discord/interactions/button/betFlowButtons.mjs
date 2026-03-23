@@ -646,7 +646,7 @@ export default async function betFlowButtons(interaction) {
       const detail = e?.message != null ? String(e.message).slice(0, 400) : String(e);
       await interaction.editReply(
         buildTextAndRowsV2Payload({
-          headline: `❌ **データベースへの保存に失敗しました**（bp の減算・購入記録は行われていません）。ネットワークや Firebase の状態を確認し、しばらくしてから再度お試しください。\n\`${detail}\``,
+          headline: `❌ **データベースへの保存に失敗しました**（bp の減算・購入記録は行われていません）。ホストのディスク空きやネットワークを確認し、しばらくしてから再度お試しください。\n\`${detail}\``,
           actionRows: [],
           extraFlags,
           withBotingMenuBack: true,

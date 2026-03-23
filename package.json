@@ -6,7 +6,9 @@
   "main": "index.mjs",
   "scripts": {
     "start": "node --env-file=dev.env index.mjs",
-    "dev": "nodemon --env-file=dev.env index.mjs"
+    "dev": "nodemon --env-file=dev.env index.mjs",
+    "dev:netkeiba-test": "node --env-file=dev.env scripts/dev/netkeiba-scraper-test.mjs",
+    "dev:netkeiba-payout": "node scripts/dev/netkeiba-parse-payout.mjs"
   },
   "devDependencies": {
     "nodemon": "^3.0.1"

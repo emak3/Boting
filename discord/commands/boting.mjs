@@ -4,7 +4,7 @@ import {
   MessageFlags,
 } from 'discord.js';
 import { buildBotingPanelPayload } from '../utils/raceCommandHub.mjs';
-import { isDatabaseCapacityError } from '../utils/firestoreErrors.mjs';
+import { isDatabaseCapacityError } from '../utils/databaseErrors.mjs';
 
 const commandObject = {
   command: new SlashCommandBuilder()

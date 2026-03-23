@@ -1,21 +1,23 @@
-import NetkeibaScraper from './netkeibaScraper.mjs';
+/**
+ * Netkeiba スクレイパーの手動試験（開発用）
+ * 実行: node --env-file=dev.env scripts/dev/netkeiba-scraper-test.mjs
+ */
+import NetkeibaScraper from '../../cheerio/netkeibaScraper.mjs';
 import { pathToFileURL } from 'node:url';
 
 async function testScraper() {
   const scraper = new NetkeibaScraper();
-  // トップのピックアップ等、実在する race_id に差し替えて試験してください
   const raceId = process.env.TEST_RACE_ID || '202606020701';
-  
+
   console.log('🐎 Netkeiba Scraper Test Starting...');
   console.log(`Race ID: ${raceId}`);
-  console.log('=' .repeat(50));
+  console.log('='.repeat(50));
 
   try {
     const result = await scraper.scrapeRaceCard(raceId);
-    
-    // 文字化けチェック
+
     const hasMojibake = checkForMojibake(result);
-    
+
     const content = `
 ## 📊 Scraping Results
 
@@ -46,14 +48,14 @@ ${index + 1}. **${horse.name}**
     `;
 
     console.log(content);
-    
-    // 文字化けが検出された場合は警告
-    if (hasMojibake) {
-      console.warn('\n⚠️ 警告: 文字化けが検出されました。エンコーディング設定を確認してください。');
-    }
-    
-    return { success: !hasMojibake, content, data: result };
 
+    if (hasMojibake) {
+      console.warn(
+        '\n⚠️ 警告: 文字化けが検出されました。エンコーディング設定を確認してください。',
+      );
+    }
+
+    return { success: !hasMojibake, content, data: result };
   } catch (error) {
     const errorContent = `
 ## ❌ Scraping Failed
@@ -62,35 +64,17 @@ ${index + 1}. **${horse.name}**
 - Message: ${error.message}
 - Type: ${error.name}
 - Time: ${new Date().toISOString()}
-
-**Possible Issues:**
-- Anti-scraping protection activated
-- Network connectivity problems  
-- HTML structure changes
-- Rate limiting applied
-- Character encoding issues
-
-**Recommended Actions:**
-1. Check network connection
-2. Try again after a few minutes
-3. Use Puppeteer fallback mode
-4. Verify race ID is valid
-5. Check encoding settings
     `;
-    
+
     console.error(error);
     console.log(errorContent);
     return { success: false, content: errorContent, error };
   }
 }
 
-/**
- * 文字化けチェック関数
- */
 function checkForMojibake(result) {
   const mojibakePattern = /[\uFFFD�]|[\x00-\x08\x0B\x0C\x0E-\x1F\x7F]/;
-  
-  // レース情報のチェック
+
   if (result.raceInfo) {
     for (const value of Object.values(result.raceInfo)) {
       if (typeof value === 'string' && mojibakePattern.test(value)) {
@@ -99,21 +83,21 @@ function checkForMojibake(result) {
       }
     }
   }
-  
-  // 馬情報のチェック
+
   for (const horse of result.horses) {
     for (const [key, value] of Object.entries(horse)) {
       if (typeof value === 'string' && mojibakePattern.test(value)) {
-        console.warn(`文字化け検出 (${horse.name || 'Unknown'} - ${key}): ${value}`);
+        console.warn(
+          `文字化け検出 (${horse.name || 'Unknown'} - ${key}): ${value}`,
+        );
         return true;
       }
     }
   }
-  
+
   return false;
 }
 
-// 実行（Windows でも import.meta.url と argv を正しく突き合わせる）
 const isDirectRun =
   process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href;
 if (isDirectRun) {

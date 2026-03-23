@@ -20,6 +20,10 @@ import {
   emptyRaceBetAggregates,
 } from './raceBetRecords.mjs';
 import { runPendingRaceRefundsForUser } from './raceBetRefundSweep.mjs';
+import { mapWithConcurrency } from '../../utils/mapWithConcurrency.mjs';
+
+/** Discord REST のバーストを抑える（表示名解決の並列度） */
+const BP_RANK_NAME_RESOLVE_CONCURRENCY = 5;
 
 /** ランキング Container のアクセント（Embed の黄色に相当） */
 const BP_RANK_ACCENT = 0xf1c40f;
@@ -69,8 +73,10 @@ export async function resolveBpRankDisplayNames(client, guild, userIds) {
   const uniq = [...new Set(userIds)].filter(
     (id) => id && /^\d{17,20}$/.test(String(id)),
   );
-  await Promise.all(
-    uniq.map(async (id) => {
+  await mapWithConcurrency(
+    uniq,
+    BP_RANK_NAME_RESOLVE_CONCURRENCY,
+    async (id) => {
       try {
         if (guild) {
           const mem = await guild.members.fetch(id).catch(() => null);
@@ -94,7 +100,7 @@ export async function resolveBpRankDisplayNames(client, guild, userIds) {
       } catch {
         map.set(id, `…${String(id).slice(-4)}`);
       }
-    }),
+    },
   );
   return map;
 }
@@ -234,7 +240,7 @@ function footerNoteForMode(mode) {
     return '的中率 = (的中件数 ÷ 購入件数) × 100';
   }
   if (mode === BP_RANK_MODE.PURCHASE) {
-    return '購入件数 = 馬券購入件数数';
+    return '購入件数 = 馬券購入件数';
   }
   return '';
 }

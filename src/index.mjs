@@ -3,7 +3,7 @@ import { readdirSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { getConfig, getConfigLogSummary } from './config/config.mjs';
-import { initLogger } from './utils/logging/logger.mjs';
+import { initLogger, shutdownLogger } from './utils/logging/logger.mjs';
 import { closePuppeteerBrowserPool } from './scrapers/netkeiba/utils/puppeteerBrowserPool.mjs';
 import './utils/patches/usernameSystem.mjs';
 
@@ -11,9 +11,12 @@ const log = initLogger();
 const __dirname = dirname(fileURLToPath(import.meta.url));
 
 const client = new Client({
-    intents: Object.values(GatewayIntentBits),
+    intents: [
+        GatewayIntentBits.Guilds,
+        GatewayIntentBits.GuildMessages,
+    ],
     allowedMentions: { parse: ["users", "roles"] },
-    partials: [Partials.Message, Partials.Channel, Partials.Reaction],
+    partials: [Partials.Channel],
     // 遅い回線・DNS で undici の接続が 10s で落ちることがあるため REST 全体の上限を延ばす
     rest: { timeout: 60_000 },
 });
@@ -24,12 +27,31 @@ client.modals = [];
 client.menus = [];
 client.userMenus = [];
 
-process.on("uncaughtException", (error) => {
-    console.error(error);
+function formatErr(reason) {
+    if (reason instanceof Error) return reason.stack || reason.message;
+    try {
+        return JSON.stringify(reason);
+    } catch {
+        return String(reason);
+    }
+}
+
+process.on("uncaughtException", async (error) => {
+    log.error("uncaughtException:", formatErr(error));
+    await shutdownLogger().catch(() => {});
+    process.exit(1);
+});
+
+process.on("unhandledRejection", async (reason) => {
+    log.error("unhandledRejection:", formatErr(reason));
+    await shutdownLogger().catch(() => {});
+    process.exit(1);
 });
 
 async function shutdown() {
     await closePuppeteerBrowserPool().catch(() => {});
+    await client.destroy().catch(() => {});
+    await shutdownLogger().catch(() => {});
     process.exit(0);
 }
 process.once("SIGINT", shutdown);
@@ -91,4 +113,7 @@ for (const file of readdirSync(join(__dirname, "discord/messages")).filter((file
 
 client.login(getConfig().token).then(() =>
     log.info("Discord client ready.", getConfigLogSummary()),
-);
+).catch((e) => {
+    log.error("Discord login failed:", formatErr(e));
+    shutdownLogger().finally(() => process.exit(1));
+});

@@ -1,6 +1,19 @@
 import iconv from 'iconv-lite';
 
 /**
+ * @param {Buffer|ArrayBuffer|ArrayBufferView} input
+ * @returns {Buffer}
+ */
+function toBuffer(input) {
+  if (Buffer.isBuffer(input)) return input;
+  if (input instanceof ArrayBuffer) return Buffer.from(input);
+  if (ArrayBuffer.isView(input)) {
+    return Buffer.from(input.buffer, input.byteOffset, input.byteLength);
+  }
+  return Buffer.from(input);
+}
+
+/**
  * HTTPレスポンスからエンコーディングを検出
  */
 export function detectEncodingFromResponse(response) {
@@ -52,11 +65,12 @@ function logEncoding(level, message, ctx, extra = {}) {
 
 /**
  * エンコーディングを自動検出して変換
- * @param {Buffer|ArrayBuffer} buffer
+ * @param {Buffer|ArrayBuffer|ArrayBufferView} buffer
  * @param {object|null} response axios レスポンス（ヘッダ検出用）
  * @param {{ label?: string, url?: string }} [context] 失敗時ログ用（処理名・URL）
  */
 export function handleEncoding(buffer, response = null, context = {}) {
+  const buf = toBuffer(buffer);
   const ctx = { ...context, response };
   try {
     let encoding = 'EUC-JP'; // netkeiba のデフォルト
@@ -70,21 +84,21 @@ export function handleEncoding(buffer, response = null, context = {}) {
     }
 
     // 2. HTMLコンテンツから検出を試みる
-    const htmlEncoding = detectEncodingFromHtml(buffer);
+    const htmlEncoding = detectEncodingFromHtml(buf);
     if (htmlEncoding) {
       encoding = htmlEncoding;
     }
 
     encoding = normalizeEncoding(encoding);
 
-    const decoded = iconv.decode(buffer, encoding);
+    const decoded = iconv.decode(buf, encoding);
 
     if (containsMojibake(decoded)) {
       const alternatives = ['EUC-JP', 'SHIFT_JIS', 'ISO-2022-JP', 'UTF-8'];
       for (const alt of alternatives) {
         if (alt !== encoding) {
           try {
-            const altDecoded = iconv.decode(buffer, alt);
+            const altDecoded = iconv.decode(buf, alt);
             if (!containsMojibake(altDecoded)) {
               return altDecoded;
             }
@@ -114,7 +128,7 @@ export function handleEncoding(buffer, response = null, context = {}) {
 
     for (const enc of fallbackEncodings) {
       try {
-        const decoded = iconv.decode(buffer, enc);
+        const decoded = iconv.decode(buf, enc);
         if (!containsMojibake(decoded)) {
           logEncoding('warn', 'recovered using fallback decode after error', ctx, {
             encoding: enc,
@@ -129,7 +143,7 @@ export function handleEncoding(buffer, response = null, context = {}) {
     logEncoding('warn', 'all fallbacks failed or still suspect; using UTF-8 string', ctx, {
       tried: fallbackEncodings,
     });
-    return buffer.toString('utf8');
+    return buf.toString('utf8');
   }
 }
 
@@ -156,7 +170,6 @@ function normalizeEncoding(encoding) {
 function containsMojibake(text) {
   const mojibakePatterns = [
     /[\uFFFD]/,
-    /[�]/,
     /[\x00-\x08\x0B\x0C\x0E-\x1F\x7F]/,
   ];
   return mojibakePatterns.some((pattern) => pattern.test(text));

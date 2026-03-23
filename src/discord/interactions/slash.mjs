@@ -1,13 +1,13 @@
-import { BaseInteraction, MessageFlags } from "discord.js";
+import { MessageFlags } from "discord.js";
 
 /**
  * 未精算の競馬払戻は各コマンドで deferReply の直後に await する。
  * execute 内で defer より前に重い await すると 3 秒超えで DiscordAPIError[10062] になる。
  *
- * @param {BaseInteraction} interaction
+ * @param {import('discord.js').ChatInputCommandInteraction} interaction
  */
 export default async function (interaction) {
-    if (!interaction.isCommand()) return;
+    if (!interaction.isChatInputCommand()) return;
     if (interaction.client.commands.has(interaction.commandName)) {
         try {
             await interaction.client.commands.get(interaction.commandName).execute(interaction);

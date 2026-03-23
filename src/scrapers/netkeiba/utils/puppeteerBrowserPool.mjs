@@ -48,7 +48,7 @@ async function getBrowser() {
       return browserInstance;
     }
     const b = await puppeteer.launch({
-      headless: 'new',
+      headless: true,
       args: [
         '--no-sandbox',
         '--disable-setuid-sandbox',

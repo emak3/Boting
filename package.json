@@ -1,6 +1,6 @@
 {
   "name": "boting",
-  "version": "1.0.0",
+  "version": "1.1.0",
   "type": "module",
   "description": "Boting",
   "main": "src/index.mjs",
@@ -14,14 +14,17 @@
     "nodemon": "^3.0.1"
   },
   "dependencies": {
-    "axios": "^1.9.0",
-    "cheerio": "^1.0.0",
-    "discord.js": "^14.19.1",
-    "sequelize": "^6.37.5",
-    "sqlite3": "^5.1.7",
+    "axios": "^1.13.6",
+    "cheerio": "^1.2.0",
+    "discord.js": "^14.25.1",
     "iconv-lite": "^0.6.3",
     "log4js": "^6.9.1",
-    "puppeteer": "^24.10.0"
+    "puppeteer": "^24.40.0",
+    "sequelize": "^6.37.5",
+    "sqlite3": "^6.0.1"
+  },
+  "overrides": {
+    "undici": "^6.24.1"
   },
   "author": "",
   "license": "ISC"

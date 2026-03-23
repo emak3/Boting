@@ -1,4 +1,3 @@
-import { BaseInteraction } from 'discord.js';
 import debugHubButtons from './button/debugHubButtons.mjs';
 import raceHubButtons from './button/raceHubButtons.mjs';
 import botingLedgerKeypadButtons from './button/botingLedgerKeypadButtons.mjs';
@@ -22,7 +21,7 @@ const BUTTON_HANDLERS = [
 ];
 
 /**
- * @param {BaseInteraction} interaction
+ * @param {import('discord.js').ButtonInteraction} interaction
  */
 export default async function (interaction) {
   if (!interaction.isButton()) return;

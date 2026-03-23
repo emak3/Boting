@@ -1,7 +1,5 @@
-import { BaseInteraction } from "discord.js";
-
 /**
- * @param {BaseInteraction} interaction
+ * @param {import('discord.js').ModalSubmitInteraction} interaction
  */
 export default async function (interaction) {
     if (!interaction.isModalSubmit()) return;

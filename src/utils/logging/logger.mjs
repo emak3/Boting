@@ -24,3 +24,13 @@ export function initLogger() {
   loggerInstance = log4js.getLogger(process.env.PROFILE || 'default');
   return loggerInstance;
 }
+
+/**
+ * ファイル appender のバッファを flush してから終了処理に使う
+ * @returns {Promise<void>}
+ */
+export function shutdownLogger() {
+  return new Promise((resolve) => {
+    log4js.shutdown(() => resolve());
+  });
+}

@@ -10,7 +10,7 @@ export default {
     /**
      * スラッシュは button/menu/modal より先に処理し、deferReply の 3 秒制限に余裕を持たせる。
      * 型に応じたハンドラだけ実行し、不要な isButton/isModal 判定と関数呼び出しを省く。
-     * @param {BaseInteraction} interaction
+     * @param {import('discord.js').Interaction} interaction
      */
     async execute(interaction) {
         if (interaction.isChatInputCommand()) {

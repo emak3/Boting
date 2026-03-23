@@ -1,0 +1,45 @@
+<!DOCTYPE html>
+<html lang="ja">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta name="color-scheme" content="light dark" />
+    <title>ページが見つかりません | Boting</title>
+    <link rel="stylesheet" href="assets/css/main.css" />
+  </head>
+  <body>
+    <a class="skip-link" href="#main">本文へスキップ</a>
+    <header class="site-header">
+      <div class="site-header__inner">
+        <a class="site-brand" href="./">Boting</a>
+        <nav class="site-nav" aria-label="主要ナビゲーション">
+          <a href="./">ホーム</a>
+          <a href="terms/">利用規約</a>
+          <a href="privacy/">プライバシーポリシー</a>
+        </nav>
+      </div>
+    </header>
+
+    <main id="main" class="layout">
+      <div class="hero">
+        <h1 class="hero__title">404</h1>
+        <p class="hero__subtitle">
+          お探しのページは移動したか、存在しない可能性があります。
+        </p>
+      </div>
+      <p class="text-center follow-hero">
+        <a class="btn" href="./">トップへ戻る</a>
+      </p>
+    </main>
+
+    <footer class="site-footer">
+      <p>
+        © <span id="y"></span>
+        <span class="footer-operator">emak</span>
+      </p>
+    </footer>
+    <script>
+      document.getElementById("y").textContent = new Date().getFullYear();
+    </script>
+  </body>
+</html>

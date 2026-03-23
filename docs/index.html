@@ -1,0 +1,69 @@
+<!DOCTYPE html>
+<html lang="ja">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta name="color-scheme" content="light dark" />
+    <meta
+      name="description"
+      content="本サービスに関する利用規約およびプライバシーポリシー"
+    />
+    <title>法的情報 | Boting</title>
+    <link rel="stylesheet" href="assets/css/main.css" />
+    <link rel="canonical" href="./" />
+  </head>
+  <body>
+    <a class="skip-link" href="#main">本文へスキップ</a>
+    <header class="site-header">
+      <div class="site-header__inner">
+        <a class="site-brand" href="./">Boting</a>
+        <nav class="site-nav" aria-label="主要ナビゲーション">
+          <a href="./" aria-current="page">ホーム</a>
+          <a href="terms/">利用規約</a>
+          <a href="privacy/">プライバシーポリシー</a>
+        </nav>
+      </div>
+    </header>
+
+    <main id="main" class="layout">
+      <div class="hero">
+        <h1 class="hero__title">法的情報</h1>
+        <p class="hero__subtitle">
+          サービス利用にあたってご確認いただきたい文書です。内容は必要に応じて更新されます。
+        </p>
+      </div>
+
+      <div class="card-grid">
+        <a class="card" href="terms/">
+          <span class="card__label">Terms</span>
+          <h2 class="card__title">利用規約</h2>
+          <p class="card__desc">
+            サービスの利用条件、免責、知的財産、その他の重要事項を定めています。
+          </p>
+          <span class="card__cta">開く →</span>
+        </a>
+        <a class="card" href="privacy/">
+          <span class="card__label">Privacy</span>
+          <h2 class="card__title">プライバシーポリシー</h2>
+          <p class="card__desc">
+            取得する情報の種類、利用目的、第三者提供、お問い合わせ窓口などを説明します。
+          </p>
+          <span class="card__cta">開く →</span>
+        </a>
+      </div>
+    </main>
+
+    <footer class="site-footer">
+      <p>
+        © <span id="y"></span>
+        <span class="footer-operator">emak</span> ·
+        <a href="terms/">利用規約</a>
+        ·
+        <a href="privacy/">プライバシーポリシー</a>
+      </p>
+    </footer>
+    <script>
+      document.getElementById("y").textContent = new Date().getFullYear();
+    </script>
+  </body>
+</html>

@@ -13,6 +13,11 @@ import {
 } from './userPointsStore.mjs';
 import { BOTING_HUB_PREFIX } from './botingHubConstants.mjs';
 import { botingEmoji } from './botingEmojis.mjs';
+import { BP_RANK_DISPLAY_MAX } from './bpRankLeaderboardEmbed.mjs';
+import {
+  BP_RANK_LB_HIST_PREFIX,
+  buildBpRankLeaderboardBackButtonRow,
+} from './bpRankUiButtons.mjs';
 
 export const BOTING_LEDGER_NAV_PREFIX = 'boting_ledger_nav';
 export const BOTING_LEDGER_OPEN_LIM_PREFIX = 'boting_ledger_open_lim';
@@ -79,13 +84,14 @@ function appendChunkedToContainer(container, text) {
 }
 
 /**
- * @param {{ userId: string, pageSize: number, pageIndex: number, extraFlags?: number }} opts
+ * @param {{ userId: string, pageSize: number, pageIndex: number, extraFlags?: number, rankLeaderboardReturn?: { limit: number, mode: string } | null }} opts
  */
 export async function buildBotingLedgerViewPayload({
   userId,
   pageSize,
   pageIndex,
   extraFlags = 0,
+  rankLeaderboardReturn = null,
 }) {
   const ps = Math.min(50, Math.max(1, Math.round(Number(pageSize) || 10)));
   const pi = Math.max(0, Math.floor(Number(pageIndex) || 0));
@@ -96,8 +102,14 @@ export async function buildBotingLedgerViewPayload({
     pi,
   );
 
+  const targetLine =
+    rankLeaderboardReturn && userId
+      ? `対象: <@${userId}>\n\n`
+      : '';
+
   const head = [
     '## 直近の収支',
+    targetLine,
     `**${ps}** 件/ページ ・ **${pi + 1}** ページ目`,
     capped
       ? `\n⚠️ 一度に読める件数は最大 **${LEDGER_PAGE_MAX_FETCH}** 件までです。ページを戻すか、表示件数を小さくしてください。`
@@ -111,32 +123,71 @@ export async function buildBotingLedgerViewPayload({
   const container = new ContainerBuilder().setAccentColor(ACCENT);
   appendChunkedToContainer(container, body);
 
+  const lb = rankLeaderboardReturn;
+  const rkLim =
+    lb?.limit != null
+      ? Math.min(BP_RANK_DISPLAY_MAX, Math.max(1, Math.round(Number(lb.limit) || 20)))
+      : null;
+  const rkMode = String(lb?.mode || 'balance');
+  const safeMode =
+    rkMode === 'recovery' ||
+    rkMode === 'hit_rate' ||
+    rkMode === 'purchase' ||
+    rkMode === 'balance'
+      ? rkMode
+      : 'balance';
+  const navSuffix =
+    lb && rkLim != null && userId && /^\d{17,20}$/.test(String(userId))
+      ? `|${userId}|lb|${rkLim}|${safeMode}`
+      : '';
+
   const navRow = new ActionRowBuilder().addComponents(
     new ButtonBuilder()
-      .setCustomId(`${BOTING_LEDGER_NAV_PREFIX}|prev|${ps}|${pi}`)
+      .setCustomId(
+        `${BOTING_LEDGER_NAV_PREFIX}|prev|${ps}|${pi}${navSuffix}`,
+      )
       .setLabel('前へ')
       .setEmoji(botingEmoji('mae'))
       .setStyle(ButtonStyle.Secondary)
       .setDisabled(!hasPrev),
     new ButtonBuilder()
-      .setCustomId(`${BOTING_LEDGER_NAV_PREFIX}|next|${ps}|${pi}`)
+      .setCustomId(
+        `${BOTING_LEDGER_NAV_PREFIX}|next|${ps}|${pi}${navSuffix}`,
+      )
       .setLabel('次へ')
       .setEmoji(botingEmoji('tsugi'))
       .setStyle(ButtonStyle.Secondary)
       .setDisabled(!hasMore),
   );
 
+  const menuBackBtn = new ButtonBuilder()
+    .setCustomId(`${BOTING_HUB_PREFIX}|back`)
+    .setLabel('メニューに戻る')
+    .setEmoji(botingEmoji('home'))
+    .setStyle(ButtonStyle.Secondary);
+
+  const rankBackRow = buildBpRankLeaderboardBackButtonRow(rkLim ?? 20, safeMode);
+  const rankBackBtn = lb ? rankBackRow.components.at(0) : null;
+
+  const histBackBtn =
+    lb && rkLim != null && userId && /^\d{17,20}$/.test(String(userId))
+      ? new ButtonBuilder()
+          .setCustomId(
+            `${BP_RANK_LB_HIST_PREFIX}|${rkLim}|${safeMode}|${userId}`,
+          )
+          .setLabel('購入履歴に戻る')
+          .setEmoji(botingEmoji('history'))
+          .setStyle(ButtonStyle.Secondary)
+      : null;
+
   const row2 = new ActionRowBuilder().addComponents(
     new ButtonBuilder()
-      .setCustomId(`${BOTING_LEDGER_OPEN_LIM_PREFIX}|${ps}|${pi}`)
+      .setCustomId(`${BOTING_LEDGER_OPEN_LIM_PREFIX}|${ps}|${pi}${navSuffix}`)
       .setLabel('表示数を変える')
       .setEmoji(botingEmoji('hyouji'))
       .setStyle(ButtonStyle.Secondary),
-    new ButtonBuilder()
-      .setCustomId(`${BOTING_HUB_PREFIX}|back`)
-      .setLabel('メニューに戻る')
-      .setEmoji(botingEmoji('home'))
-      .setStyle(ButtonStyle.Secondary),
+    ...(histBackBtn ? [histBackBtn] : []),
+    lb && rankBackBtn ? rankBackBtn : menuBackBtn,
   );
 
   return {

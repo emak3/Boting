@@ -6,6 +6,7 @@ import {
   buildRaceScheduleIntroV2Payload,
 } from '../../utils/raceCommandHub.mjs';
 import {
+  BP_RANK_DISPLAY_MAX,
   BP_RANK_MODE,
   buildBpRankLeaderboardFullPayload,
 } from '../../utils/bpRankLeaderboardEmbed.mjs';
@@ -32,6 +33,9 @@ import {
   BP_RANK_USER_HISTORY_PREFIX,
   BP_RANK_USER_SLIP_PREFIX,
   BP_RANK_BACK_PROFILE_PREFIX,
+  BP_RANK_BACK_LB_PREFIX,
+  BP_RANK_LB_HIST_PREFIX,
+  BP_RANK_LB_LEDG_PREFIX,
   buildBpRankProfileButtonsRow,
   buildBpRankProfileBackButtonRow,
 } from '../../utils/bpRankUiButtons.mjs';
@@ -41,6 +45,18 @@ import {
   editReplyOpenBetSlipReview,
 } from '../../utils/betSlipOpenReview.mjs';
 import { buildTextAndRowsV2Payload } from '../../utils/raceCardDisplay.mjs';
+
+function normalizeBpRankMode(mode) {
+  const m = String(mode || '');
+  if (
+    m === BP_RANK_MODE.RECOVERY ||
+    m === BP_RANK_MODE.HIT_RATE ||
+    m === BP_RANK_MODE.PURCHASE
+  ) {
+    return m;
+  }
+  return BP_RANK_MODE.BALANCE;
+}
 
 /**
  * 二重クリック・既に応答済み・期限切れ (10062) で落ちないようにする。
@@ -189,9 +205,110 @@ export default async function raceHubButtons(interaction) {
     return;
   }
 
+  if (id.startsWith(`${BP_RANK_BACK_LB_PREFIX}|`)) {
+    const parts = id.split('|');
+    const lim = Math.min(BP_RANK_DISPLAY_MAX, Math.max(1, parseInt(parts[1], 10) || 20));
+    const mode = normalizeBpRankMode(parts[2]);
+    const extraFlags = ephemeralExtraFromMessage(interaction.message);
+    if (!(await safeDeferUpdate(interaction))) return;
+    try {
+      await runPendingRaceRefundsForUser(interaction.user.id);
+      await interaction.editReply(
+        await buildBpRankLeaderboardFullPayload(lim, mode, extraFlags, {
+          client: interaction.client,
+          guild: interaction.guild,
+        }),
+      );
+    } catch (e) {
+      console.error('raceHubButtons bp_rank_back_lb', e);
+      await interaction
+        .editReply(
+          buildTextAndRowsV2Payload({
+            headline: `❌ ランキングに戻れませんでした: ${e.message}`,
+            actionRows: [],
+            extraFlags,
+            withBotingMenuBack: true,
+          }),
+        )
+        .catch(() => {});
+    }
+    return;
+  }
+
+  if (id.startsWith(`${BP_RANK_LB_HIST_PREFIX}|`)) {
+    const parts = id.split('|');
+    if (parts.length < 4) return;
+    const lim = Math.min(BP_RANK_DISPLAY_MAX, Math.max(1, parseInt(parts[1], 10) || 20));
+    const mode = normalizeBpRankMode(parts[2]);
+    const targetUserId = parts[3];
+    if (!/^\d{17,20}$/.test(String(targetUserId || ''))) return;
+    const extraFlags = ephemeralExtraFromMessage(interaction.message);
+    if (!(await safeDeferUpdate(interaction))) return;
+    try {
+      await runPendingRaceRefundsForUser(targetUserId);
+      const payload = await buildRacePurchaseHistoryV2Payload({
+        userId: targetUserId,
+        page: 0,
+        extraFlags,
+        bpRankProfileUserId: targetUserId,
+        rankLeaderboardReturn: { limit: lim, mode },
+      });
+      await interaction.editReply(payload);
+    } catch (e) {
+      console.error('raceHubButtons bp_rank_lb_hist', e);
+      await interaction
+        .editReply(
+          buildTextAndRowsV2Payload({
+            headline: `❌ 購入履歴の表示に失敗しました: ${e.message}`,
+            actionRows: [],
+            extraFlags,
+            withBotingMenuBack: true,
+          }),
+        )
+        .catch(() => {});
+    }
+    return;
+  }
+
+  if (id.startsWith(`${BP_RANK_LB_LEDG_PREFIX}|`)) {
+    const parts = id.split('|');
+    if (parts.length < 4) return;
+    const lim = Math.min(BP_RANK_DISPLAY_MAX, Math.max(1, parseInt(parts[1], 10) || 20));
+    const mode = normalizeBpRankMode(parts[2]);
+    const targetUserId = parts[3];
+    if (!/^\d{17,20}$/.test(String(targetUserId || ''))) return;
+    const extraFlags = ephemeralExtraFromMessage(interaction.message);
+    if (!(await safeDeferUpdate(interaction))) return;
+    try {
+      await runPendingRaceRefundsForUser(targetUserId);
+      await interaction.editReply(
+        await buildBotingLedgerViewPayload({
+          userId: targetUserId,
+          pageSize: 10,
+          pageIndex: 0,
+          extraFlags,
+          rankLeaderboardReturn: { limit: lim, mode },
+        }),
+      );
+    } catch (e) {
+      console.error('raceHubButtons bp_rank_lb_ledg', e);
+      await interaction
+        .editReply(
+          buildTextAndRowsV2Payload({
+            headline: `❌ 収支の表示に失敗しました: ${e.message}`,
+            actionRows: [],
+            extraFlags,
+            withBotingMenuBack: true,
+          }),
+        )
+        .catch(() => {});
+    }
+    return;
+  }
+
   if (id.startsWith(`${BP_RANK_OPEN_LIM_PREFIX}|`)) {
     const parts = id.split('|');
-    const lim = Math.min(50, Math.max(1, parseInt(parts[1], 10) || 20));
+    const lim = Math.min(BP_RANK_DISPLAY_MAX, Math.max(1, parseInt(parts[1], 10) || 20));
     const rawMode = parts[2];
     const mode =
       rawMode === BP_RANK_MODE.RECOVERY ||
@@ -227,16 +344,26 @@ export default async function raceHubButtons(interaction) {
     const pi = Math.max(0, parseInt(parts[3], 10) || 0);
     const extraFlags = ephemeralExtraFromMessage(interaction.message);
     if (!(await safeDeferUpdate(interaction))) return;
+    let ledgerUserId = interaction.user.id;
+    let rankLeaderboardReturn = null;
+    if (parts.length >= 8 && parts[5] === 'lb') {
+      ledgerUserId = parts[4];
+      rankLeaderboardReturn = {
+        limit: Math.min(BP_RANK_DISPLAY_MAX, Math.max(1, parseInt(parts[6], 10) || 20)),
+        mode: normalizeBpRankMode(parts[7]),
+      };
+    }
     let nextPi = pi;
     if (dir === 'prev') nextPi = pi - 1;
     else if (dir === 'next') nextPi = pi + 1;
     else return;
     await interaction.editReply(
       await buildBotingLedgerViewPayload({
-        userId: interaction.user.id,
+        userId: ledgerUserId,
         pageSize: ps,
         pageIndex: nextPi,
         extraFlags,
+        rankLeaderboardReturn,
       }),
     );
     return;
@@ -248,10 +375,21 @@ export default async function raceHubButtons(interaction) {
     const pi = Math.max(0, parseInt(parts[2], 10) || 0);
     const extraFlags = ephemeralExtraFromMessage(interaction.message);
     if (!(await safeDeferUpdate(interaction))) return;
+    let ledgerUserId = interaction.user.id;
+    let rankLeaderboardReturn = null;
+    if (parts.length >= 7 && parts[4] === 'lb') {
+      ledgerUserId = parts[3];
+      rankLeaderboardReturn = {
+        limit: Math.min(BP_RANK_DISPLAY_MAX, Math.max(1, parseInt(parts[5], 10) || 20)),
+        mode: normalizeBpRankMode(parts[6]),
+      };
+    }
     setBotingLedgerLimitDraft(interaction.user.id, {
       savedPageSize: ps,
       savedPageIndex: pi,
       buffer: String(ps),
+      ledgerSubjectUserId: ledgerUserId,
+      rankLeaderboardReturn,
     });
     const kpad = buildBotingLedgerLimitKeypadPayload({
       buffer: String(ps),
@@ -342,6 +480,10 @@ export default async function raceHubButtons(interaction) {
           20,
           BP_RANK_MODE.BALANCE,
           extraFlags,
+          {
+            client: interaction.client,
+            guild: interaction.guild,
+          },
         ),
       );
       return;

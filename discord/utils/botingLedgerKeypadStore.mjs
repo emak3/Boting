@@ -1,4 +1,12 @@
-/** @typedef {{ savedPageSize: number, savedPageIndex: number, buffer: string }} BotingLedgerLimitDraft */
+/**
+ * @typedef {{
+ *   savedPageSize: number,
+ *   savedPageIndex: number,
+ *   buffer: string,
+ *   ledgerSubjectUserId?: string,
+ *   rankLeaderboardReturn?: { limit: number, mode: string } | null,
+ * }} BotingLedgerLimitDraft
+ */
 
 const drafts = new Map();
 

@@ -10,7 +10,10 @@ import {
 } from 'discord.js';
 import { BOTING_HUB_PREFIX } from './botingHubConstants.mjs';
 import { botingEmoji } from './botingEmojis.mjs';
-import { BP_RANK_OPEN_LIM_PREFIX } from './bpRankLimitKeypad.mjs';
+import {
+  BP_RANK_OPEN_LIM_PREFIX,
+  BP_RANK_DISPLAY_MAX,
+} from './bpRankLimitKeypad.mjs';
 import { fetchAllUsersByBalanceDesc } from './bpLeaderboard.mjs';
 import {
   fetchAllRaceBetAggregatesByUserId,
@@ -24,6 +27,11 @@ const V2_SINGLE_CHUNK = 3500;
 
 /** `bp_rank_sel|{limit}` — セレクトの customId */
 export const BP_RANK_SELECT_PREFIX = 'bp_rank_sel';
+export { BP_RANK_DISPLAY_MAX };
+/** String Select の最大件数（表示件数上限＝Discord の 25 オプション上限） */
+export const BP_RANK_SLICE_PICK_MAX = BP_RANK_DISPLAY_MAX;
+/** `bp_rank_slice_pick|{limit}|{mode}` — 表示中ランキングの行から選ぶ */
+export const BP_RANK_SLICE_PICK_PREFIX = 'bp_rank_slice_pick';
 
 export const BP_RANK_MODE = {
   BALANCE: 'balance',
@@ -35,6 +43,93 @@ export const BP_RANK_MODE = {
 function pct(r) {
   if (r == null || !Number.isFinite(r)) return '—';
   return `${(r * 100).toFixed(2)}%`;
+}
+
+/**
+ * Container / 太字向けに記号を弱める
+ * @param {string} name
+ */
+function sanitizeBpRankDisplayName(name) {
+  return String(name || '')
+    .replace(/[\n\r`*_]/g, '')
+    .trim()
+    .slice(0, 80);
+}
+
+/**
+ * サーバー表示名（ニックネーム）優先、なければユーザーの表示名
+ * @param {import('discord.js').Client} client
+ * @param {import('discord.js').Guild | null} guild
+ * @param {string[]} userIds
+ * @returns {Promise<Map<string, string>>}
+ */
+export async function resolveBpRankDisplayNames(client, guild, userIds) {
+  const map = new Map();
+  const uniq = [...new Set(userIds)].filter(
+    (id) => id && /^\d{17,20}$/.test(String(id)),
+  );
+  await Promise.all(
+    uniq.map(async (id) => {
+      try {
+        if (guild) {
+          const mem = await guild.members.fetch(id).catch(() => null);
+          if (mem?.displayName) {
+            map.set(id, mem.displayName);
+            return;
+          }
+        }
+        const u = await client.users.fetch(id).catch(() => null);
+        if (u) {
+          map.set(
+            id,
+            u.displayName ||
+              u.globalName ||
+              u.username ||
+              `…${String(id).slice(-4)}`,
+          );
+          return;
+        }
+        map.set(id, `…${String(id).slice(-4)}`);
+      } catch {
+        map.set(id, `…${String(id).slice(-4)}`);
+      }
+    }),
+  );
+  return map;
+}
+
+/**
+ * @param {string} mode
+ * @param {object} row
+ * @param {Map<string, string>} [nameMap]
+ */
+function formatLeaderboardLine(mode, row, nameMap) {
+  const dnRaw =
+    nameMap instanceof Map ? nameMap.get(row.userId) : null;
+  const dn = dnRaw ? sanitizeBpRankDisplayName(dnRaw) : null;
+  const who = dn ? `**${dn}**` : `<@${row.userId}>`;
+  if (mode === BP_RANK_MODE.BALANCE) {
+    return `${who} — **${row.balance}** bp`;
+  }
+  if (mode === BP_RANK_MODE.RECOVERY) {
+    const rate =
+      row.agg.totalRecoveryRate != null &&
+      Number.isFinite(row.agg.totalRecoveryRate)
+        ? pct(row.agg.totalRecoveryRate)
+        : '精算なし';
+    return `${who} — **${rate}** ・ 購入 **${row.agg.purchaseCount}** 件`;
+  }
+  if (mode === BP_RANK_MODE.HIT_RATE) {
+    const hr =
+      row.agg.purchaseCount > 0
+        ? pct(row.agg.hitCount / row.agg.purchaseCount)
+        : '—';
+    return `${who} — **${hr}** ・ 購入 **${row.agg.purchaseCount}** 件`;
+  }
+  if (mode === BP_RANK_MODE.PURCHASE) {
+    return `${who} — **${row.agg.purchaseCount}** 件`;
+  }
+  return `${who}`;
 }
 
 /**
@@ -122,35 +217,6 @@ function sortMergedForMode(mode, merged) {
   }
 }
 
-/**
- * @param {string} mode
- * @param {ReturnType<typeof mergeLeaderboardRows>[number]} row
- */
-function formatLeaderboardLine(mode, row) {
-  if (mode === BP_RANK_MODE.BALANCE) {
-    return `<@${row.userId}> — **${row.balance}** bp`;
-  }
-  if (mode === BP_RANK_MODE.RECOVERY) {
-    const rate =
-      row.agg.totalRecoveryRate != null &&
-      Number.isFinite(row.agg.totalRecoveryRate)
-        ? pct(row.agg.totalRecoveryRate)
-        : '精算なし';
-    return `<@${row.userId}> — **${rate}** ・ 購入 **${row.agg.purchaseCount}** 件`;
-  }
-  if (mode === BP_RANK_MODE.HIT_RATE) {
-    const hr =
-      row.agg.purchaseCount > 0
-        ? pct(row.agg.hitCount / row.agg.purchaseCount)
-        : '—';
-    return `<@${row.userId}> — **${hr}** ・ 購入 **${row.agg.purchaseCount}** 件`;
-  }
-  if (mode === BP_RANK_MODE.PURCHASE) {
-    return `<@${row.userId}> — **${row.agg.purchaseCount}** 件`;
-  }
-  return `<@${row.userId}>`;
-}
-
 function titleForMode(mode) {
   if (mode === BP_RANK_MODE.BALANCE) return 'BP 残高';
   if (mode === BP_RANK_MODE.RECOVERY) return '回収率';
@@ -207,13 +273,12 @@ function appendChunkedToContainer(container, text) {
 }
 
 /**
- * BP ランキング本文を Container（Display Components）で組み立てる
+ * ランキング集計を1回だけ取り、本文・セレクトで共有する
  * @param {number} limit
  * @param {string} mode BP_RANK_MODE
- * @returns {Promise<import('discord.js').ContainerBuilder>}
  */
-export async function buildBpRankLeaderboardContainer(limit, mode) {
-  const lim = Math.min(50, Math.max(1, limit));
+export async function loadBpRankLeaderboardState(limit, mode) {
+  const lim = Math.min(BP_RANK_DISPLAY_MAX, Math.max(1, limit));
   const m =
     mode === BP_RANK_MODE.RECOVERY ||
     mode === BP_RANK_MODE.HIT_RATE ||
@@ -230,10 +295,27 @@ export async function buildBpRankLeaderboardContainer(limit, mode) {
   sortMergedForMode(m, merged);
 
   const slice = merged.slice(0, lim);
+  return { lim, m, merged, slice };
+}
+
+/**
+ * @param {object[]} slice
+ * @param {string} m BP_RANK_MODE
+ * @param {object[]} merged
+ * @param {number} lim
+ * @param {Map<string, string>} [nameMap]
+ */
+function buildBpRankLeaderboardContainerFromSlice(
+  slice,
+  m,
+  merged,
+  lim,
+  nameMap = new Map(),
+) {
   const lines = slice.map((row, i) => {
     const medal =
       i === 0 ? '🥇' : i === 1 ? '🥈' : i === 2 ? '🥉' : `${i + 1}.`;
-    return `${medal} ${formatLeaderboardLine(m, row)}`;
+    return `${medal} ${formatLeaderboardLine(m, row, nameMap)}`;
   });
 
   const body =
@@ -253,22 +335,157 @@ export async function buildBpRankLeaderboardContainer(limit, mode) {
 }
 
 /**
- * ランキング表示の完全ペイロード（Container + セレクト + ボタン、Embed なし）
+ * BP ランキング本文を Container（Display Components）で組み立てる
+ * @param {number} limit
+ * @param {string} mode BP_RANK_MODE
+ * @param {{ client?: import('discord.js').Client, guild?: import('discord.js').Guild | null }} [rankContext]
+ * @returns {Promise<import('discord.js').ContainerBuilder>}
+ */
+export async function buildBpRankLeaderboardContainer(limit, mode, rankContext) {
+  const state = await loadBpRankLeaderboardState(limit, mode);
+  let nameMap = new Map();
+  if (rankContext?.client && state.slice.length) {
+    nameMap = await resolveBpRankDisplayNames(
+      rankContext.client,
+      rankContext.guild ?? null,
+      state.slice.map((r) => r.userId),
+    );
+  }
+  return buildBpRankLeaderboardContainerFromSlice(
+    state.slice,
+    state.m,
+    state.merged,
+    state.lim,
+    nameMap,
+  );
+}
+
+/**
+ * String Select 用（メンションなし・100文字以内）
+ * @param {string} mode BP_RANK_MODE
+ * @param {object} row
+ * @param {number} rankIndex 0-based
+ * @param {Map<string, string>} [nameMap]
+ */
+function formatLeaderboardPickLabel(mode, row, rankIndex, nameMap) {
+  const medal =
+    rankIndex === 0
+      ? '🥇'
+      : rankIndex === 1
+        ? '🥈'
+        : rankIndex === 2
+          ? '🥉'
+          : `${rankIndex + 1}.`;
+  const dnRaw =
+    nameMap instanceof Map ? nameMap.get(row.userId) : null;
+  const dn = dnRaw
+    ? sanitizeBpRankDisplayName(dnRaw).slice(0, 36)
+    : `ID…${String(row.userId).slice(-4)}`;
+  let core;
+  if (mode === BP_RANK_MODE.BALANCE) {
+    core = `${row.balance} bp`;
+  } else if (mode === BP_RANK_MODE.RECOVERY) {
+    const rate =
+      row.agg.totalRecoveryRate != null &&
+      Number.isFinite(row.agg.totalRecoveryRate)
+        ? pct(row.agg.totalRecoveryRate)
+        : '精算なし';
+    core = `${rate} ・${row.agg.purchaseCount}件`;
+  } else if (mode === BP_RANK_MODE.HIT_RATE) {
+    const hr =
+      row.agg.purchaseCount > 0
+        ? pct(row.agg.hitCount / row.agg.purchaseCount)
+        : '—';
+    core = `${hr} ・${row.agg.purchaseCount}件`;
+  } else if (mode === BP_RANK_MODE.PURCHASE) {
+    core = `${row.agg.purchaseCount}件`;
+  } else {
+    core = String(row.userId).slice(-8);
+  }
+  let label = `${medal} ${dn} · ${core}`;
+  if (label.length > 100) label = `${label.slice(0, 97)}…`;
+  return label;
+}
+
+/**
+ * 表示中ランキングの行だけを候補にした String Select（最大 {@link BP_RANK_SLICE_PICK_MAX} 件）
+ * @param {number} lim
+ * @param {string} m BP_RANK_MODE
+ * @param {object[]} slice
+ * @param {Map<string, string>} [nameMap]
+ * @returns {import('discord.js').ActionRowBuilder | null}
+ */
+export function buildBpRankSlicePickRow(lim, m, slice, nameMap = new Map()) {
+  if (!slice.length) return null;
+  const capped = slice.slice(0, BP_RANK_SLICE_PICK_MAX);
+  const placeholder = '表示中ランキングから選ぶ';
+
+  const menu = new StringSelectMenuBuilder()
+    .setCustomId(`${BP_RANK_SLICE_PICK_PREFIX}|${lim}|${m}`)
+    .setPlaceholder(placeholder.slice(0, 150))
+    .setMinValues(1)
+    .setMaxValues(1)
+    .addOptions(
+      capped.map((row, i) => {
+        const dn =
+          nameMap instanceof Map && nameMap.get(row.userId)
+            ? sanitizeBpRankDisplayName(nameMap.get(row.userId)).slice(0, 40)
+            : null;
+        return new StringSelectMenuOptionBuilder()
+          .setLabel(formatLeaderboardPickLabel(m, row, i, nameMap))
+          .setValue(row.userId)
+          .setDescription(
+            (dn ? `${dn} · ` : '') +
+              `ID …${String(row.userId).slice(-6)}`.slice(0, 100),
+          );
+      }),
+    );
+
+  return new ActionRowBuilder().addComponents(menu);
+}
+
+/**
+ * ランキング表示の完全ペイロード（Container + 種類セレクト + 表示中行の String Select + ボタン行、Embed なし）
  * @param {number} limit
  * @param {string} mode BP_RANK_MODE
  * @param {number} [extraFlags=0]
+ * @param {{ client?: import('discord.js').Client, guild?: import('discord.js').Guild | null }} [rankContext]
  */
 export async function buildBpRankLeaderboardFullPayload(
   limit,
   mode,
   extraFlags = 0,
+  rankContext,
 ) {
-  const container = await buildBpRankLeaderboardContainer(limit, mode);
-  const rows = buildBpRankLeaderboardRows(limit, mode);
+  const { lim, m, merged, slice } = await loadBpRankLeaderboardState(
+    limit,
+    mode,
+  );
+  let nameMap = new Map();
+  if (rankContext?.client && slice.length) {
+    nameMap = await resolveBpRankDisplayNames(
+      rankContext.client,
+      rankContext.guild ?? null,
+      slice.map((r) => r.userId),
+    );
+  }
+  const container = buildBpRankLeaderboardContainerFromSlice(
+    slice,
+    m,
+    merged,
+    lim,
+    nameMap,
+  );
+  const pickRow = buildBpRankSlicePickRow(lim, m, slice, nameMap);
   return {
     content: null,
     embeds: [],
-    components: [container, ...rows],
+    components: [
+      container,
+      buildBpRankSelectRow(limit, mode),
+      ...(pickRow ? [pickRow] : []),
+      buildBpRankLeaderboardExtraRow(limit, mode),
+    ],
     flags: MessageFlags.IsComponentsV2 | extraFlags,
   };
 }
@@ -278,7 +495,7 @@ export async function buildBpRankLeaderboardFullPayload(
  * @param {string} mode 現在選択中（default 表示用）
  */
 export function buildBpRankSelectRow(limit, mode) {
-  const lim = Math.min(50, Math.max(1, limit));
+  const lim = Math.min(BP_RANK_DISPLAY_MAX, Math.max(1, limit));
   const m =
     mode === BP_RANK_MODE.RECOVERY ||
     mode === BP_RANK_MODE.HIT_RATE ||
@@ -326,12 +543,12 @@ export function buildBpRankSelectRow(limit, mode) {
 }
 
 /**
- * ランキング種別セレクトの下に並べる（表示件数テンキー・メニューへ戻る）
+ * ユーザー選択の下に並べる（表示件数テンキー・メニューへ戻る）
  * @param {number} limit
  * @param {string} mode BP_RANK_MODE
  */
 export function buildBpRankLeaderboardExtraRow(limit, mode) {
-  const lim = Math.min(50, Math.max(1, limit));
+  const lim = Math.min(BP_RANK_DISPLAY_MAX, Math.max(1, limit));
   const m =
     mode === BP_RANK_MODE.RECOVERY ||
     mode === BP_RANK_MODE.HIT_RATE ||

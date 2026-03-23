@@ -10,7 +10,10 @@ import { botingEmoji } from './botingEmojis.mjs';
 export const BP_RANK_OPEN_LIM_PREFIX = 'bp_rank_open_lim';
 export const BP_RANK_LIM_KPAD_PREFIX = 'bp_rank_lim_kpad';
 
-const MAX_LIMIT = 50;
+/** ランキング表示件数の上限（1〜この値） */
+export const BP_RANK_DISPLAY_MAX = 25;
+
+const MAX_LIMIT = BP_RANK_DISPLAY_MAX;
 const MAX_BUFFER_LEN = 2;
 
 /**
@@ -47,7 +50,10 @@ export function bufferToLimit(buffer) {
 
 function formatHeadline(buffer) {
   const part = buffer.length ? buffer : '_';
-  return ['**ランキング表示件数（1〜50）**', `# \`${part}\` 件`].join('\n');
+  return [
+    `**ランキング表示件数（1〜${MAX_LIMIT}）**`,
+    `# \`${part}\` 件`,
+  ].join('\n');
 }
 
 function mkId(op, arg = '') {

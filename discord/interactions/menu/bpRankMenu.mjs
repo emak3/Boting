@@ -1,5 +1,6 @@
 import {
   BP_RANK_SELECT_PREFIX,
+  BP_RANK_DISPLAY_MAX,
   buildBpRankLeaderboardFullPayload,
   BP_RANK_MODE,
 } from '../../utils/bpRankLeaderboardEmbed.mjs';
@@ -17,7 +18,7 @@ export default async function bpRankMenu(interaction) {
 
   const limitPart = interaction.customId.split('|')[1];
   const limit = Math.min(
-    50,
+    BP_RANK_DISPLAY_MAX,
     Math.max(1, parseInt(String(limitPart || ''), 10) || 20),
   );
   const raw = interaction.values[0];
@@ -43,7 +44,10 @@ export default async function bpRankMenu(interaction) {
 
   try {
     await interaction.editReply(
-      await buildBpRankLeaderboardFullPayload(limit, mode, extraFlags),
+      await buildBpRankLeaderboardFullPayload(limit, mode, extraFlags, {
+        client: interaction.client,
+        guild: interaction.guild,
+      }),
     );
   } catch (e) {
     console.error('bpRankMenu:', e);

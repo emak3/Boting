@@ -316,7 +316,8 @@ export default async function betFlowButtons(interaction) {
   }
 
   if (customId.startsWith(`${RACE_HISTORY_DAY_PREFIX}|`)) {
-    const { withoutCtx, bpctxUserId } = stripRaceHistoryBpCtx(customId);
+    const { withoutCtx, bpctxUserId, rankLeaderboardReturn } =
+      stripRaceHistoryBpCtx(customId);
     const parts = withoutCtx.split('|');
     const pk = parts[1];
     const pg = parseInt(parts[2], 10);
@@ -351,6 +352,7 @@ export default async function betFlowButtons(interaction) {
         meetingFilter,
         extraFlags: extraFlagsFromMessage(),
         bpRankProfileUserId: bpctxUserId || null,
+        rankLeaderboardReturn: rankLeaderboardReturn || null,
       });
       await interaction.editReply(payload);
     } catch (e) {
@@ -363,7 +365,8 @@ export default async function betFlowButtons(interaction) {
   }
 
   if (customId.startsWith(`${RACE_HISTORY_PAGE_PREFIX}|`)) {
-    const { withoutCtx, bpctxUserId } = stripRaceHistoryBpCtx(customId);
+    const { withoutCtx, bpctxUserId, rankLeaderboardReturn } =
+      stripRaceHistoryBpCtx(customId);
     const parts = withoutCtx.split('|');
     const pk = parts[1];
     const pg = parseInt(parts[2], 10);
@@ -398,6 +401,7 @@ export default async function betFlowButtons(interaction) {
         meetingFilter,
         extraFlags: extraFlagsFromMessage(),
         bpRankProfileUserId: bpctxUserId || null,
+        rankLeaderboardReturn: rankLeaderboardReturn || null,
       });
       await interaction.editReply(payload);
     } catch (e) {

@@ -1,6 +1,7 @@
 import { MessageFlags } from 'discord.js';
 import {
   appendDigitLimit,
+  BP_RANK_DISPLAY_MAX,
   bufferToLimit,
   buildBpRankLimitKeypadPayload,
   deleteLastDigitLimit,
@@ -92,10 +93,13 @@ export default async function bpRankLimitKeypadButtons(interaction) {
     clearBpRankLimitDraft(userId);
     await interaction.deferUpdate();
     await runPendingRaceRefundsForUser(userId);
-    const lim = Math.min(50, Math.max(1, draft.savedLimit));
+    const lim = Math.min(BP_RANK_DISPLAY_MAX, Math.max(1, draft.savedLimit));
     try {
       await interaction.editReply(
-        await buildBpRankLeaderboardFullPayload(lim, mode, extraFlags),
+        await buildBpRankLeaderboardFullPayload(lim, mode, extraFlags, {
+          client: interaction.client,
+          guild: interaction.guild,
+        }),
       );
     } catch (e) {
       console.error('bpRankLimitKeypad cancel:', e);
@@ -118,7 +122,10 @@ export default async function bpRankLimitKeypadButtons(interaction) {
     await runPendingRaceRefundsForUser(userId);
     try {
       await interaction.editReply(
-        await buildBpRankLeaderboardFullPayload(lim, mode, extraFlags),
+        await buildBpRankLeaderboardFullPayload(lim, mode, extraFlags, {
+          client: interaction.client,
+          guild: interaction.guild,
+        }),
       );
     } catch (e) {
       console.error('bpRankLimitKeypad ok:', e);

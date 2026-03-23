@@ -78,12 +78,14 @@ export default async function botingLedgerKeypadButtons(interaction) {
   if (parsed.op === 'can') {
     clearBotingLedgerLimitDraft(userId);
     await interaction.deferUpdate();
+    const ledgerUid = draft.ledgerSubjectUserId ?? userId;
     await interaction.editReply(
       await buildBotingLedgerViewPayload({
-        userId,
+        userId: ledgerUid,
         pageSize: draft.savedPageSize,
         pageIndex: draft.savedPageIndex,
         extraFlags,
+        rankLeaderboardReturn: draft.rankLeaderboardReturn ?? null,
       }),
     );
     return;
@@ -93,12 +95,14 @@ export default async function botingLedgerKeypadButtons(interaction) {
     const lim = bufferToLedgerLimit(draft.buffer);
     clearBotingLedgerLimitDraft(userId);
     await interaction.deferUpdate();
+    const ledgerUid = draft.ledgerSubjectUserId ?? userId;
     await interaction.editReply(
       await buildBotingLedgerViewPayload({
-        userId,
+        userId: ledgerUid,
         pageSize: lim,
         pageIndex: 0,
         extraFlags,
+        rankLeaderboardReturn: draft.rankLeaderboardReturn ?? null,
       }),
     );
   }

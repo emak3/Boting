@@ -27,21 +27,73 @@ import { V2_SINGLE_CHUNK, V2_TEXT_TOTAL_MAX } from './raceCardDisplay.mjs';
 import {
   buildRaceHubBackButtonRow,
 } from './raceCommandHub.mjs';
-import { buildBpRankProfileBackButtonRow } from './bpRankUiButtons.mjs';
+import {
+  buildBpRankProfileBackButtonRow,
+  buildBpRankLbHistoryFooterRow,
+} from './bpRankUiButtons.mjs';
+import { BP_RANK_DISPLAY_MAX } from './bpRankLeaderboardEmbed.mjs';
 import { botingEmoji } from './botingEmojis.mjs';
 
-/** `|bpctx|{discordUserId}` — bp_rank 経由で他人の履歴を見ているときのナビ用 */
+/** `|bpctx|{discordUserId}`（任意で `|rklb|{limit}|{mode}`）— 他人の履歴ナビ・ランキング戻り用 */
 export function stripRaceHistoryBpCtx(customId) {
-  const m = String(customId || '').match(/^(.*)\|bpctx\|(\d{17,20})$/);
-  if (m) return { withoutCtx: m[1], bpctxUserId: m[2] };
-  return { withoutCtx: String(customId || ''), bpctxUserId: null };
+  const s = String(customId || '');
+  const idx = s.indexOf('|bpctx|');
+  if (idx < 0) {
+    return {
+      withoutCtx: s,
+      bpctxUserId: null,
+      rankLeaderboardReturn: null,
+    };
+  }
+  const withoutCtx = s.slice(0, idx);
+  const rest = s.slice(idx + '|bpctx|'.length);
+  const parts = rest.split('|');
+  const bpctxUserId = /^\d{17,20}$/.test(parts[0] || '') ? parts[0] : null;
+  let rankLeaderboardReturn = null;
+  const rklb = parts.indexOf('rklb');
+  if (rklb >= 0 && parts[rklb + 1] != null && parts[rklb + 2] != null) {
+    const lim = Math.min(
+      BP_RANK_DISPLAY_MAX,
+      Math.max(1, parseInt(String(parts[rklb + 1]), 10) || 20),
+    );
+    const modeRaw = String(parts[rklb + 2] || '');
+    if (
+      modeRaw === 'balance' ||
+      modeRaw === 'recovery' ||
+      modeRaw === 'hit_rate' ||
+      modeRaw === 'purchase'
+    ) {
+      rankLeaderboardReturn = { limit: lim, mode: modeRaw };
+    }
+  }
+  return { withoutCtx, bpctxUserId, rankLeaderboardReturn };
 }
 
-function historyCtxSuffix(bpRankProfileUserId) {
-  if (bpRankProfileUserId && /^\d{17,20}$/.test(String(bpRankProfileUserId))) {
-    return `|bpctx|${bpRankProfileUserId}`;
+/**
+ * @param {string | null | undefined} bpRankProfileUserId
+ * @param {{ limit: number, mode: string } | null | undefined} rankLeaderboardReturn
+ */
+function historyCtxSuffix(bpRankProfileUserId, rankLeaderboardReturn) {
+  if (!bpRankProfileUserId || !/^\d{17,20}$/.test(String(bpRankProfileUserId))) {
+    return '';
   }
-  return '';
+  let s = `|bpctx|${bpRankProfileUserId}`;
+  if (rankLeaderboardReturn?.limit != null && rankLeaderboardReturn.mode) {
+    const lim = Math.min(
+      BP_RANK_DISPLAY_MAX,
+      Math.max(1, Math.round(Number(rankLeaderboardReturn.limit) || 20)),
+    );
+    const m = String(rankLeaderboardReturn.mode);
+    if (
+      m === 'balance' ||
+      m === 'recovery' ||
+      m === 'hit_rate' ||
+      m === 'purchase'
+    ) {
+      s += `|rklb|${lim}|${m}`;
+    }
+  }
+  return s;
 }
 
 export const RACE_HISTORY_PAGE_PREFIX = 'race_bet_history_pg';
@@ -305,9 +357,10 @@ function historyDayNavRow(
   prevYmd,
   nextYmd,
   bpRankProfileUserId = null,
+  rankLeaderboardReturn = null,
 ) {
   const mf = String(meetingFilter || 'all').trim() || 'all';
-  const sfx = historyCtxSuffix(bpRankProfileUserId);
+  const sfx = historyCtxSuffix(bpRankProfileUserId, rankLeaderboardReturn);
   const dayId = (ymd) =>
     `${RACE_HISTORY_DAY_PREFIX}|${ymd}|0|${mf}${sfx}`;
   /** 無効時も custom_id は行内で一意（Discord は重複を拒否） */
@@ -340,13 +393,14 @@ function historyFilterAndPaginationRows({
   meetingFilter,
   meetings,
   bpRankProfileUserId = null,
+  rankLeaderboardReturn = null,
 }) {
   const rows = [];
   const showNav = totalPages > 1;
   const showMeetings = meetings.length >= 2;
   if (!showNav && !showMeetings) return rows;
 
-  const sfx = historyCtxSuffix(bpRankProfileUserId);
+  const sfx = historyCtxSuffix(bpRankProfileUserId, rankLeaderboardReturn);
   const navId = (pg) =>
     `${RACE_HISTORY_PAGE_PREFIX}|${periodKey}|${pg}|${meetingFilter}${sfx}`;
   const venueId = (key) =>
@@ -403,9 +457,10 @@ function historyFilterAndPaginationRows({
 }
 
 /**
- * @param {{ userId: string, periodKey?: string, page?: number, meetingFilter?: string, extraFlags?: number, bpRankProfileUserId?: string | null }} opts
+ * @param {{ userId: string, periodKey?: string, page?: number, meetingFilter?: string, extraFlags?: number, bpRankProfileUserId?: string | null, rankLeaderboardReturn?: { limit: number, mode: string } | null }} opts
  * periodKey … レース開催日 YYYYMMDD（JST）。省略時は resolveDefaultRaceHistoryHoldYmd。
- * bpRankProfileUserId … 設定時は戻るボタンが BP 詳細（/bp_rank user）向けになり、ナビ customId に bpctx が付く。
+ * bpRankProfileUserId … 設定時はナビ customId に bpctx が付く。
+ * rankLeaderboardReturn … 設定時は戻るがランキング向け（`/boting` のランキングから開いた場合）。
  */
 export async function buildRacePurchaseHistoryV2Payload({
   userId,
@@ -414,6 +469,7 @@ export async function buildRacePurchaseHistoryV2Payload({
   meetingFilter = 'all',
   extraFlags = 0,
   bpRankProfileUserId = null,
+  rankLeaderboardReturn = null,
 }) {
   void runPendingRaceRefundsForUser(userId).catch((e) =>
     console.warn('runPendingRaceRefundsForUser', e),
@@ -532,6 +588,7 @@ export async function buildRacePurchaseHistoryV2Payload({
     prevNavYmd,
     nextNavYmd,
     bpRankProfileUserId,
+    rankLeaderboardReturn,
   );
   const filterRows = historyFilterAndPaginationRows({
     periodKey,
@@ -540,10 +597,20 @@ export async function buildRacePurchaseHistoryV2Payload({
     meetingFilter: filterKey,
     meetings,
     bpRankProfileUserId,
+    rankLeaderboardReturn,
   });
-  const hubBack = bpRankProfileUserId
-    ? buildBpRankProfileBackButtonRow(bpRankProfileUserId)
-    : buildRaceHubBackButtonRow();
+  let hubBack;
+  if (rankLeaderboardReturn?.limit != null && rankLeaderboardReturn.mode) {
+    hubBack = buildBpRankLbHistoryFooterRow(
+      rankLeaderboardReturn.limit,
+      rankLeaderboardReturn.mode,
+      userId,
+    );
+  } else if (bpRankProfileUserId) {
+    hubBack = buildBpRankProfileBackButtonRow(bpRankProfileUserId);
+  } else {
+    hubBack = buildRaceHubBackButtonRow();
+  }
   const components = [container, dayRow, ...filterRows, hubBack];
 
   const flags = MessageFlags.IsComponentsV2 | extraFlags;

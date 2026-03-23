@@ -1,4 +1,4 @@
-import { Client, Partials, GatewayIntentBits } from "discord.js";
+import { Client, GatewayIntentBits } from "discord.js";
 import { readdirSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -11,18 +11,14 @@ const log = initLogger();
 const __dirname = dirname(fileURLToPath(import.meta.url));
 
 const client = new Client({
-    intents: [
-        GatewayIntentBits.Guilds,
-        GatewayIntentBits.GuildMessages,
-    ],
-    allowedMentions: { parse: ["users", "roles"] },
-    partials: [Partials.Channel],
+    intents: [GatewayIntentBits.Guilds],
+    allowedMentions: { parse: ["users"] },
+    partials: [],
     // 遅い回線・DNS で undici の接続が 10s で落ちることがあるため REST 全体の上限を延ばす
     rest: { timeout: 60_000 },
 });
 
 client.commands = new Map();
-client.messages = [];
 client.modals = [];
 client.menus = [];
 client.userMenus = [];
@@ -101,14 +97,6 @@ for (const file of readdirSync(join(__dirname, "discord/interactions/userMenu"))
     const userMenuModule = await import(`./discord/interactions/userMenu/${file}`);
     const userMenu = userMenuModule.default;
     client.userMenus.push(userMenu);
-}
-
-for (const file of readdirSync(join(__dirname, "discord/messages")).filter((file) =>
-    file.endsWith(".mjs"),
-)) {
-    const messageModule = await import(`./discord/messages/${file}`);
-    const message = messageModule.default;
-    client.messages.push(message);
 }
 
 client.login(getConfig().token).then(() =>

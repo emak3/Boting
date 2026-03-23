@@ -29,7 +29,9 @@ export default async function bpRankSlicePick(interaction) {
   const mode = normalizeMode(parts[2]);
   const targetId = interaction.values[0];
 
-  const { slice } = await loadBpRankLeaderboardState(lim, mode);
+  const { slice } = await loadBpRankLeaderboardState(lim, mode, {
+    refundForUserId: interaction.user.id,
+  });
   const allowed = new Set(
     slice.slice(0, BP_RANK_SLICE_PICK_MAX).map((r) => r.userId),
   );

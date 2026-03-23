@@ -19,6 +19,7 @@ import {
   fetchAllRaceBetAggregatesByUserId,
   emptyRaceBetAggregates,
 } from './raceBetRecords.mjs';
+import { runPendingRaceRefundsForUser } from './raceBetRefundSweep.mjs';
 
 /** ランキング Container のアクセント（Embed の黄色に相当） */
 const BP_RANK_ACCENT = 0xf1c40f;
@@ -276,8 +277,14 @@ function appendChunkedToContainer(container, text) {
  * ランキング集計を1回だけ取り、本文・セレクトで共有する
  * @param {number} limit
  * @param {string} mode BP_RANK_MODE
+ * @param {{ refundForUserId?: string }} [opts]
  */
-export async function loadBpRankLeaderboardState(limit, mode) {
+export async function loadBpRankLeaderboardState(limit, mode, opts = {}) {
+  const uid = opts.refundForUserId;
+  if (uid && /^\d{17,20}$/.test(String(uid))) {
+    await runPendingRaceRefundsForUser(uid);
+  }
+
   const lim = Math.min(BP_RANK_DISPLAY_MAX, Math.max(1, limit));
   const m =
     mode === BP_RANK_MODE.RECOVERY ||
@@ -338,11 +345,13 @@ function buildBpRankLeaderboardContainerFromSlice(
  * BP ランキング本文を Container（Display Components）で組み立てる
  * @param {number} limit
  * @param {string} mode BP_RANK_MODE
- * @param {{ client?: import('discord.js').Client, guild?: import('discord.js').Guild | null }} [rankContext]
+ * @param {{ client?: import('discord.js').Client, guild?: import('discord.js').Guild | null, refundForUserId?: string }} [rankContext]
  * @returns {Promise<import('discord.js').ContainerBuilder>}
  */
 export async function buildBpRankLeaderboardContainer(limit, mode, rankContext) {
-  const state = await loadBpRankLeaderboardState(limit, mode);
+  const state = await loadBpRankLeaderboardState(limit, mode, {
+    refundForUserId: rankContext?.refundForUserId,
+  });
   let nameMap = new Map();
   if (rankContext?.client && state.slice.length) {
     nameMap = await resolveBpRankDisplayNames(
@@ -449,7 +458,7 @@ export function buildBpRankSlicePickRow(lim, m, slice, nameMap = new Map()) {
  * @param {number} limit
  * @param {string} mode BP_RANK_MODE
  * @param {number} [extraFlags=0]
- * @param {{ client?: import('discord.js').Client, guild?: import('discord.js').Guild | null }} [rankContext]
+ * @param {{ client?: import('discord.js').Client, guild?: import('discord.js').Guild | null, refundForUserId?: string }} [rankContext]
  */
 export async function buildBpRankLeaderboardFullPayload(
   limit,
@@ -460,6 +469,7 @@ export async function buildBpRankLeaderboardFullPayload(
   const { lim, m, merged, slice } = await loadBpRankLeaderboardState(
     limit,
     mode,
+    { refundForUserId: rankContext?.refundForUserId },
   );
   let nameMap = new Map();
   if (rankContext?.client && slice.length) {

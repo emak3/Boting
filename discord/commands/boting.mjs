@@ -4,7 +4,7 @@ import {
   MessageFlags,
 } from 'discord.js';
 import { buildBotingPanelPayload } from '../utils/raceCommandHub.mjs';
-import { runPendingRaceRefundsForUser } from '../utils/raceBetRefundSweep.mjs';
+import { isDatabaseCapacityError } from '../utils/firestoreErrors.mjs';
 
 const commandObject = {
   command: new SlashCommandBuilder()
@@ -16,7 +16,6 @@ const commandObject = {
 
   async execute(interaction) {
     await interaction.deferReply({ flags: MessageFlags.Ephemeral });
-    await runPendingRaceRefundsForUser(interaction.user.id);
 
     try {
       await interaction.editReply(
@@ -28,6 +27,14 @@ const commandObject = {
       );
     } catch (e) {
       console.error('boting:', e);
+      if (isDatabaseCapacityError(e)) {
+        await interaction.editReply({
+          content:
+            '❌ データベースの利用上限に達しました（クォータ超過またはディスク不足）。\n' +
+            'ホストの空き容量や、クラウド DB の場合はコンソールの上限設定を確認してください。',
+        });
+        return;
+      }
       await interaction.editReply({
         content: `❌ 表示に失敗しました: ${e.message}`,
       });

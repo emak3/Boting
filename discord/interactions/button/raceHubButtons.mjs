@@ -212,11 +212,11 @@ export default async function raceHubButtons(interaction) {
     const extraFlags = ephemeralExtraFromMessage(interaction.message);
     if (!(await safeDeferUpdate(interaction))) return;
     try {
-      await runPendingRaceRefundsForUser(interaction.user.id);
       await interaction.editReply(
         await buildBpRankLeaderboardFullPayload(lim, mode, extraFlags, {
           client: interaction.client,
           guild: interaction.guild,
+          refundForUserId: interaction.user.id,
         }),
       );
     } catch (e) {
@@ -474,7 +474,6 @@ export default async function raceHubButtons(interaction) {
       return;
     }
     if (part === 'rank') {
-      await runPendingRaceRefundsForUser(userId);
       await interaction.editReply(
         await buildBpRankLeaderboardFullPayload(
           20,
@@ -483,6 +482,7 @@ export default async function raceHubButtons(interaction) {
           {
             client: interaction.client,
             guild: interaction.guild,
+            refundForUserId: userId,
           },
         ),
       );

@@ -1,8 +1,4 @@
-import { FieldValue } from 'firebase-admin/firestore';
-import { getAdminFirestore } from '../../utils/firebaseAdmin.mjs';
-
-const CONFIG_COLLECTION = 'config';
-const DEBUG_AUTH_DOC = 'debugAuthorizedUsers';
+import { DebugAuthorizedUser } from './db/models.mjs';
 
 /** 初回のみ DB に書き込むブートストラップ用（削除で外せる） */
 const SEED_BOOTSTRAP_USER_IDS = ['864735082732322867'];
@@ -28,33 +24,15 @@ export function getDebugAuthorizedMentionsLineSync() {
  * 起動時・追加/削除後に呼ぶ
  */
 export async function refreshDebugAuthorizedCache() {
-  const db = getAdminFirestore();
-  const ref = db.collection(CONFIG_COLLECTION).doc(DEBUG_AUTH_DOC);
-  const snap = await ref.get();
-  if (!snap.exists) {
-    await ref.set({
-      userIds: SEED_BOOTSTRAP_USER_IDS,
-      updatedAt: FieldValue.serverTimestamp(),
-    });
+  const rows = await DebugAuthorizedUser.findAll();
+  if (!rows.length) {
+    for (const id of SEED_BOOTSTRAP_USER_IDS) {
+      await DebugAuthorizedUser.create({ userId: id });
+    }
     cache = new Set(SEED_BOOTSTRAP_USER_IDS);
     return;
   }
-  const raw = snap.data()?.userIds;
-  const arr = Array.isArray(raw)
-    ? raw.map((x) => String(x).trim()).filter(Boolean)
-    : [];
-  if (arr.length === 0) {
-    await ref.set(
-      {
-        userIds: SEED_BOOTSTRAP_USER_IDS,
-        updatedAt: FieldValue.serverTimestamp(),
-      },
-      { merge: true },
-    );
-    cache = new Set(SEED_BOOTSTRAP_USER_IDS);
-    return;
-  }
-  cache = new Set(arr);
+  cache = new Set(rows.map((r) => String(r.get('userId'))));
 }
 
 /**
@@ -65,15 +43,10 @@ export async function addDebugAuthorizedUser(userId) {
   if (!/^\d{17,20}$/.test(id)) {
     return { ok: false, reason: 'invalid_id' };
   }
-  const db = getAdminFirestore();
-  const ref = db.collection(CONFIG_COLLECTION).doc(DEBUG_AUTH_DOC);
-  await ref.set(
-    {
-      userIds: FieldValue.arrayUnion(id),
-      updatedAt: FieldValue.serverTimestamp(),
-    },
-    { merge: true },
-  );
+  await DebugAuthorizedUser.findOrCreate({
+    where: { userId: id },
+    defaults: { userId: id },
+  });
   await refreshDebugAuthorizedCache();
   return { ok: true };
 }
@@ -86,24 +59,12 @@ export async function removeDebugAuthorizedUser(userId) {
   if (!/^\d{17,20}$/.test(id)) {
     return { ok: false, reason: 'invalid_id' };
   }
-  const db = getAdminFirestore();
-  const ref = db.collection(CONFIG_COLLECTION).doc(DEBUG_AUTH_DOC);
-  await ref.set(
-    {
-      userIds: FieldValue.arrayRemove(id),
-      updatedAt: FieldValue.serverTimestamp(),
-    },
-    { merge: true },
-  );
+  await DebugAuthorizedUser.destroy({ where: { userId: id } });
   await refreshDebugAuthorizedCache();
   if (cache.size === 0) {
-    await ref.set(
-      {
-        userIds: SEED_BOOTSTRAP_USER_IDS,
-        updatedAt: FieldValue.serverTimestamp(),
-      },
-      { merge: true },
-    );
+    for (const sid of SEED_BOOTSTRAP_USER_IDS) {
+      await DebugAuthorizedUser.create({ userId: sid });
+    }
     await refreshDebugAuthorizedCache();
     return { ok: true, reason: 'restored_seed' };
   }

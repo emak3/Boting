@@ -1,10 +1,7 @@
-import { FieldValue } from 'firebase-admin/firestore';
-import { getAdminFirestore } from '../../utils/firebaseAdmin.mjs';
+import { sequelize, UserPoint, LedgerEntry } from './db/models.mjs';
 
-const COLLECTION = 'userPoints';
-const LEDGER = 'ledger';
 const LEDGER_PREVIEW_LIMIT = 15;
-/** 直近の収支ページング用 1 クエリあたりの取得上限（Firestore の読み取り負荷対策） */
+/** 直近の収支ページング用 1 クエリあたりの取得上限 */
 export const LEDGER_PAGE_MAX_FETCH = 500;
 
 /** JSTはDSTなし。UTC+9のオフセットでJSTの暦・時刻成分を得る */
@@ -131,34 +128,59 @@ export function getDailyStreakGrantBp(streakDay) {
   return 10 + bonuses[d - 1];
 }
 
+function mapLedgerRow(row) {
+  const at = row.at instanceof Date ? row.at : null;
+  const streakRaw = row.streakDay;
+  const streakNum =
+    streakRaw != null && streakRaw !== ''
+      ? Math.trunc(Number(streakRaw))
+      : undefined;
+  return {
+    delta: normBalance(row.delta),
+    balanceAfter: normBalance(row.balanceAfter),
+    kind: String(row.kind ?? 'daily'),
+    period: row.period != null ? String(row.period) : '',
+    at,
+    streakDay:
+      Number.isFinite(streakNum) && streakNum >= 1 && streakNum <= 7
+        ? streakNum
+        : undefined,
+  };
+}
+
+/**
+ * @param {import('sequelize').Transaction} transaction
+ * @param {string} userId
+ * @param {{ delta: number, balanceAfter: number, kind: string, period: string, streakDay?: number }} payload
+ */
+export async function appendLedgerTransaction(transaction, userId, payload) {
+  await LedgerEntry.create(
+    {
+      userId,
+      delta: payload.delta,
+      balanceAfter: payload.balanceAfter,
+      kind: payload.kind,
+      period: payload.period,
+      streakDay:
+        payload.streakDay != null
+          ? Math.trunc(Number(payload.streakDay))
+          : null,
+      at: new Date(),
+    },
+    { transaction },
+  );
+}
+
 /**
  * @param {string} userId
  * @param {{ withLedgerPreview?: boolean }} [opts] withLedgerPreview=false なら台帳クエリを省略（/boting メイン用）
- * @returns {Promise<{
- *   balance: number,
- *   currentPeriodKey: string,
- *   lastDailyPeriodKey: string | null,
- *   dailyStreakDay: number | null,
- *   nextClaimAt: Date | null,
- *   entries: Array<{ delta: number, balanceAfter: number, kind: string, period: string, at: Date | null, streakDay?: number }>,
- * }>}
  */
 export async function getDailyAccountView(userId, opts = {}) {
   const withLedgerPreview = opts.withLedgerPreview !== false;
-  const db = getAdminFirestore();
-  const ref = db.collection(COLLECTION).doc(userId);
   const currentPeriodKey = getCurrentDailyPeriodKey();
-  const snap = await ref.get();
-  let ledgerSnap = null;
-  if (withLedgerPreview) {
-    ledgerSnap = await ref
-      .collection(LEDGER)
-      .orderBy('at', 'desc')
-      .limit(LEDGER_PREVIEW_LIMIT)
-      .get();
-  }
 
-  const u = snap.exists ? snap.data() : {};
+  const row = await UserPoint.findByPk(userId);
+  const u = row ? row.get({ plain: true }) : {};
   const balance = normBalance(u.balance);
   const lastDailyPeriodKey =
     u.lastDailyPeriodKey != null ? String(u.lastDailyPeriodKey) : null;
@@ -177,26 +199,14 @@ export async function getDailyAccountView(userId, opts = {}) {
   }
 
   const entries = [];
-  if (ledgerSnap) {
-    for (const d of ledgerSnap.docs) {
-      const row = d.data();
-      const at = row.at?.toDate?.() ?? null;
-      const streakRaw = row.streakDay;
-      const streakNum =
-        streakRaw != null && streakRaw !== ''
-          ? Math.trunc(Number(streakRaw))
-          : undefined;
-      entries.push({
-        delta: normBalance(row.delta),
-        balanceAfter: normBalance(row.balanceAfter),
-        kind: String(row.kind ?? 'daily'),
-        period: row.period != null ? String(row.period) : '',
-        at,
-        streakDay:
-          Number.isFinite(streakNum) && streakNum >= 1 && streakNum <= 7
-            ? streakNum
-            : undefined,
-      });
+  if (withLedgerPreview) {
+    const led = await LedgerEntry.findAll({
+      where: { userId },
+      order: [['at', 'DESC']],
+      limit: LEDGER_PREVIEW_LIMIT,
+    });
+    for (const r of led) {
+      entries.push(mapLedgerRow(r.get({ plain: true })));
     }
   }
 
@@ -212,15 +222,6 @@ export async function getDailyAccountView(userId, opts = {}) {
 
 /**
  * 台帳をページ取得（新しい順）。1 件多く取り hasMore を判定。
- * @param {string} userId
- * @param {number} pageSize 1〜50
- * @param {number} pageIndex 0 始まり
- * @returns {Promise<{
- *   entries: Array<{ delta: number, balanceAfter: number, kind: string, period: string, at: Date | null, streakDay?: number }>,
- *   hasMore: boolean,
- *   hasPrev: boolean,
- *   capped: boolean,
- * }>}
  */
 export async function fetchLedgerPage(userId, pageSize, pageIndex) {
   const ps = Math.min(50, Math.max(1, Math.round(Number(pageSize) || 10)));
@@ -236,38 +237,19 @@ export async function fetchLedgerPage(userId, pageSize, pageIndex) {
   }
 
   const fetchLimit = Math.min(need + 1, LEDGER_PAGE_MAX_FETCH);
-  const db = getAdminFirestore();
-  const ref = db.collection(COLLECTION).doc(userId).collection(LEDGER);
-  const snap = await ref.orderBy('at', 'desc').limit(fetchLimit).get();
+  const rows = await LedgerEntry.findAll({
+    where: { userId },
+    order: [['at', 'DESC']],
+    limit: fetchLimit,
+  });
 
-  const all = [];
-  for (const d of snap.docs) {
-    const row = d.data();
-    const at = row.at?.toDate?.() ?? null;
-    const streakRaw = row.streakDay;
-    const streakNum =
-      streakRaw != null && streakRaw !== ''
-        ? Math.trunc(Number(streakRaw))
-        : undefined;
-    all.push({
-      delta: normBalance(row.delta),
-      balanceAfter: normBalance(row.balanceAfter),
-      kind: String(row.kind ?? 'daily'),
-      period: row.period != null ? String(row.period) : '',
-      at,
-      streakDay:
-        Number.isFinite(streakNum) && streakNum >= 1 && streakNum <= 7
-          ? streakNum
-          : undefined,
-    });
-  }
-
+  const all = rows.map((d) => mapLedgerRow(d.get({ plain: true })));
   const start = pi * ps;
   const page = all.slice(start, start + ps);
-  const hasMore = snap.size > (pi + 1) * ps;
+  const hasMore = rows.length > (pi + 1) * ps;
   const hasPrev = pi > 0;
   const capped =
-    need + 1 > LEDGER_PAGE_MAX_FETCH && snap.size === LEDGER_PAGE_MAX_FETCH;
+    need + 1 > LEDGER_PAGE_MAX_FETCH && rows.length === LEDGER_PAGE_MAX_FETCH;
 
   return {
     entries: page,
@@ -277,60 +259,31 @@ export async function fetchLedgerPage(userId, pageSize, pageIndex) {
   };
 }
 
-export function appendLedgerTx(tx, userRef, payload) {
-  const row = userRef.collection(LEDGER).doc();
-  const doc = {
-    delta: payload.delta,
-    balanceAfter: payload.balanceAfter,
-    kind: payload.kind,
-    period: payload.period,
-    at: FieldValue.serverTimestamp(),
-  };
-  if (payload.streakDay != null) {
-    doc.streakDay = Math.trunc(Number(payload.streakDay));
-  }
-  tx.set(row, doc);
-}
-
 /**
  * @param {string} userId
  * @returns {Promise<number>}
  */
 export async function getBalance(userId) {
-  const db = getAdminFirestore();
-  const snap = await db.collection(COLLECTION).doc(userId).get();
-  if (!snap.exists) return 0;
-  return normBalance(snap.data()?.balance);
+  const row = await UserPoint.findByPk(userId);
+  if (!row) return 0;
+  return normBalance(row.get('balance'));
 }
 
 /**
  * 台帳の最古の取引時刻（初回デイリー・購入など）
- * @param {string} userId
- * @returns {Promise<Date | null>}
  */
 export async function fetchFirstLedgerAt(userId) {
-  const db = getAdminFirestore();
-  const snap = await db
-    .collection(COLLECTION)
-    .doc(String(userId))
-    .collection(LEDGER)
-    .orderBy('at', 'asc')
-    .limit(1)
-    .get();
-  if (snap.empty) return null;
-  const at = snap.docs[0].data()?.at?.toDate?.();
+  const row = await LedgerEntry.findOne({
+    where: { userId },
+    order: [['at', 'ASC']],
+  });
+  if (!row) return null;
+  const at = row.get('at');
   return at instanceof Date && !Number.isNaN(at.getTime()) ? at : null;
 }
 
 /**
- * デバッグ用: 指定ユーザーの bp を増減し台帳に記録する（許可ユーザーのみコマンドから呼ぶこと）
- * 減算時は残高を下回らないよう実効 delta をクランプ（残高 0 まで）。
- * @param {string} targetUserId
- * @param {number} delta 正で追加、負で減算（希望量。減算は残高で打ち切り）
- * @returns {Promise<
- *   | { ok: true, balanceBefore: number, balanceAfter: number, delta: number }
- *   | { ok: false, reason: 'zero_delta' | 'delta_too_large', balance?: number }
- * >}
+ * デバッグ用: 指定ユーザーの bp を増減し台帳に記録する
  */
 export async function applyDebugBpAdjustment(targetUserId, delta) {
   const dRaw = Math.trunc(Number(delta));
@@ -342,12 +295,13 @@ export async function applyDebugBpAdjustment(targetUserId, delta) {
   }
 
   const period = getCurrentDailyPeriodKey();
-  const db = getAdminFirestore();
-  const ref = db.collection(COLLECTION).doc(String(targetUserId));
 
-  return db.runTransaction(async (tx) => {
-    const snap = await tx.get(ref);
-    const u = snap.exists ? snap.data() : {};
+  return sequelize.transaction(async (t) => {
+    const row = await UserPoint.findByPk(targetUserId, {
+      transaction: t,
+      lock: t.LOCK.UPDATE,
+    });
+    const u = row ? row.get({ plain: true }) : {};
     const balanceBefore = normBalance(u.balance);
     let d = dRaw;
     if (d < 0) {
@@ -357,8 +311,17 @@ export async function applyDebugBpAdjustment(targetUserId, delta) {
       return { ok: false, reason: 'zero_delta', balance: balanceBefore };
     }
     const balanceAfter = balanceBefore + d;
-    tx.set(ref, { balance: balanceAfter }, { merge: true });
-    appendLedgerTx(tx, ref, {
+    await UserPoint.upsert(
+      {
+        userId: String(targetUserId),
+        balance: balanceAfter,
+        firstDailyDone: u.firstDailyDone ?? false,
+        lastDailyPeriodKey: u.lastDailyPeriodKey ?? null,
+        dailyStreakDay: u.dailyStreakDay ?? null,
+      },
+      { transaction: t },
+    );
+    await appendLedgerTransaction(t, String(targetUserId), {
       delta: d,
       balanceAfter,
       kind: 'debug_bp_adjust',
@@ -371,20 +334,17 @@ export async function applyDebugBpAdjustment(targetUserId, delta) {
 /**
  * @param {string} userId
  * @param {{ debugBypass?: boolean }} [opts]
- * @returns {Promise<
- *   | { ok: true, granted: number, balance: number, kind: 'first' | 'daily' | 'debug_extra', streakDay?: number }
- *   | { ok: false, reason: 'already_claimed', balance: number }
- * >}
  */
 export async function tryClaimDaily(userId, opts = {}) {
   const debugBypass = !!opts.debugBypass;
   const period = getCurrentDailyPeriodKey();
-  const db = getAdminFirestore();
-  const ref = db.collection(COLLECTION).doc(userId);
 
-  return db.runTransaction(async (tx) => {
-    const snap = await tx.get(ref);
-    const u = snap.exists ? snap.data() : {};
+  return sequelize.transaction(async (t) => {
+    const row = await UserPoint.findByPk(userId, {
+      transaction: t,
+      lock: t.LOCK.UPDATE,
+    });
+    const u = row ? row.get({ plain: true }) : {};
     const balance = normBalance(u.balance);
     const firstDailyDone = !!u.firstDailyDone;
     const lastDailyPeriodKey =
@@ -392,16 +352,17 @@ export async function tryClaimDaily(userId, opts = {}) {
 
     if (!firstDailyDone) {
       const newBal = balance + 10000;
-      tx.set(
-        ref,
+      await UserPoint.upsert(
         {
+          userId,
           balance: newBal,
           firstDailyDone: true,
           lastDailyPeriodKey: period,
+          dailyStreakDay: u.dailyStreakDay ?? null,
         },
-        { merge: true },
+        { transaction: t },
       );
-      appendLedgerTx(tx, ref, {
+      await appendLedgerTransaction(t, userId, {
         delta: 10000,
         balanceAfter: newBal,
         kind: 'first',
@@ -413,8 +374,17 @@ export async function tryClaimDaily(userId, opts = {}) {
     if (lastDailyPeriodKey === period) {
       if (debugBypass) {
         const newBal = balance + 10;
-        tx.set(ref, { balance: newBal }, { merge: true });
-        appendLedgerTx(tx, ref, {
+        await UserPoint.upsert(
+          {
+            userId,
+            balance: newBal,
+            firstDailyDone: true,
+            lastDailyPeriodKey,
+            dailyStreakDay: u.dailyStreakDay ?? null,
+          },
+          { transaction: t },
+        );
+        await appendLedgerTransaction(t, userId, {
           delta: 10,
           balanceAfter: newBal,
           kind: 'debug_extra',
@@ -436,8 +406,7 @@ export async function tryClaimDaily(userId, opts = {}) {
       Number.isFinite(Number(prevStreak)) &&
       Math.trunc(Number(prevStreak)) >= 1 &&
       Math.trunc(Number(prevStreak)) <= 7;
-    const consecutive =
-      lastDailyPeriodKey === prevPeriod && hadStreak;
+    const consecutive = lastDailyPeriodKey === prevPeriod && hadStreak;
 
     let streakDay = 1;
     if (consecutive) {
@@ -447,16 +416,17 @@ export async function tryClaimDaily(userId, opts = {}) {
 
     const granted = getDailyStreakGrantBp(streakDay);
     const newBal = balance + granted;
-    tx.set(
-      ref,
+    await UserPoint.upsert(
       {
+        userId,
         balance: newBal,
+        firstDailyDone: true,
         lastDailyPeriodKey: period,
         dailyStreakDay: streakDay,
       },
-      { merge: true },
+      { transaction: t },
     );
-    appendLedgerTx(tx, ref, {
+    await appendLedgerTransaction(t, userId, {
       delta: granted,
       balanceAfter: newBal,
       kind: 'daily',

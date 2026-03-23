@@ -2,6 +2,7 @@ import { Events, Client, Routes, ActivityType } from "discord.js";
 import { getConfig } from '../../config/config.mjs';
 import { initLogger } from '../../utils/logger.mjs';
 import { refreshDebugAuthorizedCache } from '../utils/debugAuthStore.mjs';
+import { initDatabase } from '../utils/db/initDb.mjs';
 const log = initLogger();
 
 export default {
@@ -18,6 +19,14 @@ export default {
             type: ActivityType.Playing
         });
         log.info('online!');
+
+        try {
+            await initDatabase();
+            log.info('SQLite (Sequelize) ready');
+        } catch (e) {
+            log.error('initDatabase failed:', e?.message ?? e);
+            throw e;
+        }
 
         try {
             await refreshDebugAuthorizedCache();

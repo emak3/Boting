@@ -5,7 +5,6 @@ import {
   BP_RANK_MODE,
 } from '../../utils/bpRankLeaderboardEmbed.mjs';
 import { MessageFlags } from 'discord.js';
-import { runPendingRaceRefundsForUser } from '../../utils/raceBetRefundSweep.mjs';
 import { buildTextAndRowsV2Payload } from '../../utils/raceCardDisplay.mjs';
 
 /**
@@ -31,7 +30,6 @@ export default async function bpRankMenu(interaction) {
       : BP_RANK_MODE.BALANCE;
 
   await interaction.deferUpdate();
-  await runPendingRaceRefundsForUser(interaction.user.id);
 
   let extraFlags = 0;
   try {
@@ -47,6 +45,7 @@ export default async function bpRankMenu(interaction) {
       await buildBpRankLeaderboardFullPayload(limit, mode, extraFlags, {
         client: interaction.client,
         guild: interaction.guild,
+        refundForUserId: interaction.user.id,
       }),
     );
   } catch (e) {

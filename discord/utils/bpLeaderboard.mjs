@@ -1,21 +1,23 @@
-import { getAdminFirestore } from '../../utils/firebaseAdmin.mjs';
+import { UserPoint } from './db/models.mjs';
 import { normBalance } from './userPointsStore.mjs';
-
-const COLLECTION = 'userPoints';
 
 /**
  * balance 降順の全ユーザーを取得（同一残高は userId 昇順で安定）
  * @returns {Promise<Array<{ userId: string, balance: number }>>}
  */
 export async function fetchAllUsersByBalanceDesc() {
-  const db = getAdminFirestore();
-  const snap = await db.collection(COLLECTION).orderBy('balance', 'desc').get();
-  const rows = snap.docs.map((d) => ({
-    userId: d.id,
-    balance: normBalance(d.data()?.balance),
+  const rows = await UserPoint.findAll({
+    order: [
+      ['balance', 'DESC'],
+      ['userId', 'ASC'],
+    ],
+  });
+  const out = rows.map((r) => ({
+    userId: r.get('userId'),
+    balance: normBalance(r.get('balance')),
   }));
-  rows.sort((a, b) => b.balance - a.balance || a.userId.localeCompare(b.userId));
-  return rows;
+  out.sort((a, b) => b.balance - a.balance || a.userId.localeCompare(b.userId));
+  return out;
 }
 
 /**

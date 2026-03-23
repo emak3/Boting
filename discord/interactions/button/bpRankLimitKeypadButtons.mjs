@@ -16,7 +16,6 @@ import {
   BP_RANK_MODE,
   buildBpRankLeaderboardFullPayload,
 } from '../../utils/bpRankLeaderboardEmbed.mjs';
-import { runPendingRaceRefundsForUser } from '../../utils/raceBetRefundSweep.mjs';
 import { buildEphemeralWithBotingBackPayload } from '../../utils/botingBackButton.mjs';
 import { buildTextAndRowsV2Payload } from '../../utils/raceCardDisplay.mjs';
 
@@ -92,13 +91,13 @@ export default async function bpRankLimitKeypadButtons(interaction) {
   if (parsed.op === 'can') {
     clearBpRankLimitDraft(userId);
     await interaction.deferUpdate();
-    await runPendingRaceRefundsForUser(userId);
     const lim = Math.min(BP_RANK_DISPLAY_MAX, Math.max(1, draft.savedLimit));
     try {
       await interaction.editReply(
         await buildBpRankLeaderboardFullPayload(lim, mode, extraFlags, {
           client: interaction.client,
           guild: interaction.guild,
+          refundForUserId: userId,
         }),
       );
     } catch (e) {
@@ -119,12 +118,12 @@ export default async function bpRankLimitKeypadButtons(interaction) {
     const lim = bufferToLimit(draft.buffer);
     clearBpRankLimitDraft(userId);
     await interaction.deferUpdate();
-    await runPendingRaceRefundsForUser(userId);
     try {
       await interaction.editReply(
         await buildBpRankLeaderboardFullPayload(lim, mode, extraFlags, {
           client: interaction.client,
           guild: interaction.guild,
+          refundForUserId: userId,
         }),
       );
     } catch (e) {

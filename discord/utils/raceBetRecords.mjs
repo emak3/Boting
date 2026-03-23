@@ -1,8 +1,9 @@
-import { FieldValue, Timestamp } from 'firebase-admin/firestore';
-import { getAdminFirestore } from '../../utils/firebaseAdmin.mjs';
+import { Op } from 'sequelize';
+import { randomUUID } from 'node:crypto';
+import { sequelize, RaceBet, UserPoint } from './db/models.mjs';
 import { mapWithConcurrency } from '../../utils/mapWithConcurrency.mjs';
 import {
-  appendLedgerTx,
+  appendLedgerTransaction,
   addJstCalendarDays,
   getCurrentDailyPeriodKey,
   getJstCalendarYmd,
@@ -15,14 +16,9 @@ import { ticketCountForValidation } from './raceBetTickets.mjs';
 import { resolveRaceHoldYmdForPurchaseItem } from './raceHoldDate.mjs';
 import { inferNetkeibaOriginForPurchaseItem } from './netkeibaUrls.mjs';
 
-/** Firestore: raceBets 複合インデックス (userId,raceId,status) / (userId,status) が初回クエリ時に案内されます */
-const COLLECTION = 'raceBets';
-const USER_POINTS = 'userPoints';
-
 /**
  * 中央など: race_id 先頭8桁が YYYYMMDD の12桁帯（例 202603220405）
  * @param {string} ymd8 YYYYMMDD
- * @returns {{ start: string, end: string }} end は排他（翌日の下限）
  */
 function raceIdRangeStringsForHoldYmd(ymd8) {
   const y = String(ymd8);
@@ -33,10 +29,8 @@ function raceIdRangeStringsForHoldYmd(ymd8) {
 }
 
 /**
- * 地方(NAR): race_id は YYYY(4) + 場コード(2) + MMDD(4) + 通し(2) 例 202636032205
- * JRA 用の YYYYMMDD0000 範囲に入らないため別クエリが必要。
+ * 地方(NAR): race_id は YYYY(4) + 場コード(2) + MMDD(4) + 通し(2)
  * @param {string} ymd8 YYYYMMDD
- * @returns {{ start: string, end: string, mmdd: string }}
  */
 function narRaceIdRangeStringsForHoldYmd(ymd8) {
   const y = String(ymd8);
@@ -49,10 +43,22 @@ function narRaceIdRangeStringsForHoldYmd(ymd8) {
   };
 }
 
-/** NAR race_id の 7〜10 桁目が開催日の月日（MMDD）と一致するか */
 function narRaceIdMatchesHoldYmd(raceId, mmdd) {
   const r = String(raceId || '');
   return /^\d{12}$/.test(r) && r.slice(6, 10) === mmdd;
+}
+
+function betRowToLegacyDoc(row) {
+  const p = row.get ? row.get({ plain: true }) : row;
+  const purchasedAt = p.purchasedAt instanceof Date ? p.purchasedAt : null;
+  const settledAt = p.settledAt instanceof Date ? p.settledAt : null;
+  return {
+    ...p,
+    purchasedAt: purchasedAt
+      ? { toDate: () => purchasedAt }
+      : null,
+    settledAt: settledAt ? { toDate: () => settledAt } : null,
+  };
 }
 
 /**
@@ -130,27 +136,39 @@ export async function tryConfirmRacePurchase(userId, items) {
   }
 
   const period = getCurrentDailyPeriodKey();
-  const db = getAdminFirestore();
-  const userRef = db.collection(USER_POINTS).doc(userId);
 
-  return db.runTransaction(async (tx) => {
-    const uSnap = await tx.get(userRef);
-    const balance = normBalance(uSnap.data()?.balance);
+  return sequelize.transaction(async (t) => {
+    const userRow = await UserPoint.findByPk(userId, {
+      transaction: t,
+      lock: t.LOCK.UPDATE,
+    });
+    const balance = normBalance(userRow?.get('balance'));
     if (balance < total) {
       return { ok: false, reason: 'insufficient', balance, need: total };
     }
     const newBal = balance - total;
-    tx.set(userRef, { balance: newBal }, { merge: true });
-    appendLedgerTx(tx, userRef, {
+    await UserPoint.upsert(
+      {
+        userId,
+        balance: newBal,
+        firstDailyDone: userRow?.get('firstDailyDone') ?? false,
+        lastDailyPeriodKey: userRow?.get('lastDailyPeriodKey') ?? null,
+        dailyStreakDay: userRow?.get('dailyStreakDay') ?? null,
+      },
+      { transaction: t },
+    );
+    await appendLedgerTransaction(t, userId, {
       delta: -total,
       balanceAfter: newBal,
       kind: 'race_bet',
       period,
     });
 
+    const now = new Date();
     for (const row of normalized) {
-      const docRef = db.collection(COLLECTION).doc();
-      const docBody = {
+      const id = randomUUID();
+      const body = {
+        id,
         userId,
         raceId: row.raceId,
         raceTitle: row.raceTitle,
@@ -164,13 +182,13 @@ export async function tryConfirmRacePurchase(userId, items) {
         horseNumToFrame: row.horseNumToFrame || {},
         status: 'open',
         refundBp: 0,
-        purchasedAt: FieldValue.serverTimestamp(),
+        purchasedAt: now,
         settledAt: null,
       };
-      if (row.trifukuFormation) docBody.trifukuFormation = row.trifukuFormation;
-      if (row.venueTitle) docBody.venueTitle = row.venueTitle;
-      if (row.raceHoldYmd) docBody.raceHoldYmd = row.raceHoldYmd;
-      tx.set(docRef, docBody);
+      if (row.trifukuFormation) body.trifukuFormation = row.trifukuFormation;
+      if (row.venueTitle) body.venueTitle = row.venueTitle;
+      if (row.raceHoldYmd) body.raceHoldYmd = row.raceHoldYmd;
+      await RaceBet.create(body, { transaction: t });
     }
 
     return { ok: true, balance: newBal, spent: total, count: normalized.length };
@@ -178,7 +196,6 @@ export async function tryConfirmRacePurchase(userId, items) {
 }
 
 /**
- * 指定ユーザーの未払戻レース買いを結果に基づき精算する（冪等：open のみ）
  * @param {string} userId
  * @param {string} raceId
  * @param {{ payouts?: object[] }} parsedResult scrapeRaceResult の戻り
@@ -188,30 +205,32 @@ export async function settleOpenRaceBetsForUser(userId, raceId, parsedResult) {
   if (!/^\d{12}$/.test(rid)) return { settled: 0, totalRefund: 0, balance: null };
 
   const payouts = parsedResult?.payouts || [];
-  const db = getAdminFirestore();
-  const userRef = db.collection(USER_POINTS).doc(userId);
   const period = getCurrentDailyPeriodKey();
 
-  return db.runTransaction(async (tx) => {
-    const q = db
-      .collection(COLLECTION)
-      .where('userId', '==', userId)
-      .where('raceId', '==', rid)
-      .where('status', '==', 'open');
-    const betsSnap = await tx.get(q);
-    const uSnap = await tx.get(userRef);
+  return sequelize.transaction(async (t) => {
+    const bets = await RaceBet.findAll({
+      where: { userId, raceId: rid, status: 'open' },
+      transaction: t,
+      lock: t.LOCK.UPDATE,
+    });
 
-    if (betsSnap.empty) {
+    const userRow = await UserPoint.findByPk(userId, {
+      transaction: t,
+      lock: t.LOCK.UPDATE,
+    });
+
+    if (!bets.length) {
       return {
         settled: 0,
         totalRefund: 0,
-        balance: normBalance(uSnap.data()?.balance),
+        balance: normBalance(userRow?.get('balance')),
       };
     }
 
     let totalRefund = 0;
-    for (const doc of betsSnap.docs) {
-      const d = doc.data();
+    const now = new Date();
+    for (const doc of bets) {
+      const d = doc.get({ plain: true });
       const unitYen = Math.max(1, Math.round(Number(d.unitYen) || 100));
       const refund = sumRefundBpForTickets(d.tickets || [], payouts, unitYen, {
         excludedHorseNumbers: parsedResult?.excludedHorseNumbers || [],
@@ -219,18 +238,30 @@ export async function settleOpenRaceBetsForUser(userId, raceId, parsedResult) {
         raceHorses: parsedResult?.horses || [],
       });
       totalRefund += refund;
-      tx.update(doc.ref, {
-        status: 'settled',
-        refundBp: refund,
-        settledAt: FieldValue.serverTimestamp(),
-      });
+      await doc.update(
+        {
+          status: 'settled',
+          refundBp: refund,
+          settledAt: now,
+        },
+        { transaction: t },
+      );
     }
 
-    const balance = normBalance(uSnap.data()?.balance);
+    const balance = normBalance(userRow?.get('balance'));
     const newBal = balance + totalRefund;
-    tx.set(userRef, { balance: newBal }, { merge: true });
+    await UserPoint.upsert(
+      {
+        userId,
+        balance: newBal,
+        firstDailyDone: userRow?.get('firstDailyDone') ?? false,
+        lastDailyPeriodKey: userRow?.get('lastDailyPeriodKey') ?? null,
+        dailyStreakDay: userRow?.get('dailyStreakDay') ?? null,
+      },
+      { transaction: t },
+    );
     if (totalRefund > 0) {
-      appendLedgerTx(tx, userRef, {
+      await appendLedgerTransaction(t, userId, {
         delta: totalRefund,
         balanceAfter: newBal,
         kind: 'race_refund',
@@ -239,7 +270,7 @@ export async function settleOpenRaceBetsForUser(userId, raceId, parsedResult) {
     }
 
     return {
-      settled: betsSnap.size,
+      settled: bets.length,
       totalRefund,
       balance: newBal,
     };
@@ -248,10 +279,6 @@ export async function settleOpenRaceBetsForUser(userId, raceId, parsedResult) {
 
 /**
  * 未精算（status open）のレースをユニークな raceId ごとに結果取得→精算する。
- * スラッシュコマンド等の入口で呼び、ランキング・履歴と残高を揃える。
- * @param {string} userId
- * @param {(raceId: string) => Promise<{ confirmed?: boolean, payouts?: object[] }>} scrapeRaceResult
- * @param {{ maxRaces?: number }} [opts] 1コールあたり処理するレース数上限（netkeiba 負荷・応答時間対策）
  */
 export async function settlePendingOpenRaceBetsForUser(userId, scrapeRaceResult, opts = {}) {
   const uid = String(userId || '');
@@ -266,28 +293,25 @@ export async function settlePendingOpenRaceBetsForUser(userId, scrapeRaceResult,
   }
 
   const maxRaces = Math.max(1, Math.min(50, Math.round(Number(opts.maxRaces) || 12)));
-  const db = getAdminFirestore();
-  const snap = await db
-    .collection(COLLECTION)
-    .where('userId', '==', uid)
-    .where('status', '==', 'open')
-    .get();
+  const openRows = await RaceBet.findAll({
+    where: { userId: uid, status: 'open' },
+    attributes: ['raceId'],
+  });
 
-  if (snap.empty) {
-    const uRef = db.collection(USER_POINTS).doc(uid);
-    const uSnap = await uRef.get();
+  if (!openRows.length) {
+    const uRow = await UserPoint.findByPk(uid);
     return {
       raceIdsProcessed: 0,
       settledBets: 0,
       totalRefund: 0,
-      balance: normBalance(uSnap.data()?.balance),
+      balance: normBalance(uRow?.get('balance')),
       skippedNoResult: 0,
     };
   }
 
   const raceIdSet = new Set();
-  for (const doc of snap.docs) {
-    const rid = String(doc.data()?.raceId || '');
+  for (const r of openRows) {
+    const rid = String(r.get('raceId') || '');
     if (/^\d{12}$/.test(rid)) raceIdSet.add(rid);
   }
   const raceIds = [...raceIdSet].sort();
@@ -299,7 +323,6 @@ export async function settlePendingOpenRaceBetsForUser(userId, scrapeRaceResult,
   /** @type {number | null} */
   let balance = null;
 
-  /** 結果取得のみ並列（精算は Firestore トランザクション競合を避けて順次） */
   const SETTLE_SCRAPE_CONCURRENCY = 3;
   const scrapeResults = await mapWithConcurrency(
     toProcess,
@@ -330,9 +353,8 @@ export async function settlePendingOpenRaceBetsForUser(userId, scrapeRaceResult,
   }
 
   if (balance == null) {
-    const uRef = db.collection(USER_POINTS).doc(uid);
-    const uSnap = await uRef.get();
-    balance = normBalance(uSnap.data()?.balance);
+    const uRow = await UserPoint.findByPk(uid);
+    balance = normBalance(uRow?.get('balance'));
   }
 
   return {
@@ -346,28 +368,30 @@ export async function settlePendingOpenRaceBetsForUser(userId, scrapeRaceResult,
 
 /**
  * 指定ユーザーの競馬購入を日次帯（JST 8:00〜翌 8:00）で取得（購入時刻順）
- * 複合インデックス: raceBets userId + purchasedAt
  */
 export async function fetchUserRaceBetsForDailyPeriod(
   userId,
   periodKey = getCurrentDailyPeriodKey(),
 ) {
   const { start, end } = getJstDailyPeriodWindowBounds(periodKey);
-  const db = getAdminFirestore();
-  const q = db
-    .collection(COLLECTION)
-    .where('userId', '==', userId)
-    .where('purchasedAt', '>=', Timestamp.fromDate(start))
-    .where('purchasedAt', '<', Timestamp.fromDate(end))
-    .orderBy('purchasedAt', 'asc');
-  const snap = await q.get();
-  return snap.docs.map((d) => ({ id: d.id, ...d.data() }));
+  const rows = await RaceBet.findAll({
+    where: {
+      userId,
+      purchasedAt: {
+        [Op.gte]: start,
+        [Op.lt]: end,
+      },
+    },
+    order: [['purchasedAt', 'ASC']],
+  });
+  return rows.map((r) => ({
+    id: r.get('id'),
+    ...r.get({ plain: true }),
+  }));
 }
 
 /**
  * 開催日 JST（YYYYMMDD）で購入を取得。前日購入分も含む。
- * 複合インデックス: userId + raceHoldYmd / userId + raceId / userId + netkeibaOrigin + raceId
- * 中央: race_id の YYYYMMDD 帯 + raceHoldYmd。地方(NAR): YYYY+場+MMDD+通し のため別範囲 + MMDD 一致。
  */
 export async function fetchUserRaceBetsForRaceHoldDateYmd(userId, ymd) {
   const uid = String(userId || '');
@@ -375,29 +399,24 @@ export async function fetchUserRaceBetsForRaceHoldDateYmd(userId, ymd) {
   const ymdStr = String(ymd);
   const { start, end } = raceIdRangeStringsForHoldYmd(ymdStr);
   const narR = narRaceIdRangeStringsForHoldYmd(ymdStr);
-  const db = getAdminFirestore();
 
   const [resHold, resRid, resNar] = await Promise.allSettled([
-    db
-      .collection(COLLECTION)
-      .where('userId', '==', uid)
-      .where('raceHoldYmd', '==', ymdStr)
-      .get(),
-    db
-      .collection(COLLECTION)
-      .where('userId', '==', uid)
-      .where('raceId', '>=', start)
-      .where('raceId', '<', end)
-      .orderBy('raceId', 'asc')
-      .get(),
-    db
-      .collection(COLLECTION)
-      .where('userId', '==', uid)
-      .where('netkeibaOrigin', '==', 'nar')
-      .where('raceId', '>=', narR.start)
-      .where('raceId', '<=', narR.end)
-      .orderBy('raceId', 'asc')
-      .get(),
+    RaceBet.findAll({ where: { userId: uid, raceHoldYmd: ymdStr } }),
+    RaceBet.findAll({
+      where: {
+        userId: uid,
+        raceId: { [Op.gte]: start, [Op.lt]: end },
+      },
+      order: [['raceId', 'ASC']],
+    }),
+    RaceBet.findAll({
+      where: {
+        userId: uid,
+        netkeibaOrigin: 'nar',
+        raceId: { [Op.gte]: narR.start, [Op.lte]: narR.end },
+      },
+      order: [['raceId', 'ASC']],
+    }),
   ]);
   if (resHold.status === 'rejected') {
     console.warn('raceBets fetch raceHoldYmd:', resHold.reason?.message || resHold.reason);
@@ -408,27 +427,25 @@ export async function fetchUserRaceBetsForRaceHoldDateYmd(userId, ymd) {
   if (resNar.status === 'rejected') {
     console.warn('raceBets fetch NAR raceId range:', resNar.reason?.message || resNar.reason);
   }
-  const snapField = resHold.status === 'fulfilled' ? resHold.value : { docs: [] };
-  const snapRaceIdDay = resRid.status === 'fulfilled' ? resRid.value : { docs: [] };
-  const snapNar = resNar.status === 'fulfilled' ? resNar.value : { docs: [] };
+  const snapField = resHold.status === 'fulfilled' ? resHold.value : [];
+  const snapRaceIdDay = resRid.status === 'fulfilled' ? resRid.value : [];
+  const snapNar = resNar.status === 'fulfilled' ? resNar.value : [];
 
   const byId = new Map();
-  for (const d of snapField.docs) {
-    const data = d.data();
-    // raceHoldYmd == 開催日で取れている行は採用（race_id 先頭8桁が日付と一致しない表記でも除外しない）
-    byId.set(d.id, { id: d.id, ...data });
+  for (const r of snapField) {
+    const p = r.get({ plain: true });
+    byId.set(p.id, { id: p.id, ...p });
   }
-  for (const d of snapRaceIdDay.docs) {
-    if (byId.has(d.id)) continue;
-    const data = d.data();
-    // race_id 先頭8桁がこの開催日（中央・origin 不問）
-    byId.set(d.id, { id: d.id, ...data });
+  for (const r of snapRaceIdDay) {
+    const p = r.get({ plain: true });
+    if (byId.has(p.id)) continue;
+    byId.set(p.id, { id: p.id, ...p });
   }
-  for (const d of snapNar.docs) {
-    if (byId.has(d.id)) continue;
-    const data = d.data();
-    if (!narRaceIdMatchesHoldYmd(data.raceId, narR.mmdd)) continue;
-    byId.set(d.id, { id: d.id, ...data });
+  for (const r of snapNar) {
+    const p = r.get({ plain: true });
+    if (byId.has(p.id)) continue;
+    if (!narRaceIdMatchesHoldYmd(p.raceId, narR.mmdd)) continue;
+    byId.set(p.id, { id: p.id, ...p });
   }
 
   const rows = [...byId.values()];
@@ -436,11 +453,13 @@ export async function fetchUserRaceBetsForRaceHoldDateYmd(userId, ymd) {
     const ra = String(a.raceId || '');
     const rb = String(b.raceId || '');
     if (ra !== rb) return ra.localeCompare(rb);
-    const ta = a.purchasedAt?.toDate?.()?.getTime?.() ?? 0;
-    const tb = b.purchasedAt?.toDate?.()?.getTime?.() ?? 0;
+    const ta =
+      a.purchasedAt instanceof Date ? a.purchasedAt.getTime() : 0;
+    const tb =
+      b.purchasedAt instanceof Date ? b.purchasedAt.getTime() : 0;
     return ta - tb;
   });
-  return rows;
+  return rows.map((row) => betRowToLegacyDoc(row));
 }
 
 /**
@@ -452,31 +471,28 @@ export async function hasUserRaceBetsForRaceHoldDateYmd(userId, ymd) {
   const ymdStr = String(ymd);
   const { start, end } = raceIdRangeStringsForHoldYmd(ymdStr);
   const narR = narRaceIdRangeStringsForHoldYmd(ymdStr);
-  const db = getAdminFirestore();
+
   const [resA, resB, resNar] = await Promise.allSettled([
-    db
-      .collection(COLLECTION)
-      .where('userId', '==', uid)
-      .where('raceHoldYmd', '==', ymdStr)
-      .limit(40)
-      .get(),
-    db
-      .collection(COLLECTION)
-      .where('userId', '==', uid)
-      .where('raceId', '>=', start)
-      .where('raceId', '<', end)
-      .orderBy('raceId', 'asc')
-      .limit(1)
-      .get(),
-    db
-      .collection(COLLECTION)
-      .where('userId', '==', uid)
-      .where('netkeibaOrigin', '==', 'nar')
-      .where('raceId', '>=', narR.start)
-      .where('raceId', '<=', narR.end)
-      .orderBy('raceId', 'asc')
-      .limit(80)
-      .get(),
+    RaceBet.findAll({
+      where: { userId: uid, raceHoldYmd: ymdStr },
+      limit: 40,
+    }),
+    RaceBet.findOne({
+      where: {
+        userId: uid,
+        raceId: { [Op.gte]: start, [Op.lt]: end },
+      },
+      order: [['raceId', 'ASC']],
+    }),
+    RaceBet.findAll({
+      where: {
+        userId: uid,
+        netkeibaOrigin: 'nar',
+        raceId: { [Op.gte]: narR.start, [Op.lte]: narR.end },
+      },
+      order: [['raceId', 'ASC']],
+      limit: 80,
+    }),
   ]);
   if (resA.status === 'rejected') {
     console.warn('has raceHoldYmd:', resA.reason?.message || resA.reason);
@@ -487,27 +503,22 @@ export async function hasUserRaceBetsForRaceHoldDateYmd(userId, ymd) {
   if (resNar.status === 'rejected') {
     console.warn('has NAR raceId range:', resNar.reason?.message || resNar.reason);
   }
-  const a = resA.status === 'fulfilled' ? resA.value : { docs: [] };
-  const b = resB.status === 'fulfilled' ? resB.value : { empty: true, docs: [] };
-  const narSnap = resNar.status === 'fulfilled' ? resNar.value : { docs: [] };
-  if (!b.empty) return true;
-  if (a.docs.length) return true;
-  for (const d of narSnap.docs) {
-    if (narRaceIdMatchesHoldYmd(d.data()?.raceId, narR.mmdd)) return true;
+  const a = resA.status === 'fulfilled' ? resA.value : [];
+  const b = resB.status === 'fulfilled' ? resB.value : null;
+  const narSnap = resNar.status === 'fulfilled' ? resNar.value : [];
+  if (b) return true;
+  if (a.length) return true;
+  for (const d of narSnap) {
+    if (narRaceIdMatchesHoldYmd(d.get('raceId'), narR.mmdd)) return true;
   }
   return false;
 }
 
 /** 開催フィルタ時の逐日探索の上限 */
 const MAX_HISTORY_DAY_SKIP_MEETING = 120;
-/** 「すべて」: has と同一判定で空日をスキップ（JRA/NAR のインデックスマージは表示とずれるため使わない） */
 const ADJACENT_DAY_BATCH = 7;
-const ADJACENT_DAY_BATCH_COUNT = 18; // 7*18 = 126 >= MAX_HISTORY_DAY_SKIP_MEETING
+const ADJACENT_DAY_BATCH_COUNT = 18;
 
-/**
- * 開催日 ymd に、開催フィルタに一致する購入が1件でもあるか
- * @param {string} meetingFilter 'all' または race_id 先頭10桁
- */
 async function holdDateHasMatchingBets(userId, ymd, meetingFilter) {
   const mf = String(meetingFilter || 'all').trim();
   if (mf === 'all') {
@@ -524,10 +535,6 @@ async function holdDateHasMatchingBets(userId, ymd, meetingFilter) {
   );
 }
 
-/**
- * 「すべて」: 履歴一覧と同じ hasUserRaceBetsForRaceHoldDateYmd で日を進め、
- * 最初に購入がある日を返す（NAR のみの日・JRA のみの日の混在でも前後がずれない）。
- */
 async function findAdjacentHoldYmdWithBetsAllByHas(userId, fromYmd, direction) {
   const uid = String(userId || '');
   let cursor = addJstCalendarDays(String(fromYmd), direction);
@@ -567,11 +574,6 @@ async function findAdjacentHoldYmdWithBetsSequential(
 
 /**
  * 現在の開催日から前後に進み、購入がある最寄りの開催日（空の日はスキップ）
- * @param {string} userId
- * @param {string} fromYmd 表示中の開催日 YYYYMMDD
- * @param {-1 | 1} direction 前: -1 / 次: +1
- * @param {string} [meetingFilter] 'all' または先頭10桁（開催で絞っているときはその条件で判定）
- * @returns {Promise<string | null>}
  */
 export async function findAdjacentHoldYmdWithBets(
   userId,
@@ -591,7 +593,6 @@ export async function findAdjacentHoldYmdWithBets(
 
 /**
  * 購入履歴の初期表示日（開催日 JST）。
- * JST 21:30 以降かつ翌開催日の購入が1件でもあれば翌開催日、なければ当日。
  */
 export async function resolveDefaultRaceHistoryHoldYmd(
   userId,
@@ -642,6 +643,16 @@ function createEmptyMutableRaceBetAggregates() {
   };
 }
 
+function purchasedAtToDate(d) {
+  const v = d.purchasedAt;
+  if (v instanceof Date) return v;
+  if (v && typeof v.toDate === 'function') {
+    const x = v.toDate();
+    return x instanceof Date && !Number.isNaN(x.getTime()) ? x : null;
+  }
+  return null;
+}
+
 /**
  * @param {ReturnType<typeof createEmptyMutableRaceBetAggregates>} agg
  * @param {object} d
@@ -651,7 +662,7 @@ function accumulateRaceBetDoc(agg, d) {
   const cost = Math.max(0, Math.round(Number(d.costBp) || 0));
   agg.totalCostBp += cost;
   if (cost > agg.maxCostBp) agg.maxCostBp = cost;
-  const at = d.purchasedAt?.toDate?.() ?? null;
+  const at = purchasedAtToDate(d);
   if (at instanceof Date && !Number.isNaN(at.getTime())) {
     if (!agg.firstPurchasedAt || at < agg.firstPurchasedAt) {
       agg.firstPurchasedAt = at;
@@ -703,16 +714,15 @@ export function emptyRaceBetAggregates() {
 }
 
 /**
- * 全ユーザーの競馬購入集計（raceBets 全件を1回スキャン）
+ * 全ユーザーの競馬購入集計（race_bets 全件を1回スキャン）
  * @returns {Promise<Map<string, RaceBetAggregates>>}
  */
 export async function fetchAllRaceBetAggregatesByUserId() {
-  const db = getAdminFirestore();
-  const snap = await db.collection(COLLECTION).get();
+  const rows = await RaceBet.findAll();
   /** @type {Map<string, ReturnType<typeof createEmptyMutableRaceBetAggregates>>} */
   const mut = new Map();
-  for (const doc of snap.docs) {
-    const d = doc.data();
+  for (const doc of rows) {
+    const d = doc.get({ plain: true });
     const uid = String(d.userId || '');
     if (!uid) continue;
     let agg = mut.get(uid);
@@ -732,8 +742,6 @@ export async function fetchAllRaceBetAggregatesByUserId() {
 
 /**
  * ユーザーの競馬購入の集計（回収率は精算済みレコードのみ）
- * hitCount: 精算済みかつ払戻 bp > 0（購入履歴の「的中」と同じ）
- * @param {string} userId
  */
 export async function fetchUserRaceBetAggregates(userId) {
   const uid = String(userId || '');
@@ -741,12 +749,10 @@ export async function fetchUserRaceBetAggregates(userId) {
     return emptyRaceBetAggregates();
   }
 
-  const db = getAdminFirestore();
-  const snap = await db.collection(COLLECTION).where('userId', '==', uid).get();
-
+  const rows = await RaceBet.findAll({ where: { userId: uid } });
   const agg = createEmptyMutableRaceBetAggregates();
-  for (const doc of snap.docs) {
-    accumulateRaceBetDoc(agg, doc.data());
+  for (const doc of rows) {
+    accumulateRaceBetDoc(agg, doc.get({ plain: true }));
   }
   return finalizeRaceBetAggregates(agg);
 }

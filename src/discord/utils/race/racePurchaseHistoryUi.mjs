@@ -220,10 +220,14 @@ function formatBetEntryForHistory(bet) {
   return `${hitMark}${kind}${costPart}\n${quoted.join('\n')}`;
 }
 
-function raceSortKey(raceId) {
-  if (!/^\d{12}$/.test(String(raceId))) return 999;
-  const n = parseInt(String(raceId).slice(-2), 10);
-  return Number.isFinite(n) && n > 0 ? n : 999;
+function betPurchasedAtMs(bet) {
+  const v = bet?.purchasedAt;
+  if (v instanceof Date && !Number.isNaN(v.getTime())) return v.getTime();
+  if (v && typeof v.toDate === 'function') {
+    const d = v.toDate();
+    if (d instanceof Date && !Number.isNaN(d.getTime())) return d.getTime();
+  }
+  return 0;
 }
 
 function splitForTextDisplays(fullText) {
@@ -251,6 +255,11 @@ function appendChunkedText(container, text) {
   }
 }
 
+/**
+ * 購入が新しい順（レース単位でまとめる）。
+ * 各レースブロックの並びは「そのレースで最も遅い purchasedAt」が新しいほど上。
+ * 同一レース内は purchasedAt 降順（新しい買い目が上）。
+ */
 function flattenBetsByRace(bets) {
   const byRace = new Map();
   for (const b of bets) {
@@ -258,9 +267,15 @@ function flattenBetsByRace(bets) {
     if (!byRace.has(rid)) byRace.set(rid, []);
     byRace.get(rid).push(b);
   }
-  const sortedRids = [...byRace.keys()].sort(
-    (a, b) => raceSortKey(a) - raceSortKey(b) || a.localeCompare(b),
-  );
+  for (const arr of byRace.values()) {
+    arr.sort((a, b) => betPurchasedAtMs(b) - betPurchasedAtMs(a));
+  }
+  const sortedRids = [...byRace.keys()].sort((ra, rb) => {
+    const maxA = Math.max(...byRace.get(ra).map(betPurchasedAtMs));
+    const maxB = Math.max(...byRace.get(rb).map(betPurchasedAtMs));
+    if (maxB !== maxA) return maxB - maxA;
+    return rb.localeCompare(ra);
+  });
   const flat = [];
   for (const rid of sortedRids) {
     for (const bet of byRace.get(rid)) {

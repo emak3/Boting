@@ -1003,6 +1003,12 @@ export async function buildRaceMenuSelectionPayload(interaction, { raceId, isRes
     isResult,
   } = metaBundle;
 
+  const preferredOrigin =
+    metaFallback?.source ||
+    (lastVenue?.source === 'jra' || lastVenue?.source === 'nar'
+      ? lastVenue.source
+      : null);
+
   const flowCtx = lastVenue?.kaisaiId
     ? {
         kaisaiDate: lastVenue.kaisaiDate,
@@ -1086,7 +1092,7 @@ export async function buildRaceMenuSelectionPayload(interaction, { raceId, isRes
     });
   }
 
-  const result = await scraper.scrapeRaceCard(raceId);
+  const result = await scraper.scrapeRaceCard(raceId, { preferredOrigin });
   result.isResult = false;
   result.raceId = raceId;
   setBetFlow(userId, raceId, {
@@ -1423,8 +1429,11 @@ export default async function raceScheduleMenu(interaction) {
     let flow = getBetFlow(userId, raceId);
     if (!flow?.result) {
       const scraper = new NetkeibaScraper();
-      const result = await scraper.scrapeRaceCard(raceId);
-      setBetFlow(userId, raceId, { result });
+      const fo = flow?.source || flow?.result?.netkeibaOrigin;
+      const preferredOrigin =
+        fo === 'jra' || fo === 'nar' ? fo : null;
+      const result = await scraper.scrapeRaceCard(raceId, { preferredOrigin });
+      setBetFlow(userId, raceId, { ...(flow || {}), result });
       flow = getBetFlow(userId, raceId);
     }
     if (!isJraBetTypeAllowedForFlow(betType, flow)) {

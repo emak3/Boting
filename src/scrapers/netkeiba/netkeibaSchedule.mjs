@@ -388,13 +388,8 @@ export function filterVenuesForInteractionPostDate(
 
 /** アクティブな開催日タブの一覧から raceId に一致するレースを探す（見つからなければ null） */
 export async function findRaceMetaForToday(raceId) {
-  const [jra, nar] = await Promise.allSettled([
-    fetchTodayVenuesAndRaces(),
-    fetchNarTodayVenuesAndRaces(),
-  ]);
-
-  if (jra.status === 'fulfilled') {
-    const { venues, kaisaiDateYmd, currentGroup } = jra.value;
+  try {
+    const { venues, kaisaiDateYmd, currentGroup } = await fetchTodayVenuesAndRaces();
     for (const v of venues) {
       const hit = v.races.find((r) => r.raceId === raceId);
       if (hit) {
@@ -408,12 +403,12 @@ export async function findRaceMetaForToday(raceId) {
         };
       }
     }
-  } else {
-    console.warn('findRaceMetaForToday (JRA):', jra.reason?.message ?? jra.reason);
+  } catch (e) {
+    console.warn('findRaceMetaForToday (JRA):', e?.message ?? e);
   }
 
-  if (nar.status === 'fulfilled') {
-    const { venues, kaisaiDateYmd } = nar.value;
+  try {
+    const { venues, kaisaiDateYmd } = await fetchNarTodayVenuesAndRaces();
     for (const v of venues) {
       const hit = v.races.find((r) => r.raceId === raceId);
       if (hit) {
@@ -427,8 +422,8 @@ export async function findRaceMetaForToday(raceId) {
         };
       }
     }
-  } else {
-    console.warn('findRaceMetaForToday (NAR):', nar.reason?.message ?? nar.reason);
+  } catch (e) {
+    console.warn('findRaceMetaForToday (NAR):', e?.message ?? e);
   }
 
   return null;

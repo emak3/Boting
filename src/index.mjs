@@ -4,6 +4,7 @@ import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { getConfig, getConfigLogSummary } from './config/config.mjs';
 import { initLogger } from './utils/logging/logger.mjs';
+import { closePuppeteerBrowserPool } from './scrapers/netkeiba/utils/puppeteerBrowserPool.mjs';
 import './utils/patches/usernameSystem.mjs';
 
 const log = initLogger();
@@ -26,6 +27,13 @@ client.userMenus = [];
 process.on("uncaughtException", (error) => {
     console.error(error);
 });
+
+async function shutdown() {
+    await closePuppeteerBrowserPool().catch(() => {});
+    process.exit(0);
+}
+process.once("SIGINT", shutdown);
+process.once("SIGTERM", shutdown);
 
 // ファイルの動的インポート（cwd に依存しないよう __dirname 基準）
 for (const file of readdirSync(join(__dirname, "discord/events")).filter((file) =>

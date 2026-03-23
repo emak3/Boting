@@ -1,8 +1,8 @@
 import axios from 'axios';
 import * as cheerio from 'cheerio';
-import iconv from 'iconv-lite';
 import { handleEncoding } from './utils/encoding.mjs';
 import { axiosKeepAlive } from './utils/httpAgents.mjs';
+import { createTtlMemo } from '../../utils/cache/ttlMemo.mjs';
 import { scrapWithPuppeteer } from './utils/puppeteerFallback.mjs';
 import {
   normalizeRaceScrapedText,
@@ -11,6 +11,26 @@ import {
 import { shutubaHorseRowSelector } from './utils/shutubaDom.mjs';
 
 const NAR_BASE_URL = 'https://nar.netkeiba.com';
+
+/** 出馬表・結果・オッズ API の短時間キャッシュ（連打・同一レースの再取得を抑える） */
+const RACE_CARD_CACHE_TTL_MS = 45_000;
+/** 未確定の結果が出た直後に再取得しやすいよう、一覧ほど長くしすぎない */
+const RACE_RESULT_CACHE_TTL_MS = 35_000;
+const JRA_ODDS_CACHE_TTL_MS = 25_000;
+
+const memoRaceCard = createTtlMemo();
+const memoRaceResult = createTtlMemo();
+const memoJraOdds = createTtlMemo();
+
+/**
+ * スケジュールから JRA/NAR が分かっているとき、先方だけで十分な品質ならもう片方の HTML を取りに行かない。
+ * （馬数が多くタイトル等も取れている = 誤ページでない可能性が高い）
+ */
+const SHUTUBA_SKIP_SECOND_FETCH_MIN_SCORE = 120_000;
+
+/** JRA 結果ページでこれを満たせば NAR を取らない（払戻あり＋十分な頭数） */
+const RESULT_JRA_STRONG_MIN_HORSES = 8;
+const RESULT_JRA_STRONG_MIN_PAYOUT_ROWS = 1;
 
 /** JRA / NAR で同一 race_id が別コンテンツになる。先に取れた方が誤ページだと馬数が少なく払戻も空になりがち */
 function scoreScrapedRaceQuality(parsed) {
@@ -50,10 +70,24 @@ class NetkeibaScraper {
 
   /**
    * メインの出馬表データ取得メソッド
-   * Cheerio は JRA / NAR を並列に取り、どちらかで馬が取れたら即返す（NAR で JRA 用 Puppeteer が走らないようにする）。
+   * Cheerio: スケジュールで origin が分かるときはそのサイト優先で取得し、十分な品質ならもう片方へ行かない。
+   * 不明なときは従来どおり JRA / NAR 並列。
    * Puppeteer は両方の Cheerio が空のときだけ、JRA → NAR の順で試す。
+   * @param {string} raceId
+   * @param {{ preferredOrigin?: 'jra' | 'nar' | null }} [options]
    */
-  async scrapeRaceCard(raceId) {
+  async scrapeRaceCard(raceId, options = {}) {
+    const { preferredOrigin = null } = options;
+    return memoRaceCard(`rc:${raceId}`, RACE_CARD_CACHE_TTL_MS, () =>
+      this.scrapeRaceCardUncached(raceId, preferredOrigin),
+    );
+  }
+
+  /**
+   * @param {string} raceId
+   * @param {'jra' | 'nar' | null} preferredOrigin
+   */
+  async scrapeRaceCardUncached(raceId, preferredOrigin) {
     const jraUrl = `${this.baseUrl}/race/shutuba.html?race_id=${raceId}`;
     const narUrl = `${NAR_BASE_URL}/race/shutuba.html?race_id=${raceId}`;
     const jraHeaders = this.requestHeadersForBase(this.baseUrl);
@@ -61,10 +95,38 @@ class NetkeibaScraper {
 
     let lastErr;
     try {
-      const [jraCheerio, narCheerio] = await Promise.all([
-        this.scrapeWithCheerio(jraUrl, { headers: jraHeaders }),
-        this.scrapeWithCheerio(narUrl, { headers: narHeaders }),
-      ]);
+      let jraCheerio;
+      let narCheerio;
+
+      if (preferredOrigin === null) {
+        [jraCheerio, narCheerio] = await Promise.all([
+          this.scrapeWithCheerio(jraUrl, { headers: jraHeaders }),
+          this.scrapeWithCheerio(narUrl, { headers: narHeaders }),
+        ]);
+      } else if (preferredOrigin === 'jra') {
+        jraCheerio = await this.scrapeWithCheerio(jraUrl, { headers: jraHeaders });
+        const jraOkEarly = jraCheerio?.horses?.length ? jraCheerio : null;
+        if (
+          jraOkEarly &&
+          scoreScrapedRaceQuality(jraOkEarly) >= SHUTUBA_SKIP_SECOND_FETCH_MIN_SCORE
+        ) {
+          jraOkEarly.netkeibaOrigin = 'jra';
+          await this.mergeJraOddsFromApi(raceId, jraOkEarly);
+          return jraOkEarly;
+        }
+        narCheerio = await this.scrapeWithCheerio(narUrl, { headers: narHeaders });
+      } else {
+        narCheerio = await this.scrapeWithCheerio(narUrl, { headers: narHeaders });
+        const narOkEarly = narCheerio?.horses?.length ? narCheerio : null;
+        if (
+          narOkEarly &&
+          scoreScrapedRaceQuality(narOkEarly) >= SHUTUBA_SKIP_SECOND_FETCH_MIN_SCORE
+        ) {
+          narOkEarly.netkeibaOrigin = 'nar';
+          return narOkEarly;
+        }
+        jraCheerio = await this.scrapeWithCheerio(jraUrl, { headers: jraHeaders });
+      }
 
       const jraOk = jraCheerio?.horses?.length ? jraCheerio : null;
       const narOk = narCheerio?.horses?.length ? narCheerio : null;
@@ -87,7 +149,7 @@ class NetkeibaScraper {
       }
     } catch (error) {
       lastErr = error;
-      console.warn('scrapeRaceCard cheerio parallel:', error.message);
+      console.warn('scrapeRaceCard cheerio:', error.message);
     }
 
     const puppeteerBases = [
@@ -116,9 +178,16 @@ class NetkeibaScraper {
 
   /**
    * レース結果・払戻（result.html）
+   * JRA で払戻行があり十分な頭数が取れた場合は NAR を取らない（同一 race_id の二重取得を避ける）。
    * @returns {{ confirmed: false } | { confirmed: true, raceId: string, raceInfo: object, horses: object[], payouts: object[] }}
    */
   async scrapeRaceResult(raceId) {
+    return memoRaceResult(`rr:${raceId}`, RACE_RESULT_CACHE_TTL_MS, () =>
+      this.scrapeRaceResultUncached(raceId),
+    );
+  }
+
+  async scrapeRaceResultUncached(raceId) {
     const bases = [
       { origin: 'jra', base: this.baseUrl },
       { origin: 'nar', base: NAR_BASE_URL },
@@ -163,6 +232,13 @@ class NetkeibaScraper {
         if (sc > bestScore) {
           bestScore = sc;
           best = candidate;
+        }
+        if (
+          origin === 'jra' &&
+          horses.length >= RESULT_JRA_STRONG_MIN_HORSES &&
+          payouts.length >= RESULT_JRA_STRONG_MIN_PAYOUT_ROWS
+        ) {
+          return candidate;
         }
       } catch (e) {
         console.warn(`scrapeRaceResult ${origin}:`, e.message);
@@ -1037,26 +1113,28 @@ class NetkeibaScraper {
    * @see https://race.netkeiba.com/api/api_get_jra_odds.html
    */
   async fetchJraOddsPayload(raceId) {
-    const params = new URLSearchParams({
-      pid: 'api_get_jra_odds',
-      input: 'UTF-8',
-      output: 'json',
-      race_id: String(raceId),
-      type: '1',
-      action: 'init',
-      sort: 'odds',
-      compress: '0',
+    return memoJraOdds(`odds:${raceId}`, JRA_ODDS_CACHE_TTL_MS, async () => {
+      const params = new URLSearchParams({
+        pid: 'api_get_jra_odds',
+        input: 'UTF-8',
+        output: 'json',
+        race_id: String(raceId),
+        type: '1',
+        action: 'init',
+        sort: 'odds',
+        compress: '0',
+      });
+      const apiUrl = `${this.baseUrl}/api/api_get_jra_odds.html?${params.toString()}`;
+      const { data } = await axios.get(apiUrl, {
+        headers: this.headers,
+        timeout: 15000,
+        ...axiosKeepAlive,
+      });
+      if (data?.status === 'NG' || !data?.data?.odds) {
+        return null;
+      }
+      return data.data;
     });
-    const apiUrl = `${this.baseUrl}/api/api_get_jra_odds.html?${params.toString()}`;
-    const { data } = await axios.get(apiUrl, {
-      headers: this.headers,
-      timeout: 15000,
-      ...axiosKeepAlive,
-    });
-    if (data?.status === 'NG' || !data?.data?.odds) {
-      return null;
-    }
-    return data.data;
   }
 
   /**

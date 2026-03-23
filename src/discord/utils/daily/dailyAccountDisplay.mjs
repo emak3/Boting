@@ -25,15 +25,9 @@ export function buildDailyAccountV2Container(view, opts) {
     ? '## 本日分は受け取り済み'
     : '## 今日の Daily を受け取れます';
 
-  const nextLine = view.nextClaimAt ? formatJst(view.nextClaimAt) : '—';
-
-  const dailyStatusLine = claimed
-    ? `**次に Daily をもらえる目安**  ${nextLine}`
-    : `**本日の Daily**  まだ受け取っていません。下の **Dailyをもらう** から受け取れます。`;
-
   const streakLine =
     view.dailyStreakDay != null
-      ? `**${view.dailyStreakDay}** 日（次の日次帯は ${view.dailyStreakDay >= 7 ? 1 : view.dailyStreakDay + 1} 日目のボーナス）`
+      ? `**${view.dailyStreakDay}** 日（次の日は ${view.dailyStreakDay >= 7 ? 1 : view.dailyStreakDay + 1} 日目のボーナス）`
       : '—';
 
   const parts = [];
@@ -44,10 +38,6 @@ export function buildDailyAccountV2Container(view, opts) {
   parts.push(title);
   parts.push('');
   parts.push(`**残高**  **${view.balance}** bp`);
-  parts.push('');
-  parts.push(dailyStatusLine);
-  parts.push('');
-  parts.push(`**いまの日次帯（JST 8:00 区切り）**  \`${view.currentPeriodKey}\``);
   parts.push('');
   parts.push(`**いまの連続記録**  ${streakLine}`);
   parts.push('');

@@ -32,7 +32,7 @@ import {
   buildBpRankLbHistoryFooterRow,
 } from '../bp/bpRankUiButtons.mjs';
 import { BP_RANK_DISPLAY_MAX } from '../bp/bpRankLeaderboardEmbed.mjs';
-import { botingEmoji } from '../boting/botingEmojis.mjs';
+import { botingEmoji, botingEmojiMarkdown } from '../boting/botingEmojis.mjs';
 
 /** `|bpctx|{discordUserId}`（任意で `|rklb|{limit}|{mode}`）— 他人の履歴ナビ・ランキング戻り用 */
 export function stripRaceHistoryBpCtx(customId) {
@@ -175,6 +175,12 @@ function refundSuffix(bet) {
   return r > 0 ? `\`${r}bp\`` : '`0bp`';
 }
 
+/** 精算済みかつ払戻 bp が 1 以上＝的中（購入履歴サマリと同じ） */
+function isSettledHitBet(bet) {
+  if (String(bet.status || 'open') !== 'settled') return false;
+  return Math.round(Number(bet.refundBp) || 0) > 0;
+}
+
 /** 例: 3点`500bp` 合計`1500bp`（costBp = points × 1点あたり） */
 function betCostBpLine(bet) {
   const costBp = Math.max(0, Math.round(Number(bet.costBp) || 0));
@@ -200,6 +206,7 @@ function betCostBpLine(bet) {
  */
 function formatBetEntryForHistory(bet) {
   const kind = fullKindLabel(bet);
+  const hitMark = isSettledHitBet(bet) ? `${botingEmojiMarkdown('maru')} ` : '';
   const costPart = betCostBpLine(bet);
   const suff = refundSuffix(bet);
   const pickParts = historyPickQuotedParts(bet)
@@ -210,7 +217,7 @@ function formatBetEntryForHistory(bet) {
   const quoted = parts.map((p, i) =>
     i === last ? `> ${p} ${suff}` : `> ${p}`,
   );
-  return `${kind}${costPart}\n${quoted.join('\n')}`;
+  return `${hitMark}${kind}${costPart}\n${quoted.join('\n')}`;
 }
 
 function raceSortKey(raceId) {

@@ -26,6 +26,7 @@ const REQUIRED_KEYS = [
   'kakutei',
   'textdelete',
   'check',
+  'maru',
 ];
 
 function loadBotingEmojiMap() {
@@ -61,4 +62,14 @@ export function botingEmoji(key) {
   const e = BOTING_EMOJI[key];
   if (!e) throw new Error(`Unknown boting emoji key: ${key}`);
   return { id: e.id, name: e.name };
+}
+
+/**
+ * メッセージ本文用カスタム絵文字（`<:name:id>`）
+ * @param {keyof typeof BOTING_EMOJI} key
+ */
+export function botingEmojiMarkdown(key) {
+  const e = BOTING_EMOJI[key];
+  if (!e) throw new Error(`Unknown boting emoji key: ${key}`);
+  return `<:${e.name}:${e.id}>`;
 }

@@ -12,6 +12,19 @@ import { shutubaHorseRowSelector } from './utils/shutubaDom.mjs';
 
 const NAR_BASE_URL = 'https://nar.netkeiba.com';
 
+/** JRA / NAR で同一 race_id が別コンテンツになる。先に取れた方が誤ページだと馬数が少なく払戻も空になりがち */
+function scoreScrapedRaceQuality(parsed) {
+  const horses = parsed?.horses?.length ?? 0;
+  const payouts = parsed?.payouts?.length ?? 0;
+  const ri = parsed?.raceInfo || {};
+  let score = horses * 10000 + payouts * 100;
+  if (ri.title && ri.title !== 'レース情報') score += 500;
+  if (ri.date && ri.date !== 'N/A') score += 200;
+  if (ri.course && ri.course !== 'N/A') score += 200;
+  if (ri.prizeMoney) score += 50;
+  return score;
+}
+
 class NetkeibaScraper {
   constructor() {
     this.baseUrl = 'https://race.netkeiba.com';
@@ -53,14 +66,24 @@ class NetkeibaScraper {
         this.scrapeWithCheerio(narUrl, { headers: narHeaders }),
       ]);
 
-      if (jraCheerio?.horses?.length) {
-        jraCheerio.netkeibaOrigin = 'jra';
-        await this.mergeJraOddsFromApi(raceId, jraCheerio);
-        return jraCheerio;
+      const jraOk = jraCheerio?.horses?.length ? jraCheerio : null;
+      const narOk = narCheerio?.horses?.length ? narCheerio : null;
+
+      if (jraOk && narOk) {
+        const pickJra = scoreScrapedRaceQuality(jraOk) >= scoreScrapedRaceQuality(narOk);
+        const picked = pickJra ? jraOk : narOk;
+        picked.netkeibaOrigin = pickJra ? 'jra' : 'nar';
+        if (pickJra) await this.mergeJraOddsFromApi(raceId, picked);
+        return picked;
       }
-      if (narCheerio?.horses?.length) {
-        narCheerio.netkeibaOrigin = 'nar';
-        return narCheerio;
+      if (jraOk) {
+        jraOk.netkeibaOrigin = 'jra';
+        await this.mergeJraOddsFromApi(raceId, jraOk);
+        return jraOk;
+      }
+      if (narOk) {
+        narOk.netkeibaOrigin = 'nar';
+        return narOk;
       }
     } catch (error) {
       lastErr = error;
@@ -100,6 +123,8 @@ class NetkeibaScraper {
       { origin: 'jra', base: this.baseUrl },
       { origin: 'nar', base: NAR_BASE_URL },
     ];
+    let best = null;
+    let bestScore = -1;
     for (const { origin, base } of bases) {
       const url = `${base}/race/result.html?race_id=${raceId}`;
       const headers = this.requestHeadersForBase(base);
@@ -123,7 +148,7 @@ class NetkeibaScraper {
         const excludedBlock = this.parseExcludedResultHorseRows($);
         const raceInfo = this.extractRaceInfo($);
         const payouts = this.parseResultPayouts($);
-        return {
+        const candidate = {
           confirmed: true,
           raceId: String(raceId),
           raceInfo,
@@ -134,10 +159,16 @@ class NetkeibaScraper {
           scrapedAt: new Date().toISOString(),
           netkeibaOrigin: origin,
         };
+        const sc = scoreScrapedRaceQuality(candidate);
+        if (sc > bestScore) {
+          bestScore = sc;
+          best = candidate;
+        }
       } catch (e) {
         console.warn(`scrapeRaceResult ${origin}:`, e.message);
       }
     }
+    if (best) return best;
     return { confirmed: false };
   }
 
@@ -323,6 +354,45 @@ class NetkeibaScraper {
   }
 
   /**
+   * JRA: 各 li に1頭ずつ（空 li あり）。NAR: 1 li に need 頭以上の span があるときは null（従来の li 単位処理へ）。
+   * @param {2|3} need
+   * @returns {string[]|null}
+   */
+  static extractNumsFromJraStyleUl($, $ul, need) {
+    const $lis = $ul.children('li');
+    if ($lis.length <= 1) return null;
+    let anyLiHasEnough = false;
+    $lis.each((__, li) => {
+      if (NetkeibaScraper.extractNumSpans($, $(li)).length >= need) {
+        anyLiHasEnough = true;
+        return false;
+      }
+    });
+    if (anyLiHasEnough) return null;
+    const raw = NetkeibaScraper.extractNumSpans($, $ul);
+    return raw.length >= need ? raw.slice(0, need) : null;
+  }
+
+  /**
+   * 人気欄が「5人気1人気2人気」のように連結されているとき行ごとに分割（地方 NAR で多い）
+   * @param {string[]} ninkiList td.Ninki 内の span テキスト一覧
+   * @param {string} ninkiFallback td.Ninki のプレーンテキスト
+   * @param {number} lineCount 払戻行数
+   */
+  static splitNinkiParts(ninkiList, ninkiFallback, lineCount) {
+    const list = (ninkiList || []).filter(Boolean);
+    if (lineCount <= 0) return [];
+    if (list.length >= lineCount) return list.slice(0, lineCount);
+    const blob = String(list[0] || ninkiFallback || '').trim();
+    if (!blob) return Array(lineCount).fill('');
+    const tokens = [...blob.matchAll(/\d+人気/g)].map((m) => m[0]);
+    if (tokens.length >= lineCount) return tokens.slice(0, lineCount);
+    const parts = blob.split(/\s+/).filter(Boolean);
+    if (parts.length >= lineCount) return parts.slice(0, lineCount);
+    return Array.from({ length: lineCount }, (_, i) => list[i] || blob);
+  }
+
+  /**
    * 3連複: td.Result 内の1つの ul から、的中組（馬番3つ）の配列を取る。
    * - 1組が <li>×3（各1頭）のパターンと、<li>×1（3頭ぶんspan）や <li>×複数（組が複数行）の両方に対応。
    * 従来は ul 直下の span を全部つなげており、組が複数あると6個以上になり照合不能になっていた。
@@ -355,7 +425,8 @@ class NetkeibaScraper {
   }
 
   parseResultPayouts($) {
-    const ORDERED = new Set(['Umatan', 'Tan3']);
+    /** 地方の枠単（Wakutan）は馬単と同様の順序（>） */
+    const ORDERED = new Set(['Umatan', 'Tan3', 'Wakutan']);
     const payouts = [];
 
     $('table.Payout_Detail_Table').each((_, table) => {
@@ -368,7 +439,7 @@ class NetkeibaScraper {
 
           const cls = $tr.attr('class') || '';
           const kindMatch = cls.match(
-            /\b(Tansho|Fukusho|Wakuren|Umaren|Wide|Umatan|Fuku3|Tan3)\b/,
+            /\b(Tansho|Fukusho|Wakuren|Umaren|Wide|Wakutan|Umatan|Fuku3|Tan3)\b/,
           );
           const kind = kindMatch ? kindMatch[1] : null;
 
@@ -422,11 +493,30 @@ class NetkeibaScraper {
           if (kind === 'Wide') {
             const $uls = $result.find('ul');
             if ($uls.length) {
-              $uls.each((i, ul) => {
-                const nums = NetkeibaScraper.extractNumSpans($, $(ul));
+              /** JRA は各 li に1頭＋空 li。NAR は li 内に複数頭ぶんの span のことがある */
+              const rowRoots = [];
+              $uls.each((_, ul) => {
+                const $u = $(ul);
+                const $lil = $u.children('li');
+                const jraPair = NetkeibaScraper.extractNumsFromJraStyleUl($, $u, 2);
+                if (jraPair) {
+                  rowRoots.push($u);
+                } else if ($lil.length > 1) {
+                  $lil.each((__, li) => rowRoots.push($(li)));
+                } else {
+                  rowRoots.push($u);
+                }
+              });
+              const nkWide = NetkeibaScraper.splitNinkiParts(
+                ninkiList,
+                ninkiFallback,
+                rowRoots.length,
+              );
+              rowRoots.forEach((root, i) => {
+                const nums = NetkeibaScraper.extractNumSpans($, root);
+                if (nums.length < 2) return;
                 const payout = payoutParts[i] ?? payoutParts[0] ?? '—';
-                const nk = ninkiList[i] ?? ninkiList.join(' ') ?? ninkiFallback;
-                pushEntry(nums, payout, nk);
+                pushEntry(nums, payout, nkWide[i] ?? '');
               });
               return;
             }
@@ -435,20 +525,55 @@ class NetkeibaScraper {
           if (kind === 'Wakuren' || kind === 'Umaren') {
             const $uls = $result.find('ul');
             if ($uls.length > 1) {
+              const nkWU = NetkeibaScraper.splitNinkiParts(
+                ninkiList,
+                ninkiFallback,
+                $uls.length,
+              );
               $uls.each((i, ul) => {
                 const raw = NetkeibaScraper.extractNumSpans($, $(ul));
                 if (raw.length < 2) return;
                 const nums = raw.slice(0, 2);
                 const payout = payoutParts[i] ?? payoutParts[0] ?? '—';
-                const nk =
-                  ninkiList.length > i
-                    ? ninkiList[i]
-                    : ninkiList.length === 1
-                      ? ninkiList[0]
-                      : ninkiFallback;
+                const nk = nkWU[i] ?? '';
                 pushEntry(nums, payout, nk);
               });
               return;
+            }
+            if ($uls.length === 1) {
+              const $lis = $uls.first().children('li');
+              if ($lis.length > 1) {
+                const jraPair = NetkeibaScraper.extractNumsFromJraStyleUl(
+                  $,
+                  $uls.first(),
+                  2,
+                );
+                if (jraPair) {
+                  pushEntry(
+                    jraPair,
+                    payoutParts[0] ?? '—',
+                    NetkeibaScraper.splitNinkiParts(
+                      ninkiList,
+                      ninkiFallback,
+                      1,
+                    )[0] ?? '',
+                  );
+                  return;
+                }
+                const nkWU = NetkeibaScraper.splitNinkiParts(
+                  ninkiList,
+                  ninkiFallback,
+                  $lis.length,
+                );
+                $lis.each((i, li) => {
+                  const raw = NetkeibaScraper.extractNumSpans($, $(li));
+                  if (raw.length < 2) return;
+                  const nums = raw.slice(0, 2);
+                  const payout = payoutParts[i] ?? payoutParts[0] ?? '—';
+                  pushEntry(nums, payout, nkWU[i] ?? '');
+                });
+                return;
+              }
             }
           }
 
@@ -464,38 +589,73 @@ class NetkeibaScraper {
               if (ft.length >= 3) combos.push(ft.slice(0, 3));
             }
             if (combos.length > 0) {
+              const nkF3 = NetkeibaScraper.splitNinkiParts(
+                ninkiList,
+                ninkiFallback,
+                combos.length,
+              );
               for (let i = 0; i < combos.length; i++) {
                 const payout = payoutParts[i] ?? payoutParts[0] ?? '—';
-                const nk =
-                  ninkiList.length > i
-                    ? ninkiList[i]
-                    : ninkiList.length === 1
-                      ? ninkiList[0]
-                      : ninkiFallback;
+                const nk = nkF3[i] ?? '';
                 pushEntry(combos[i], payout, nk);
               }
             }
             return;
           }
 
-          if (kind === 'Umatan' || kind === 'Tan3') {
+          if (kind === 'Umatan' || kind === 'Tan3' || kind === 'Wakutan') {
             const $uls = $result.find('ul');
+            const need = kind === 'Tan3' ? 3 : 2;
             if ($uls.length > 1) {
-              const need = kind === 'Umatan' ? 2 : 3;
+              const nkUT = NetkeibaScraper.splitNinkiParts(
+                ninkiList,
+                ninkiFallback,
+                $uls.length,
+              );
               $uls.each((i, ul) => {
                 const raw = NetkeibaScraper.extractNumSpans($, $(ul));
                 if (raw.length < need) return;
                 const nums = raw.slice(0, need);
                 const payout = payoutParts[i] ?? payoutParts[0] ?? '—';
-                const nk =
-                  ninkiList.length > i
-                    ? ninkiList[i]
-                    : ninkiList.length === 1
-                      ? ninkiList[0]
-                      : ninkiFallback;
+                const nk = nkUT[i] ?? '';
                 pushEntry(nums, payout, nk);
               });
               return;
+            }
+            if ($uls.length === 1) {
+              const $lis = $uls.first().children('li');
+              if ($lis.length > 1) {
+                const jraN = NetkeibaScraper.extractNumsFromJraStyleUl(
+                  $,
+                  $uls.first(),
+                  need,
+                );
+                if (jraN) {
+                  pushEntry(
+                    jraN,
+                    payoutParts[0] ?? '—',
+                    NetkeibaScraper.splitNinkiParts(
+                      ninkiList,
+                      ninkiFallback,
+                      1,
+                    )[0] ?? '',
+                  );
+                  return;
+                }
+                const nkUT = NetkeibaScraper.splitNinkiParts(
+                  ninkiList,
+                  ninkiFallback,
+                  $lis.length,
+                );
+                $lis.each((i, li) => {
+                  const raw = NetkeibaScraper.extractNumSpans($, $(li));
+                  if (raw.length < need) return;
+                  const nums = raw.slice(0, need);
+                  const payout = payoutParts[i] ?? payoutParts[0] ?? '—';
+                  pushEntry(nums, payout, nkUT[i] ?? '');
+                });
+                return;
+              }
             }
           }
 
@@ -510,14 +670,13 @@ class NetkeibaScraper {
                   .filter(Boolean);
               }
               if (parts.length >= tn.length) {
+                const nkTs = NetkeibaScraper.splitNinkiParts(
+                  ninkiList,
+                  ninkiFallback,
+                  tn.length,
+                );
                 for (let i = 0; i < tn.length; i++) {
-                  const nk =
-                    ninkiList.length >= tn.length
-                      ? ninkiList[i]
-                      : ninkiList.length === 1
-                        ? ninkiList[0]
-                        : ninkiFallback;
-                  pushEntry([tn[i]], parts[i], nk);
+                  pushEntry([tn[i]], parts[i], nkTs[i] || '');
                 }
                 return;
               }
@@ -525,18 +684,34 @@ class NetkeibaScraper {
           }
 
           if (kind === 'Fukusho') {
+            const $fukuUls = $result.find('ul');
+            if ($fukuUls.length > 1) {
+              const nkFu = NetkeibaScraper.splitNinkiParts(
+                ninkiList,
+                ninkiFallback,
+                $fukuUls.length,
+              );
+              $fukuUls.each((i, ul) => {
+                const nums = NetkeibaScraper.extractNumSpans($, $(ul));
+                if (!nums.length) return;
+                const payout = payoutParts[i] ?? payoutParts[0] ?? '—';
+                pushEntry([nums[0]], payout, nkFu[i] || '');
+              });
+              return;
+            }
             const fkNums = NetkeibaScraper.extractNumSpans($, $result);
             if (
               fkNums.length > 0 &&
               payoutParts.length > 0 &&
               payoutParts.length === fkNums.length
             ) {
+              const nkFk = NetkeibaScraper.splitNinkiParts(
+                ninkiList,
+                ninkiFallback,
+                fkNums.length,
+              );
               for (let i = 0; i < fkNums.length; i++) {
-                let nk = '';
-                if (ninkiList.length === fkNums.length) nk = ninkiList[i];
-                else if (ninkiList.length === 1) nk = ninkiList[0];
-                else nk = ninkiFallback;
-                pushEntry([fkNums[i]], payoutParts[i], nk);
+                pushEntry([fkNums[i]], payoutParts[i], nkFk[i] || '');
               }
               return;
             }
@@ -549,6 +724,7 @@ class NetkeibaScraper {
             kind === 'Wakuren' ||
             kind === 'Umaren' ||
             kind === 'Umatan' ||
+            kind === 'Wakutan' ||
             kind === 'Tan3'
           ) {
             const $ul = $result.find('ul').first();

@@ -155,7 +155,7 @@ export function payoutRowMatchesTicket(row, ticket) {
   const rk = ticket.kind;
   const rnums = row.nums || [];
   const tnums = ticket.nums || [];
-  if (rk === 'Umatan' || rk === 'Tan3') {
+  if (rk === 'Umatan' || rk === 'Tan3' || rk === 'Wakutan') {
     return sameNumsOrdered(rnums, tnums);
   }
   if (rk === 'Tansho') {

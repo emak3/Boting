@@ -134,7 +134,7 @@ export async function buildVenuePickIntroV2Payload({
   return {
     content: null,
     embeds: [],
-    components: [container, ...actionRows.filter(Boolean)],
+    components: [container, ...actionRows.filter(Boolean), buildBotingMenuBackRow()],
     flags: MessageFlags.IsComponentsV2 | extraFlags,
   };
 }

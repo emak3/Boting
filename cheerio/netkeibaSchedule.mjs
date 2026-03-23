@@ -146,6 +146,71 @@ export function parseJraActiveKaisaiFromDateListHtml(html) {
 }
 
 /**
+ * 日付リスト HTML から指定 YYYYMMDD のタブだけを取る（見つからなければ null）
+ * @returns {{ kaisaiDate: string, currentGroup: string } | null}
+ */
+export function parseJraKaisaiTabForYmd(html, desiredYmd) {
+  if (!desiredYmd || !/^\d{8}$/.test(String(desiredYmd))) return null;
+  const $ = cheerio.load(html);
+
+  let $items = $('#date_list_sub li[date][group]');
+  if (!$items.length) {
+    $items = $('ul.Tab5 li[date][group]');
+  }
+  if (!$items.length) {
+    $items = $('li[date][group]');
+  }
+
+  const $li = $items.filter(`[date="${desiredYmd}"]`).first();
+  if ($li.length) {
+    const kaisaiDate = $li.attr('date');
+    const currentGroup = $li.attr('group');
+    if (kaisaiDate && currentGroup) {
+      return { kaisaiDate, currentGroup };
+    }
+  }
+
+  const re = new RegExp(
+    `race_list_sub\\.html\\?kaisai_date=(${desiredYmd})&current_group=(\\d+)`,
+    'g',
+  );
+  const m = re.exec(html);
+  if (m) {
+    return { kaisaiDate: m[1], currentGroup: m[2] };
+  }
+
+  return null;
+}
+
+/**
+ * 日本時間の「その日」の中央開催一覧（ボタン・メニュー押下日と開催日を一致させる）
+ * その日に JRA 開催がない（休場など）場合は venues が空・noTabForDate が true。
+ */
+export async function fetchVenuesAndRacesForJstYmd(desiredYmd) {
+  return memoSchedule(`jra:venuesJst:${desiredYmd}`, SCHEDULE_TTL_MS, async () => {
+    const url = `${BASE}/top/race_list_get_date_list.html?encoding=UTF-8`;
+    let html = await fetchHtml(url);
+    let parsed = parseJraKaisaiTabForYmd(html, desiredYmd);
+    if (!parsed) {
+      await new Promise((r) => setTimeout(r, 400));
+      html = await fetchHtml(url);
+      parsed = parseJraKaisaiTabForYmd(html, desiredYmd);
+    }
+    if (!parsed) {
+      return {
+        venues: [],
+        kaisaiDateYmd: desiredYmd,
+        currentGroup: null,
+        noTabForDate: true,
+      };
+    }
+    const { kaisaiDate, currentGroup } = parsed;
+    const subHtml = await fetchRaceListSub(kaisaiDate, currentGroup);
+    return { ...parseRaceListSub(subHtml, kaisaiDate), currentGroup };
+  });
+}
+
+/**
  * トップの日付タブ HTML を取得し、アクティブ（または本日）の kaisai_date / current_group を返す
  */
 export async function fetchActiveKaisaiTab() {
@@ -262,12 +327,63 @@ export function getRaceSalesStatus(race, kaisaiDateYmd, now = new Date()) {
 }
 
 export async function fetchTodayVenuesAndRaces() {
-  return memoSchedule('jra:today', SCHEDULE_TTL_MS, async () => {
-    const { kaisaiDate, currentGroup } = await fetchActiveKaisaiTab();
-    const subHtml = await fetchRaceListSub(kaisaiDate, currentGroup);
-    const parsed = parseRaceListSub(subHtml, kaisaiDate);
-    return { ...parsed, currentGroup };
-  });
+  return fetchVenuesAndRacesForJstYmd(jstYmd());
+}
+
+/**
+ * 発走の暦日（JST）に使う YYYYMMDD。
+ * JRA: race_id 先頭8桁が開催日。NAR: race_id 先頭は暦日と一致しないことがあるため **開催ページの kaisai_date のみ**を使う。
+ * @param {{ source?: 'jra' | 'nar' }} [opts]
+ * @returns {string} YYYYMMDD
+ */
+export function racePostDateYmdJst(race, kaisaiDateYmd, opts = {}) {
+  if (opts.source === 'nar') {
+    return String(kaisaiDateYmd || '');
+  }
+  const id = String(race?.raceId || '');
+  if (/^\d{12}$/.test(id)) {
+    const ymd = id.slice(0, 8);
+    if (/^\d{8}$/.test(ymd)) return ymd;
+  }
+  return String(kaisaiDateYmd || '');
+}
+
+/**
+ * 発走日（暦日・JST）が interactionYmd と一致するレースだけ残す（操作日とズレたレースを除外）
+ * @param {{ source?: 'jra' | 'nar' }} [opts]
+ */
+export function filterRacesByInteractionPostDateYmd(
+  races,
+  kaisaiDateYmd,
+  interactionYmd,
+  opts = {},
+) {
+  if (!interactionYmd || !/^\d{8}$/.test(String(interactionYmd))) {
+    return races || [];
+  }
+  return (races || []).filter(
+    (r) => racePostDateYmdJst(r, kaisaiDateYmd, opts) === interactionYmd,
+  );
+}
+
+/** 開催場ごとのレースを操作日で絞り、0件の場は除外 */
+export function filterVenuesForInteractionPostDate(
+  venues,
+  kaisaiDateYmd,
+  interactionYmd,
+  opts = {},
+) {
+  return (venues || [])
+    .map((v) => ({
+      ...v,
+      races: filterRacesByInteractionPostDateYmd(
+        v.races,
+        kaisaiDateYmd,
+        interactionYmd,
+        opts,
+      ),
+    }))
+    .filter((v) => v.races.length > 0);
 }
 
 /** アクティブな開催日タブの一覧から raceId に一致するレースを探す（見つからなければ null） */
@@ -540,8 +656,5 @@ export async function fetchNarVenuesForDate(kaisaiDate) {
 }
 
 export async function fetchNarTodayVenuesAndRaces() {
-  return memoSchedule('nar:today', SCHEDULE_TTL_MS, async () => {
-    const { kaisaiDate } = await fetchNarActiveKaisaiTab();
-    return fetchNarVenuesForDate(kaisaiDate);
-  });
+  return fetchNarVenuesForDate(jstYmd());
 }

@@ -55,4 +55,24 @@
 
 除外        <:jogai:1372578461306323035>
 取り消し    <:keshi:1372578570475540600>
-本命        <:maru:1372578589765144606> 
+本命        <:maru:1372578589765144606>
+
+# /boting ボタン絵文字（boting_<key> 行を discord/utils/botingEmojis.mjs が読み込む）
+boting_cart <:cart:1485535452235829409>
+boting_daily <:daily:1485535581021802597>
+boting_history <:history:1485535477166510152>
+boting_home <:home:1485535603356602390>
+boting_modoru <:modoru:1485535408891756666>
+boting_ranking <:ranking:1485535524222668900>
+boting_susumu <:susumu:1485535361814757466>
+boting_syushi <:syushi:1485535499421749378>
+boting_ken <:ken:1485535559408418899>
+boting_mae <:mae:1485538096001843321>
+boting_tsugi <:tsugi:1485538117313101915>
+boting_henko <:henko:1485538763949080596>
+boting_hyouji <:hyouji:1485538778876743810>
+boting_plus <:plus:1485541331643273236>
+boting_delete <:delete:1485541333434236938>
+boting_profile <:profile:1485543261849260102>
+boting_kakunin <:kakunin:1485543265687310346>
+boting_kakutei <:kakutei:1485543263925440644>

@@ -1,13 +1,14 @@
 import {
   BP_RANK_SELECT_PREFIX,
-  buildBpRankLeaderboardEmbed,
-  buildBpRankSelectRow,
+  buildBpRankLeaderboardFullPayload,
   BP_RANK_MODE,
 } from '../../utils/bpRankLeaderboardEmbed.mjs';
+import { MessageFlags } from 'discord.js';
 import { runPendingRaceRefundsForUser } from '../../utils/raceBetRefundSweep.mjs';
+import { buildTextAndRowsV2Payload } from '../../utils/raceCardDisplay.mjs';
 
 /**
- * `/bp_rank` のランキング種別セレクト
+ * ランキング種別セレクト（`/boting` のランキング画面）
  * @param {import('discord.js').StringSelectMenuInteraction} interaction
  */
 export default async function bpRankMenu(interaction) {
@@ -31,16 +32,28 @@ export default async function bpRankMenu(interaction) {
   await interaction.deferUpdate();
   await runPendingRaceRefundsForUser(interaction.user.id);
 
+  let extraFlags = 0;
   try {
-    const { embed } = await buildBpRankLeaderboardEmbed(limit, mode);
-    const selectRow = buildBpRankSelectRow(limit, mode);
-    await interaction.editReply({ embeds: [embed], components: [selectRow] });
+    if (interaction.message?.flags?.has(MessageFlags.Ephemeral)) {
+      extraFlags |= MessageFlags.Ephemeral;
+    }
+  } catch (_) {
+    /* ignore */
+  }
+
+  try {
+    await interaction.editReply(
+      await buildBpRankLeaderboardFullPayload(limit, mode, extraFlags),
+    );
   } catch (e) {
     console.error('bpRankMenu:', e);
-    await interaction.editReply({
-      content: `❌ ランキングの更新に失敗しました: ${e.message}`,
-      embeds: [],
-      components: [],
-    });
+    await interaction.editReply(
+      buildTextAndRowsV2Payload({
+        headline: `❌ ランキングの更新に失敗しました: ${e.message}`,
+        actionRows: [],
+        extraFlags,
+        withBotingMenuBack: true,
+      }),
+    );
   }
 }

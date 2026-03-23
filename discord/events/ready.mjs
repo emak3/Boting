@@ -1,6 +1,7 @@
 import { Events, Client, Routes, ActivityType } from "discord.js";
 import { getConfig } from '../../config/config.mjs';
 import { initLogger } from '../../utils/logger.mjs';
+import { refreshDebugAuthorizedCache } from '../utils/debugAuthStore.mjs';
 const log = initLogger();
 
 export default {
@@ -17,6 +18,13 @@ export default {
             type: ActivityType.Playing
         });
         log.info('online!');
+
+        try {
+            await refreshDebugAuthorizedCache();
+            log.info('debugAuthorizedUsers cache refreshed');
+        } catch (e) {
+            log.warn('refreshDebugAuthorizedCache failed (using in-memory seed until next success):', e?.message ?? e);
+        }
 
         const commands = [];
         for (const command of client.commands.values()) {

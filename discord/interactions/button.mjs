@@ -1,5 +1,8 @@
 import { BaseInteraction } from 'discord.js';
+import debugHubButtons from './button/debugHubButtons.mjs';
 import raceHubButtons from './button/raceHubButtons.mjs';
+import botingLedgerKeypadButtons from './button/botingLedgerKeypadButtons.mjs';
+import bpRankLimitKeypadButtons from './button/bpRankLimitKeypadButtons.mjs';
 import scheduleBackButtons from './button/scheduleBackButtons.mjs';
 import unitYenKeypadButtons from './button/unitYenKeypadButtons.mjs';
 import betFlowButtons from './button/betFlowButtons.mjs';
@@ -9,6 +12,9 @@ import betFlowButtons from './button/betFlowButtons.mjs';
  * @type {readonly ((interaction: import('discord.js').ButtonInteraction) => unknown)[]}
  */
 const BUTTON_HANDLERS = [
+  debugHubButtons,
+  botingLedgerKeypadButtons,
+  bpRankLimitKeypadButtons,
   raceHubButtons,
   scheduleBackButtons,
   unitYenKeypadButtons,

@@ -44,6 +44,7 @@ import {
   firstScheduleAnchorRaceIdFromRaces,
   firstScheduleAnchorRaceIdFromVenues,
 } from '../../utils/betSlipViewUi.mjs';
+import { botingEmoji } from '../../utils/botingEmojis.mjs';
 import {
   buildMenuRowFromCustomId,
   buildBetTypeMenuRow,
@@ -60,6 +61,10 @@ import {
 import { buildPayoutTicketsFromFlow } from '../../utils/raceBetTickets.mjs';
 import { settleOpenRaceBetsForUser } from '../../utils/raceBetRecords.mjs';
 import { buildVenuePickIntroV2Payload } from '../../utils/raceCommandHub.mjs';
+import {
+  raceResultFlagStore,
+  venueSelectionStore,
+} from '../../utils/venueSelectionStore.mjs';
 
 const VENUE_MENU_ID = 'race_menu_venue';
 const RACE_MENU_ID = 'race_menu_race';
@@ -92,14 +97,6 @@ const BET_TYPE_MENU_PREFIX = 'race_bet_type|'; // raceId is appended after |
 const BET_PREFIX = 'race_bet_';
 /** 買い目まとめ確認用（betSlipMenu.mjs で処理。ここではベットフロー扱いしない） */
 const BET_SLIP_MENU_PREFIX = 'race_bet_slip_';
-
-// 直前に「開催場」を選んだ情報（ユーザーごと）
-// 開催場->レース一覧->出馬表の「1段戻る」を実現するために使う
-const venueSelectionStore = new Map(); // userId -> { source?: 'jra'|'nar', kaisaiDate, currentGroup, kaisaiId }
-
-// /race メニューから選ばれたときだけ「結果（確定）」の有無を保持する
-// userId|raceId -> boolean
-const raceResultFlagStore = new Map();
 
 const BET_TYPES = [
   { id: 'win', label: '単勝' },
@@ -426,22 +423,27 @@ function summaryPurchaseButtonRows(raceId, userId, backMenuIndex, flow = null) {
       new ButtonBuilder()
         .setCustomId(`race_bet_unit_edit|${raceId}`)
         .setLabel('金額変更')
+        .setEmoji(botingEmoji('henko'))
         .setStyle(ButtonStyle.Primary),
       new ButtonBuilder()
         .setCustomId(`race_bet_add_to_cart|${raceId}`)
         .setLabel('購入予定に追加')
+        .setEmoji(botingEmoji('plus'))
         .setStyle(ButtonStyle.Success),
       new ButtonBuilder()
         .setCustomId(`${RACE_PURCHASE_HISTORY_CUSTOM_ID}|${raceId}`)
         .setLabel('購入履歴')
+        .setEmoji(botingEmoji('history'))
         .setStyle(ButtonStyle.Secondary),
       new ButtonBuilder()
         .setCustomId(`${BET_SLIP_OPEN_CUSTOM_ID}|${raceId}`)
         .setLabel(batchTotal ? `購入予定(${batchTotal})` : '購入予定')
+        .setEmoji(botingEmoji('cart'))
         .setStyle(ButtonStyle.Primary),
       new ButtonBuilder()
         .setCustomId(`race_bet_cart_clear|${raceId}`)
         .setLabel('追加済みを空にする')
+        .setEmoji(botingEmoji('delete'))
         .setStyle(ButtonStyle.Danger)
         .setDisabled(savedN === 0),
     ),
@@ -460,6 +462,7 @@ function backButtonRow(raceId, backMenuIndex) {
     new ButtonBuilder()
       .setCustomId(`race_bet_back|${raceId}`)
       .setLabel('戻る')
+      .setEmoji(botingEmoji('modoru'))
       .setStyle(ButtonStyle.Secondary),
   );
 }
@@ -968,6 +971,140 @@ async function resolveScheduleMetaForRaceSelection({
 }
 
 /**
+ * レース一覧メニューと同じ出馬表/結果表示ペイロード（`/debug` のレースID直開き用）
+ * @param {import('discord.js').BaseInteraction} interaction
+ * @param {{ raceId: string, isResultFlag: string }} opts
+ */
+export async function buildRaceMenuSelectionPayload(interaction, { raceId, isResultFlag }) {
+  const userId = interaction.user?.id;
+  const scraper = new NetkeibaScraper();
+  const lastVenue = venueSelectionStore.get(userId);
+
+  const [metaBundle, resultSnap] = await Promise.all([
+    resolveScheduleMetaForRaceSelection({
+      userId,
+      raceId,
+      isResultFlag,
+      lastVenue,
+    }),
+    scraper.scrapeRaceResult(raceId),
+  ]);
+
+  const {
+    raceMeta,
+    metaFallback,
+    salesStatus,
+    scheduleVenueTitle,
+    isResult,
+  } = metaBundle;
+
+  const flowCtx = lastVenue?.kaisaiId
+    ? {
+        kaisaiDate: lastVenue.kaisaiDate,
+        currentGroup: lastVenue.currentGroup ?? null,
+        kaisaiId: lastVenue.kaisaiId,
+        source: lastVenue.source ?? 'jra',
+        venueTitle: scheduleVenueTitle || '',
+      }
+    : metaFallback?.scheduleKaisaiId
+      ? {
+          kaisaiDate: metaFallback.kaisaiDateYmd,
+          currentGroup: metaFallback.currentGroup ?? null,
+          kaisaiId: metaFallback.scheduleKaisaiId,
+          source: metaFallback.source,
+          venueTitle: normalizeScheduleVenueDisplayName(
+            (metaFallback.venueTitle || '').replace(/\s+/g, ' ').trim(),
+          ),
+        }
+      : {};
+
+  const salesBypass = canBypassSalesClosed(userId);
+
+  if (resultSnap.confirmed) {
+    let bpFooter = null;
+    try {
+      const pay = await settleOpenRaceBetsForUser(userId, raceId, resultSnap);
+      if (pay.settled > 0 && pay.totalRefund > 0) {
+        bpFooter = `**あなたの競馬払戻** +${pay.totalRefund} bp（残高 ${pay.balance} bp）`;
+      } else if (pay.settled > 0) {
+        bpFooter = `**あなたの競馬払戻** 該当なし（精算 ${pay.settled} 件・残高 ${pay.balance} bp）`;
+      }
+    } catch (e) {
+      console.warn('settleOpenRaceBetsForUser', e);
+    }
+    if (!salesBypass) {
+      setBetFlow(userId, raceId, {
+        ...flowCtx,
+        source: flowCtx.source || resultSnap.netkeibaOrigin || 'jra',
+      });
+      return buildRaceResultV2Payload({
+        parsed: resultSnap,
+        bpFooter,
+        actionRows: [
+          flowCtx.kaisaiId ? scheduleBackToRaceListButtonRow(raceId) : null,
+        ].filter(Boolean),
+        extraFlags: v2ExtraFlags(interaction),
+      });
+    }
+    // デバッグ発売バイパス ON: 結果確定でも払戻精算だけ行い、出馬表・馬券 UI へ進む
+  }
+
+  if (isResult && !salesBypass) {
+    setBetFlow(userId, raceId, {
+      ...flowCtx,
+      source: flowCtx.source || 'jra',
+    });
+    return buildTextAndRowsV2Payload({
+      headline:
+        '❌ レース結果の取得に失敗しました。時間をおいて再度お試しください。',
+      actionRows: [
+        flowCtx.kaisaiId ? scheduleBackToRaceListButtonRow(raceId) : null,
+      ].filter(Boolean),
+      extraFlags: v2ExtraFlags(interaction),
+    });
+  }
+
+  if (salesStatus?.closed && !salesBypass) {
+    setBetFlow(userId, raceId, {
+      ...flowCtx,
+      source: flowCtx.source || 'jra',
+    });
+    return buildTextAndRowsV2Payload({
+      headline:
+        '⏳ 発売は締め切られています。レース結果の確定までお待ちください。',
+      actionRows: [
+        flowCtx.kaisaiId ? scheduleBackToRaceListButtonRow(raceId) : null,
+      ].filter(Boolean),
+      extraFlags: v2ExtraFlags(interaction),
+    });
+  }
+
+  const result = await scraper.scrapeRaceCard(raceId);
+  result.isResult = false;
+  result.raceId = raceId;
+  setBetFlow(userId, raceId, {
+    result,
+    ...flowCtx,
+    source: flowCtx.source || result.netkeibaOrigin || 'jra',
+  });
+
+  const flowAfter = getBetFlow(userId, raceId);
+  const betTypeDefault =
+    flowAfter?.stepSelections?.[`race_bet_type|${raceId}`]?.[0] ??
+    flowAfter?.betType ??
+    null;
+  return raceCardPayload(interaction, {
+    result,
+    headline: '',
+    actionRows: [
+      betTypeSelectRow(raceId, betTypeDefault, flowAfter),
+      flowCtx.kaisaiId ? scheduleBackToRaceListButtonRow(raceId) : null,
+    ].filter(Boolean),
+    extraFlags: v2ExtraFlags(interaction),
+  });
+}
+
+/**
  * @param {import('discord.js').StringSelectMenuInteraction} interaction
  */
 export default async function raceScheduleMenu(interaction) {
@@ -1074,9 +1211,10 @@ export default async function raceScheduleMenu(interaction) {
       if (!kaisaiDate || !currentGroup || !kaisaiId) {
         await interaction.editReply(
           buildTextAndRowsV2Payload({
-            headline: '❌ メニュー値が不正です。もう一度 /race から試してください。',
+            headline: '❌ メニュー値が不正です。もう一度 /boting から試してください。',
             actionRows: [],
             extraFlags: v2ExtraFlags(interaction),
+            withBotingMenuBack: true,
           }),
         );
         return;
@@ -1092,9 +1230,10 @@ export default async function raceScheduleMenu(interaction) {
       if (!kaisaiDate || !kaisaiId) {
         await interaction.editReply(
           buildTextAndRowsV2Payload({
-            headline: '❌ メニュー値が不正です。もう一度 /race から試してください。',
+            headline: '❌ メニュー値が不正です。もう一度 /boting から試してください。',
             actionRows: [],
             extraFlags: v2ExtraFlags(interaction),
+            withBotingMenuBack: true,
           }),
         );
         return;
@@ -1108,9 +1247,10 @@ export default async function raceScheduleMenu(interaction) {
     } else {
       await interaction.editReply(
         buildTextAndRowsV2Payload({
-          headline: '❌ メニュー値が不正です。もう一度 /race から試してください。',
+          headline: '❌ メニュー値が不正です。もう一度 /boting から試してください。',
           actionRows: [],
           extraFlags: v2ExtraFlags(interaction),
+          withBotingMenuBack: true,
         }),
       );
       return;
@@ -1192,140 +1332,11 @@ export default async function raceScheduleMenu(interaction) {
     const rawVal = interaction.values[0];
     const [raceId, isResultFlag] = String(rawVal).split('|');
     try {
-      const scraper = new NetkeibaScraper();
-      const lastVenue = venueSelectionStore.get(userId);
-
-      const [metaBundle, resultSnap] = await Promise.all([
-        resolveScheduleMetaForRaceSelection({
-          userId,
-          raceId,
-          isResultFlag,
-          lastVenue,
-        }),
-        scraper.scrapeRaceResult(raceId),
-      ]);
-
-      const {
-        raceMeta,
-        metaFallback,
-        salesStatus,
-        scheduleVenueTitle,
-        isResult,
-      } = metaBundle;
-
-      const flowCtx = lastVenue?.kaisaiId
-        ? {
-            kaisaiDate: lastVenue.kaisaiDate,
-            currentGroup: lastVenue.currentGroup ?? null,
-            kaisaiId: lastVenue.kaisaiId,
-            source: lastVenue.source ?? 'jra',
-            venueTitle: scheduleVenueTitle || '',
-          }
-        : metaFallback?.scheduleKaisaiId
-          ? {
-              kaisaiDate: metaFallback.kaisaiDateYmd,
-              currentGroup: metaFallback.currentGroup ?? null,
-              kaisaiId: metaFallback.scheduleKaisaiId,
-              source: metaFallback.source,
-              venueTitle: normalizeScheduleVenueDisplayName(
-                (metaFallback.venueTitle || '').replace(/\s+/g, ' ').trim(),
-              ),
-            }
-          : {};
-
-      const salesBypass = canBypassSalesClosed(userId);
-
-      // デバッグ発売バイパス時も精算・結果表示は行う（バイパスは締切後の購入可否用）
-      if (resultSnap.confirmed) {
-        let bpFooter = null;
-        try {
-          const pay = await settleOpenRaceBetsForUser(userId, raceId, resultSnap);
-          if (pay.settled > 0 && pay.totalRefund > 0) {
-            bpFooter = `**あなたの競馬払戻** +${pay.totalRefund} bp（残高 ${pay.balance} bp）`;
-          } else if (pay.settled > 0) {
-            bpFooter = `**あなたの競馬払戻** 該当なし（精算 ${pay.settled} 件・残高 ${pay.balance} bp）`;
-          }
-        } catch (e) {
-          console.warn('settleOpenRaceBetsForUser', e);
-        }
-        setBetFlow(userId, raceId, {
-          ...flowCtx,
-          source: flowCtx.source || resultSnap.netkeibaOrigin || 'jra',
-        });
-        await interaction.editReply(
-          buildRaceResultV2Payload({
-            parsed: resultSnap,
-            bpFooter,
-            actionRows: [
-              flowCtx.kaisaiId ? scheduleBackToRaceListButtonRow(raceId) : null,
-            ].filter(Boolean),
-            extraFlags: v2ExtraFlags(interaction),
-          }),
-        );
-        return;
-      }
-
-      if (isResult && !salesBypass) {
-        setBetFlow(userId, raceId, {
-          ...flowCtx,
-          source: flowCtx.source || 'jra',
-        });
-        await interaction.editReply(
-          buildTextAndRowsV2Payload({
-            headline:
-              '❌ レース結果の取得に失敗しました。時間をおいて再度お試しください。',
-            actionRows: [
-              flowCtx.kaisaiId ? scheduleBackToRaceListButtonRow(raceId) : null,
-            ].filter(Boolean),
-            extraFlags: v2ExtraFlags(interaction),
-          }),
-        );
-        return;
-      }
-
-      if (salesStatus?.closed && !salesBypass) {
-        setBetFlow(userId, raceId, {
-          ...flowCtx,
-          source: flowCtx.source || 'jra',
-        });
-        await interaction.editReply(
-          buildTextAndRowsV2Payload({
-            headline:
-              '⏳ 発売は締め切られています。レース結果の確定までお待ちください。',
-            actionRows: [
-              flowCtx.kaisaiId ? scheduleBackToRaceListButtonRow(raceId) : null,
-            ].filter(Boolean),
-            extraFlags: v2ExtraFlags(interaction),
-          }),
-        );
-        return;
-      }
-
-      const result = await scraper.scrapeRaceCard(raceId);
-      result.isResult = false;
-      result.raceId = raceId;
-      setBetFlow(userId, raceId, {
-        result,
-        ...flowCtx,
-        source: flowCtx.source || result.netkeibaOrigin || 'jra',
+      const payload = await buildRaceMenuSelectionPayload(interaction, {
+        raceId,
+        isResultFlag,
       });
-
-      const flowAfter = getBetFlow(userId, raceId);
-      const betTypeDefault =
-        flowAfter?.stepSelections?.[`race_bet_type|${raceId}`]?.[0] ??
-        flowAfter?.betType ??
-        null;
-      await interaction.editReply(
-        raceCardPayload(interaction,{
-          result,
-          headline: '',
-          actionRows: [
-            betTypeSelectRow(raceId, betTypeDefault, flowAfter),
-            flowCtx.kaisaiId ? scheduleBackToRaceListButtonRow(raceId) : null,
-          ].filter(Boolean),
-          extraFlags: v2ExtraFlags(interaction),
-        }),
-      );
+      await interaction.editReply(payload);
     } catch (e) {
       console.error(e);
       await interaction.editReply(
@@ -1620,9 +1631,10 @@ export default async function raceScheduleMenu(interaction) {
     if (!flow?.result) {
       await interaction.editReply(
         buildTextAndRowsV2Payload({
-          headline: '❌ セッションが無効です。もう一度 /race から開始してください。',
+          headline: '❌ セッションが無効です。もう一度 /boting から開始してください。',
           actionRows: [],
           extraFlags: v2ExtraFlags(interaction),
+          withBotingMenuBack: true,
         }),
       );
       return;

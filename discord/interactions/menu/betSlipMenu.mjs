@@ -115,9 +115,10 @@ export default async function betSlipMenu(interaction) {
     await interaction.update(
       buildTextAndRowsV2Payload({
         headline:
-          '購入予定をすべて削除しました。\n\nもう一度 **/race** からやり直してください。',
+          '購入予定をすべて削除しました。\n\nもう一度 **/boting** からやり直してください。',
         actionRows: [],
         extraFlags,
+        withBotingMenuBack: true,
       }),
     );
     return;

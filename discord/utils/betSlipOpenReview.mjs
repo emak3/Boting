@@ -192,7 +192,7 @@ export async function runOpenBetSlipReviewScreen(interaction, { userId, raceId, 
 }
 
 /**
- * 既に deferReply 済みの interaction 用（/race の「購入予定」など）。deferUpdate は呼ばない。
+ * 既に deferReply 済みの interaction 用（/boting の「購入予定」など）。deferUpdate は呼ばない。
  * @returns {Promise<boolean>} 画面を開いたら true
  */
 export async function editReplyOpenBetSlipReview(interaction, { userId, raceId, extraFlags = 0 }) {

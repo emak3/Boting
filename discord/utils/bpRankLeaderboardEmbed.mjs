@@ -1,14 +1,26 @@
 import {
   ActionRowBuilder,
-  EmbedBuilder,
+  ButtonBuilder,
+  ButtonStyle,
+  ContainerBuilder,
+  MessageFlags,
+  SeparatorSpacingSize,
   StringSelectMenuBuilder,
   StringSelectMenuOptionBuilder,
 } from 'discord.js';
+import { BOTING_HUB_PREFIX } from './botingHubConstants.mjs';
+import { botingEmoji } from './botingEmojis.mjs';
+import { BP_RANK_OPEN_LIM_PREFIX } from './bpRankLimitKeypad.mjs';
 import { fetchAllUsersByBalanceDesc } from './bpLeaderboard.mjs';
 import {
   fetchAllRaceBetAggregatesByUserId,
   emptyRaceBetAggregates,
 } from './raceBetRecords.mjs';
+
+/** ランキング Container のアクセント（Embed の黄色に相当） */
+const BP_RANK_ACCENT = 0xf1c40f;
+const V2_TEXT_TOTAL_MAX = 3900;
+const V2_SINGLE_CHUNK = 3500;
 
 /** `bp_rank_sel|{limit}` — セレクトの customId */
 export const BP_RANK_SELECT_PREFIX = 'bp_rank_sel';
@@ -160,11 +172,47 @@ function footerNoteForMode(mode) {
   return '';
 }
 
+/** @returns {string[]} */
+function splitForTextDisplays(fullText) {
+  const capped = fullText.slice(0, V2_TEXT_TOTAL_MAX);
+  if (capped.length <= V2_SINGLE_CHUNK) return [capped];
+  const out = [];
+  let rest = capped;
+  while (rest.length > 0) {
+    if (rest.length <= V2_SINGLE_CHUNK) {
+      out.push(rest);
+      break;
+    }
+    let cut = rest.lastIndexOf('\n\n', V2_SINGLE_CHUNK);
+    if (cut < V2_SINGLE_CHUNK / 2) cut = V2_SINGLE_CHUNK;
+    out.push(rest.slice(0, cut).trimEnd());
+    rest = rest.slice(cut).trimStart();
+  }
+  return out;
+}
+
+/** @param {ContainerBuilder} container */
+function appendChunkedToContainer(container, text) {
+  const chunks = splitForTextDisplays(String(text || '').trimEnd()).filter((c) =>
+    String(c).trim(),
+  );
+  for (let i = 0; i < chunks.length; i++) {
+    container.addTextDisplayComponents((td) => td.setContent(chunks[i]));
+    if (i < chunks.length - 1) {
+      container.addSeparatorComponents((sep) =>
+        sep.setSpacing(SeparatorSpacingSize.Small).setDivider(true),
+      );
+    }
+  }
+}
+
 /**
+ * BP ランキング本文を Container（Display Components）で組み立てる
  * @param {number} limit
  * @param {string} mode BP_RANK_MODE
+ * @returns {Promise<import('discord.js').ContainerBuilder>}
  */
-export async function buildBpRankLeaderboardEmbed(limit, mode) {
+export async function buildBpRankLeaderboardContainer(limit, mode) {
   const lim = Math.min(50, Math.max(1, limit));
   const m =
     mode === BP_RANK_MODE.RECOVERY ||
@@ -193,16 +241,36 @@ export async function buildBpRankLeaderboardEmbed(limit, mode) {
       ? lines.join('\n')
       : 'まだ誰も BP データがありません。';
 
-  const title = `${titleForMode(m)}ランキング（上位 ${slice.length} / 全 ${merged.length} 名）`;
+  const heading = `## ${titleForMode(m)}ランキング（上位 ${slice.length} / 全 ${merged.length} 名）`;
   const note = footerNoteForMode(m);
-  const description = note ? `${body}\n\n*${note}*` : body;
+  const fullText = note
+    ? `${heading}\n\n${body}\n\n*${note}*`
+    : `${heading}\n\n${body}`;
 
-  const embed = new EmbedBuilder()
-    .setTitle(title)
-    .setColor(0xf1c40f)
-    .setDescription(description);
+  const container = new ContainerBuilder().setAccentColor(BP_RANK_ACCENT);
+  appendChunkedToContainer(container, fullText);
+  return container;
+}
 
-  return { embed, totalUsers: merged.length };
+/**
+ * ランキング表示の完全ペイロード（Container + セレクト + ボタン、Embed なし）
+ * @param {number} limit
+ * @param {string} mode BP_RANK_MODE
+ * @param {number} [extraFlags=0]
+ */
+export async function buildBpRankLeaderboardFullPayload(
+  limit,
+  mode,
+  extraFlags = 0,
+) {
+  const container = await buildBpRankLeaderboardContainer(limit, mode);
+  const rows = buildBpRankLeaderboardRows(limit, mode);
+  return {
+    content: null,
+    embeds: [],
+    components: [container, ...rows],
+    flags: MessageFlags.IsComponentsV2 | extraFlags,
+  };
 }
 
 /**
@@ -255,4 +323,45 @@ export function buildBpRankSelectRow(limit, mode) {
     );
 
   return new ActionRowBuilder().addComponents(menu);
+}
+
+/**
+ * ランキング種別セレクトの下に並べる（表示件数テンキー・メニューへ戻る）
+ * @param {number} limit
+ * @param {string} mode BP_RANK_MODE
+ */
+export function buildBpRankLeaderboardExtraRow(limit, mode) {
+  const lim = Math.min(50, Math.max(1, limit));
+  const m =
+    mode === BP_RANK_MODE.RECOVERY ||
+    mode === BP_RANK_MODE.HIT_RATE ||
+    mode === BP_RANK_MODE.PURCHASE ||
+    mode === BP_RANK_MODE.BALANCE
+      ? mode
+      : BP_RANK_MODE.BALANCE;
+
+  return new ActionRowBuilder().addComponents(
+    new ButtonBuilder()
+      .setCustomId(`${BP_RANK_OPEN_LIM_PREFIX}|${lim}|${m}`)
+      .setLabel('表示数を変える')
+      .setEmoji(botingEmoji('hyouji'))
+      .setStyle(ButtonStyle.Secondary),
+    new ButtonBuilder()
+      .setCustomId(`${BOTING_HUB_PREFIX}|back`)
+      .setLabel('メニューに戻る')
+      .setEmoji(botingEmoji('home'))
+      .setStyle(ButtonStyle.Secondary),
+  );
+}
+
+/**
+ * @param {number} limit
+ * @param {string} mode BP_RANK_MODE
+ * @returns {import('discord.js').ActionRowBuilder[]}
+ */
+export function buildBpRankLeaderboardRows(limit, mode) {
+  return [
+    buildBpRankSelectRow(limit, mode),
+    buildBpRankLeaderboardExtraRow(limit, mode),
+  ];
 }

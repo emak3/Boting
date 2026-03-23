@@ -229,7 +229,7 @@ export async function buildBpRankUserSlipReadonlyV2Payload({
     `対象の bp 残高 **${balance.toLocaleString('ja-JP')}** bp`,
     `合計 **${grandPoints.toLocaleString('ja-JP')}** 点　合計 **${grandYen.toLocaleString('ja-JP')}** bp（確定時の目安）`,
     '',
-    '*他のユーザーの購入予定は閲覧のみです。編集・購入は /race から行えます。*',
+    '*他のユーザーの購入予定は閲覧のみです。編集・購入は /boting から行えます。*',
   ].join('\n');
 
   const itemBlocks = merged.map((it, idx) => formatBetSlipItemBlock(it, idx));

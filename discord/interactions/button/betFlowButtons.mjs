@@ -56,6 +56,8 @@ import {
 } from '../../utils/unitYenKeypad.mjs';
 import { setUnitKeypadDraft } from '../../utils/unitYenKeypadStore.mjs';
 import { buildRaceHubBackButtonRow } from '../../utils/raceCommandHub.mjs';
+import { buildEphemeralWithBotingBackPayload } from '../../utils/botingBackButton.mjs';
+import { botingEmoji } from '../../utils/botingEmojis.mjs';
 
 const BET_TYPES = [
   { id: 'win', label: '単勝' },
@@ -158,11 +160,13 @@ export async function renderBetFlowResumeView(interaction, { userId, raceId, flo
   const backBtn = new ButtonBuilder()
     .setCustomId(`race_bet_back|${raceId}`)
     .setLabel('戻る')
+    .setEmoji(botingEmoji('modoru'))
     .setStyle(ButtonStyle.Secondary);
   const forwardBtn = shouldShowForwardNav(flow)
     ? new ButtonBuilder()
         .setCustomId(`race_bet_forward|${raceId}`)
         .setLabel('進む')
+        .setEmoji(botingEmoji('susumu'))
         .setStyle(ButtonStyle.Success)
     : null;
 
@@ -218,25 +222,26 @@ export default async function betFlowButtons(interaction) {
     const parsedRaceId = safeParseRaceId(customId);
     const pending = getSlipPendingReview(userId);
     if (!pending?.restore) {
-      await interaction.reply({
-        content: '❌ 戻れません。もう一度 /race から開き直してください。',
-        flags: MessageFlags.Ephemeral,
-      });
+      await interaction.reply(
+        buildEphemeralWithBotingBackPayload(
+          '❌ 戻れません。もう一度 /boting から開き直してください。',
+        ),
+      );
       return;
     }
     if (String(pending.anchorRaceId) !== String(parsedRaceId)) {
-      await interaction.reply({
-        content: '❌ このメッセージは古いです。もう一度開き直してください。',
-        flags: MessageFlags.Ephemeral,
-      });
+      await interaction.reply(
+        buildEphemeralWithBotingBackPayload(
+          '❌ このメッセージは古いです。もう一度開き直してください。',
+        ),
+      );
       return;
     }
     const rid = pending.restore.raceId || parsedRaceId;
     if (!rid || !/^\d{12}$/.test(String(rid))) {
-      await interaction.reply({
-        content: '❌ 戻れません。',
-        flags: MessageFlags.Ephemeral,
-      });
+      await interaction.reply(
+        buildEphemeralWithBotingBackPayload('❌ 戻れません。'),
+      );
       return;
     }
 
@@ -265,9 +270,10 @@ export default async function betFlowButtons(interaction) {
     if (!flow?.result) {
       await interaction.editReply(
         buildTextAndRowsV2Payload({
-          headline: '❌ セッションが切れています。もう一度 /race から開き直してください。',
+          headline: '❌ セッションが切れています。もう一度 /boting から開き直してください。',
           actionRows: [],
           extraFlags,
+          withBotingMenuBack: true,
         }),
       );
       return;
@@ -421,17 +427,19 @@ export default async function betFlowButtons(interaction) {
     const dir = parts[2];
     const pending = getSlipPendingReview(userId);
     if (!pending?.items?.length) {
-      await interaction.reply({
-        content: '❌ 購入予定の確認セッションが無効です。',
-        flags: MessageFlags.Ephemeral,
-      });
+      await interaction.reply(
+        buildEphemeralWithBotingBackPayload(
+          '❌ 購入予定の確認セッションが無効です。',
+        ),
+      );
       return;
     }
     if (!anchor || String(pending.anchorRaceId) !== String(anchor)) {
-      await interaction.reply({
-        content: '❌ このメッセージは古いです。もう一度開き直してください。',
-        flags: MessageFlags.Ephemeral,
-      });
+      await interaction.reply(
+        buildEphemeralWithBotingBackPayload(
+          '❌ このメッセージは古いです。もう一度開き直してください。',
+        ),
+      );
       return;
     }
     if (dir !== 'prev' && dir !== 'next') {
@@ -456,17 +464,19 @@ export default async function betFlowButtons(interaction) {
     const anchor = safeParseRaceId(customId);
     const pending = getSlipPendingReview(userId);
     if (!pending?.items?.length) {
-      await interaction.reply({
-        content: '❌ 購入予定の確認セッションが無効です。',
-        flags: MessageFlags.Ephemeral,
-      });
+      await interaction.reply(
+        buildEphemeralWithBotingBackPayload(
+          '❌ 購入予定の確認セッションが無効です。',
+        ),
+      );
       return;
     }
     if (String(pending.anchorRaceId) !== String(anchor)) {
-      await interaction.reply({
-        content: '❌ このメッセージは古いです。もう一度開き直してください。',
-        flags: MessageFlags.Ephemeral,
-      });
+      await interaction.reply(
+        buildEphemeralWithBotingBackPayload(
+          '❌ このメッセージは古いです。もう一度開き直してください。',
+        ),
+      );
       return;
     }
     await interaction.deferUpdate();
@@ -481,9 +491,10 @@ export default async function betFlowButtons(interaction) {
       await interaction.editReply(
         buildTextAndRowsV2Payload({
           headline:
-            '✅ 表示されていた購入予定はすべて発売締切のため一覧から外しました。/race から購入予定を追加し直せます。',
+            '✅ 表示されていた購入予定はすべて発売締切のため一覧から外しました。/boting から購入予定を追加し直せます。',
           actionRows: [],
           extraFlags,
+          withBotingMenuBack: true,
         }),
       );
       return;
@@ -497,17 +508,19 @@ export default async function betFlowButtons(interaction) {
     const anchor = safeParseRaceId(customId);
     const pending = getSlipPendingReview(userId);
     if (!pending?.items?.length) {
-      await interaction.reply({
-        content: '❌ 購入予定の確認セッションが無効です。',
-        flags: MessageFlags.Ephemeral,
-      });
+      await interaction.reply(
+        buildEphemeralWithBotingBackPayload(
+          '❌ 購入予定の確認セッションが無効です。',
+        ),
+      );
       return;
     }
     if (String(pending.anchorRaceId) !== String(anchor)) {
-      await interaction.reply({
-        content: '❌ このメッセージは古いです。もう一度開き直してください。',
-        flags: MessageFlags.Ephemeral,
-      });
+      await interaction.reply(
+        buildEphemeralWithBotingBackPayload(
+          '❌ このメッセージは古いです。もう一度開き直してください。',
+        ),
+      );
       return;
     }
     await interaction.deferUpdate();
@@ -521,17 +534,19 @@ export default async function betFlowButtons(interaction) {
     const raceId = safeParseRaceId(customId);
     const pending = getSlipPendingReview(userId);
     if (!pending?.items?.length) {
-      await interaction.reply({
-        content: '❌ 購入予定の確認セッションが無効です。',
-        flags: MessageFlags.Ephemeral,
-      });
+      await interaction.reply(
+        buildEphemeralWithBotingBackPayload(
+          '❌ 購入予定の確認セッションが無効です。',
+        ),
+      );
       return;
     }
     if (String(pending.anchorRaceId) !== String(raceId)) {
-      await interaction.reply({
-        content: '❌ このメッセージは古いです。もう一度開き直してください。',
-        flags: MessageFlags.Ephemeral,
-      });
+      await interaction.reply(
+        buildEphemeralWithBotingBackPayload(
+          '❌ このメッセージは古いです。もう一度開き直してください。',
+        ),
+      );
       return;
     }
 
@@ -563,10 +578,12 @@ export default async function betFlowButtons(interaction) {
           new ButtonBuilder()
             .setCustomId(`race_bet_slip_remove_closed|${anchor}`)
             .setLabel('締切分のみ削除')
+            .setEmoji(botingEmoji('delete'))
             .setStyle(ButtonStyle.Danger),
           new ButtonBuilder()
             .setCustomId(`race_bet_slip_dismiss_closed_warn|${anchor}`)
             .setLabel('確認画面に戻る')
+            .setEmoji(botingEmoji('kakunin'))
             .setStyle(ButtonStyle.Secondary),
         );
         await interaction.editReply(
@@ -591,6 +608,7 @@ export default async function betFlowButtons(interaction) {
               '❌ 購入予定に **払戻用データ** がありません。出馬表から該当レースを開き直し、式別を選び直して **購入予定に追加** し直してください。',
             actionRows: [],
             extraFlags,
+            withBotingMenuBack: true,
           }),
         );
         return;
@@ -606,9 +624,10 @@ export default async function betFlowButtons(interaction) {
       const extraFlags = slipReviewExtraFlags();
       await interaction.editReply(
         buildTextAndRowsV2Payload({
-          headline: `❌ **bp が不足**しています（必要 **${totalBp}** bp / 残高 **${bal}** bp）。\n\`/daily\` で受け取るか、購入予定を減らす・1点あたりの金額を下げてください。`,
+          headline: `❌ **bp が不足**しています（必要 **${totalBp}** bp / 残高 **${bal}** bp）。\n\`/boting\` の **Dailyをもらう** で受け取るか、購入予定を減らす・1点あたりの金額を下げてください。`,
           actionRows: [],
           extraFlags,
+          withBotingMenuBack: true,
         }),
       );
       return;
@@ -626,6 +645,7 @@ export default async function betFlowButtons(interaction) {
           headline: `❌ **データベースへの保存に失敗しました**（bp の減算・購入記録は行われていません）。ネットワークや Firebase の状態を確認し、しばらくしてから再度お試しください。\n\`${detail}\``,
           actionRows: [],
           extraFlags,
+          withBotingMenuBack: true,
         }),
       );
       return;
@@ -651,6 +671,7 @@ export default async function betFlowButtons(interaction) {
           headline: msg,
           actionRows: [],
           extraFlags,
+          withBotingMenuBack: true,
         }),
       );
       return;
@@ -660,7 +681,7 @@ export default async function betFlowButtons(interaction) {
       buildBetSlipBatchV2Headline({ items: pending.items }),
       '',
       `**購入完了** −**${purchase.spent}** bp（残高 **${purchase.balance}** bp）`,
-      'レース結果が出たら `/race` や開催メニューで結果を表示すると、netkeiba の払戻に基づき bp が自動加算されます。',
+      'レース結果が出たら `/boting` の馬券購入メニューや開催メニューで結果を表示すると、netkeiba の払戻に基づき bp が自動加算されます。',
     ].join('\n');
     const anchor = pending.anchorRaceId || raceId;
     clearSlipPending(userId);
@@ -707,10 +728,11 @@ export default async function betFlowButtons(interaction) {
 
   const flow = getBetFlow(userId, raceId);
   if (!flow) {
-    await interaction.reply({
-      content: '❌ セッションが無効です。もう一度 /race から開始してください。',
-      flags: MessageFlags.Ephemeral,
-    });
+    await interaction.reply(
+      buildEphemeralWithBotingBackPayload(
+        '❌ セッションが無効です。もう一度 /boting から開始してください。',
+      ),
+    );
     return;
   }
 
@@ -805,10 +827,11 @@ export default async function betFlowButtons(interaction) {
   if (customId.startsWith('race_bet_forward|')) {
     let flowFwd = getBetFlow(userId, raceId);
     if (!flowFwd) {
-      await interaction.reply({
-        content: '❌ セッションが無効です。もう一度 /race から試してください。',
-        flags: MessageFlags.Ephemeral,
-      });
+      await interaction.reply(
+        buildEphemeralWithBotingBackPayload(
+          '❌ セッションが無効です。もう一度 /boting から試してください。',
+        ),
+      );
       return;
     }
     const backMenuIds = flowFwd.backMenuIds || [];

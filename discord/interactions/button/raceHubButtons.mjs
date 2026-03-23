@@ -1,10 +1,29 @@
 import { MessageFlags } from 'discord.js';
 import {
-  RACE_CMD_HUB_PREFIX,
+  BOTING_HUB_PREFIX,
   buildRaceHubBackButtonRow,
-  buildRaceHubV2Payload,
+  buildBotingPanelPayload,
   buildRaceScheduleIntroV2Payload,
 } from '../../utils/raceCommandHub.mjs';
+import {
+  BP_RANK_MODE,
+  buildBpRankLeaderboardFullPayload,
+} from '../../utils/bpRankLeaderboardEmbed.mjs';
+import {
+  BP_RANK_OPEN_LIM_PREFIX,
+  buildBpRankLimitKeypadPayload,
+} from '../../utils/bpRankLimitKeypad.mjs';
+import { setBpRankLimitDraft } from '../../utils/bpRankLimitKeypadStore.mjs';
+import {
+  buildBotingLedgerViewPayload,
+  BOTING_LEDGER_NAV_PREFIX,
+  BOTING_LEDGER_OPEN_LIM_PREFIX,
+} from '../../utils/botingLedgerView.mjs';
+import { buildBotingLedgerLimitKeypadPayload } from '../../utils/botingLedgerKeypad.mjs';
+import { setBotingLedgerLimitDraft } from '../../utils/botingLedgerKeypadStore.mjs';
+import { canBypassDailyCooldown } from '../../utils/raceDebugBypass.mjs';
+import { kindLabelJa, tryClaimDaily } from '../../utils/userPointsStore.mjs';
+import { runPendingRaceRefundsForUser } from '../../utils/raceBetRefundSweep.mjs';
 import {
   buildBpRankUserDetailV2Container,
   buildBpRankUserSlipReadonlyV2Payload,
@@ -138,6 +157,7 @@ export default async function raceHubButtons(interaction) {
             headline: '❌ ユーザーの取得に失敗しました。',
             actionRows: [],
             extraFlags,
+            withBotingMenuBack: true,
           }),
         );
         return;
@@ -169,7 +189,84 @@ export default async function raceHubButtons(interaction) {
     return;
   }
 
-  if (!id.startsWith(`${RACE_CMD_HUB_PREFIX}|`)) return;
+  if (id.startsWith(`${BP_RANK_OPEN_LIM_PREFIX}|`)) {
+    const parts = id.split('|');
+    const lim = Math.min(50, Math.max(1, parseInt(parts[1], 10) || 20));
+    const rawMode = parts[2];
+    const mode =
+      rawMode === BP_RANK_MODE.RECOVERY ||
+      rawMode === BP_RANK_MODE.HIT_RATE ||
+      rawMode === BP_RANK_MODE.PURCHASE ||
+      rawMode === BP_RANK_MODE.BALANCE
+        ? rawMode
+        : BP_RANK_MODE.BALANCE;
+    const extraFlags = ephemeralExtraFromMessage(interaction.message);
+    if (!(await safeDeferUpdate(interaction))) return;
+    setBpRankLimitDraft(interaction.user.id, {
+      mode,
+      savedLimit: lim,
+      buffer: String(lim),
+    });
+    const kpad = buildBpRankLimitKeypadPayload({
+      buffer: String(lim),
+      extraFlags,
+    });
+    await interaction.editReply({
+      content: null,
+      embeds: [],
+      components: kpad.components,
+      flags: kpad.flags,
+    });
+    return;
+  }
+
+  if (id.startsWith(`${BOTING_LEDGER_NAV_PREFIX}|`)) {
+    const parts = id.split('|');
+    const dir = parts[1];
+    const ps = Math.min(50, Math.max(1, parseInt(parts[2], 10) || 10));
+    const pi = Math.max(0, parseInt(parts[3], 10) || 0);
+    const extraFlags = ephemeralExtraFromMessage(interaction.message);
+    if (!(await safeDeferUpdate(interaction))) return;
+    let nextPi = pi;
+    if (dir === 'prev') nextPi = pi - 1;
+    else if (dir === 'next') nextPi = pi + 1;
+    else return;
+    await interaction.editReply(
+      await buildBotingLedgerViewPayload({
+        userId: interaction.user.id,
+        pageSize: ps,
+        pageIndex: nextPi,
+        extraFlags,
+      }),
+    );
+    return;
+  }
+
+  if (id.startsWith(`${BOTING_LEDGER_OPEN_LIM_PREFIX}|`)) {
+    const parts = id.split('|');
+    const ps = Math.min(50, Math.max(1, parseInt(parts[1], 10) || 10));
+    const pi = Math.max(0, parseInt(parts[2], 10) || 0);
+    const extraFlags = ephemeralExtraFromMessage(interaction.message);
+    if (!(await safeDeferUpdate(interaction))) return;
+    setBotingLedgerLimitDraft(interaction.user.id, {
+      savedPageSize: ps,
+      savedPageIndex: pi,
+      buffer: String(ps),
+    });
+    const kpad = buildBotingLedgerLimitKeypadPayload({
+      buffer: String(ps),
+      extraFlags,
+    });
+    await interaction.editReply({
+      content: null,
+      embeds: [],
+      components: kpad.components,
+      flags: kpad.flags,
+    });
+    return;
+  }
+
+  if (!id.startsWith(`${BOTING_HUB_PREFIX}|`)) return;
 
   const part = id.split('|')[1];
   const userId = interaction.user.id;
@@ -181,9 +278,81 @@ export default async function raceHubButtons(interaction) {
     if (part === 'back') {
       abandonSlipReviewToSavedState(userId);
       await interaction.editReply(
-        await buildRaceHubV2Payload({
+        await buildBotingPanelPayload({
           user: interaction.user,
           guild: interaction.guild,
+          extraFlags,
+        }),
+      );
+      return;
+    }
+    if (part === 'daily') {
+      await runPendingRaceRefundsForUser(userId);
+      const debugBypass = canBypassDailyCooldown(userId);
+      let result;
+      try {
+        result = await tryClaimDaily(userId, { debugBypass });
+      } catch (e) {
+        console.error('raceHubButtons tryClaimDaily:', e);
+        await interaction.editReply(
+          buildTextAndRowsV2Payload({
+            headline: `❌ ポイントの保存に失敗しました: ${e.message}`,
+            actionRows: [],
+            extraFlags,
+            withBotingMenuBack: true,
+          }),
+        );
+        return;
+      }
+      if (!result.ok && result.reason === 'already_claimed') {
+        const payload = await buildBotingPanelPayload({
+          user: interaction.user,
+          guild: interaction.guild,
+          extraFlags,
+        });
+        await interaction.editReply(payload);
+        return;
+      }
+      if (!result.ok) {
+        await interaction.editReply(
+          buildTextAndRowsV2Payload({
+            headline: '❌ Daily の受け取りに失敗しました。',
+            actionRows: [],
+            extraFlags,
+            withBotingMenuBack: true,
+          }),
+        );
+        return;
+      }
+      const kindLine = kindLabelJa(result.kind, result.streakDay);
+      await interaction.editReply(
+        await buildBotingPanelPayload({
+          user: interaction.user,
+          guild: interaction.guild,
+          extraFlags,
+          dailySuccessBanner: `✅ **+${result.granted}** bp（${kindLine}）\n残高: **${result.balance}** bp`,
+        }),
+      );
+      return;
+    }
+    if (part === 'rank') {
+      await runPendingRaceRefundsForUser(userId);
+      await interaction.editReply(
+        await buildBpRankLeaderboardFullPayload(
+          20,
+          BP_RANK_MODE.BALANCE,
+          extraFlags,
+        ),
+      );
+      return;
+    }
+    if (part === 'ledger') {
+      await runPendingRaceRefundsForUser(userId);
+      await interaction.editReply(
+        await buildBotingLedgerViewPayload({
+          userId,
+          pageSize: 10,
+          pageIndex: 0,
           extraFlags,
         }),
       );

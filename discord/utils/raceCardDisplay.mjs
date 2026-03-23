@@ -10,6 +10,7 @@ import { wakuUmaEmoji, jogaiEmoji } from './raceNumberEmoji.mjs';
 import { netkeibaResultUrl } from './netkeibaUrls.mjs';
 import { buildRaceResultV2Sections } from './raceResultEmbed.mjs';
 import { maybeInsertRaceBetUtilityRow } from './betSlipViewUi.mjs';
+import { buildBotingMenuBackRow } from './botingBackButton.mjs';
 
 /** Discord Display Components: 全 Text Display 合計 4000 文字まで */
 export const V2_TEXT_TOTAL_MAX = 3900;
@@ -95,12 +96,16 @@ export function buildRaceCardV2Payload({
 
   if (!result?.horses?.length) {
     const msg =
-      '出馬表データがありません。セッションが切れたか取得に失敗しています。もう一度 /race から開き直してください。';
+      '出馬表データがありません。セッションが切れたか取得に失敗しています。もう一度 /boting から開き直してください。';
     const body = [headline, msg].filter(Boolean).join('\n\n').slice(0, V2_TEXT_TOTAL_MAX);
     return {
       content: null,
       embeds: [],
-      components: [new TextDisplayBuilder().setContent(body), ...rows],
+      components: [
+        new TextDisplayBuilder().setContent(body),
+        buildBotingMenuBackRow(),
+        ...rows,
+      ],
       flags,
     };
   }
@@ -185,15 +190,19 @@ export function buildRaceResultV2Payload({
 
 /**
  * 出馬表なし（購入サマリー・購入完了等）の Components V2: Container + 操作行
- * @param {{ headline: string, actionRows?: import('discord.js').ActionRowBuilder[], extraFlags?: number, accentColor?: number }} opts
+ * @param {{ headline: string, actionRows?: import('discord.js').ActionRowBuilder[], extraFlags?: number, accentColor?: number, withBotingMenuBack?: boolean }} opts
  */
 export function buildTextAndRowsV2Payload({
   headline,
   actionRows = [],
   extraFlags = 0,
   accentColor = V2_TEXT_PANEL_ACCENT,
+  withBotingMenuBack = false,
 }) {
   const rows = actionRows.filter(Boolean);
+  if (withBotingMenuBack) {
+    rows.push(buildBotingMenuBackRow());
+  }
   const raw = String(headline || '').trimEnd().slice(0, V2_TEXT_TOTAL_MAX);
   const container = new ContainerBuilder().setAccentColor(accentColor);
   if (raw.trim()) {

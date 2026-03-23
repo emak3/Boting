@@ -28,6 +28,7 @@ import {
   buildRaceHubBackButtonRow,
 } from './raceCommandHub.mjs';
 import { buildBpRankProfileBackButtonRow } from './bpRankUiButtons.mjs';
+import { botingEmoji } from './botingEmojis.mjs';
 
 /** `|bpctx|{discordUserId}` — bp_rank 経由で他人の履歴を見ているときのナビ用 */
 export function stripRaceHistoryBpCtx(customId) {
@@ -315,12 +316,14 @@ function historyDayNavRow(
   return new ActionRowBuilder().addComponents(
     new ButtonBuilder()
       .setCustomId(prevYmd ? dayId(prevYmd) : disabledPrevId)
-      .setLabel('◀ 前の日')
+      .setLabel('前の日')
+      .setEmoji(botingEmoji('mae'))
       .setStyle(ButtonStyle.Secondary)
       .setDisabled(prevYmd == null),
     new ButtonBuilder()
       .setCustomId(nextYmd ? dayId(nextYmd) : disabledNextId)
-      .setLabel('次の日 ▶')
+      .setLabel('次の日')
+      .setEmoji(botingEmoji('tsugi'))
       .setStyle(ButtonStyle.Secondary)
       .setDisabled(nextYmd == null),
   );
@@ -354,11 +357,13 @@ function historyFilterAndPaginationRows({
         new ButtonBuilder()
           .setCustomId(navId(Math.max(0, page - 1)))
           .setLabel('前へ')
+          .setEmoji(botingEmoji('mae'))
           .setStyle(ButtonStyle.Secondary)
           .setDisabled(page <= 0),
         new ButtonBuilder()
           .setCustomId(navId(Math.min(totalPages - 1, page + 1)))
           .setLabel('次へ')
+          .setEmoji(botingEmoji('tsugi'))
           .setStyle(ButtonStyle.Secondary)
           .setDisabled(page >= totalPages - 1),
       ]

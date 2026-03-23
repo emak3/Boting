@@ -194,9 +194,10 @@ export default async function scheduleBackButtons(interaction) {
       await interaction.editReply(
         buildTextAndRowsV2Payload({
           headline:
-            '❌ 戻れません（開催情報が見つかりません）。もう一度 /race から試してください。',
+            '❌ 戻れません（開催情報が見つかりません）。もう一度 /boting から試してください。',
           actionRows: [],
           extraFlags: v2ExtraFlags(interaction),
+          withBotingMenuBack: true,
         }),
       );
       return;
@@ -272,9 +273,10 @@ export default async function scheduleBackButtons(interaction) {
       await interaction.editReply(
         buildTextAndRowsV2Payload({
           headline:
-            '❌ 戻れません（開催情報が見つかりません）。もう一度 /race から試してください。',
+            '❌ 戻れません（開催情報が見つかりません）。もう一度 /boting から試してください。',
           actionRows: [],
           extraFlags: v2ExtraFlags(interaction),
+          withBotingMenuBack: true,
         }),
       );
       return;

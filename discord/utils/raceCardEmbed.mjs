@@ -8,7 +8,7 @@ export function buildRaceCardEmbed(result) {
       color: 0x95a5a6,
       title: '🐎 出馬表',
       description:
-        '出馬表データがありません。セッションが切れたか取得に失敗しています。もう一度 /race から開き直してください。',
+        '出馬表データがありません。セッションが切れたか取得に失敗しています。もう一度 /boting から開き直してください。',
     };
   }
 

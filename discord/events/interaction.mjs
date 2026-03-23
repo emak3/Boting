@@ -1,6 +1,7 @@
 import { Events } from "discord.js";
 import slash from "../interactions/slash.mjs";
 import button from "../interactions/button.mjs";
+import userMenu from "../interactions/userMenu.mjs";
 import menu from "../interactions/menu.mjs";
 import modal from "../interactions/modal.mjs";
 
@@ -18,6 +19,10 @@ export default {
         }
         if (interaction.isButton()) {
             await button(interaction);
+            return;
+        }
+        if (interaction.isUserSelectMenu()) {
+            await userMenu(interaction);
             return;
         }
         if (interaction.isStringSelectMenu()) {

@@ -5,11 +5,16 @@ import {
   ContainerBuilder,
   MessageFlags,
 } from 'discord.js';
-import { getBalance } from './userPointsStore.mjs';
+import { canBypassDailyCooldown } from './raceDebugBypass.mjs';
+import { getBalance, getDailyAccountView } from './userPointsStore.mjs';
 import { scheduleKindSelectRow } from './scheduleKindUi.mjs';
-import { buildBpRankUserDetailV2Container } from './bpRankUserDetailEmbed.mjs';
+import { buildDailyAccountV2Container } from './dailyAccountDisplay.mjs';
+import { BOTING_HUB_PREFIX } from './botingHubConstants.mjs';
+import { buildBotingMenuBackRow } from './botingBackButton.mjs';
+import { botingEmoji } from './botingEmojis.mjs';
 
-export const RACE_CMD_HUB_PREFIX = 'race_cmd_hub';
+export { BOTING_HUB_PREFIX };
+export { buildBotingMenuBackRow, buildBotingMenuBackRow as buildRaceHubBackButtonRow };
 
 const HUB_ACCENT = 0x5865f2;
 
@@ -19,49 +24,81 @@ export const SCHEDULE_KIND_INTRO_BODY =
 export const VENUE_PICK_INTRO_BODY =
   '開催場を選ぶと、その場のレース一覧（発走時刻・発売状態）が表示されます。続けてレースを選ぶと出馬表を表示します。';
 
-/** /race ハブへ戻る（各サブ画面の最下行に並べる） */
-export function buildRaceHubBackButtonRow() {
-  return new ActionRowBuilder().addComponents(
-    new ButtonBuilder()
-      .setCustomId(`${RACE_CMD_HUB_PREFIX}|back`)
-      .setLabel('メニューに戻る')
-      .setStyle(ButtonStyle.Secondary),
-  );
-}
-
 function fmtBpLine(balance) {
   const n = Math.round(Number(balance) || 0);
   return `bp残高：\`${n.toLocaleString('ja-JP')}bp\``;
 }
 
 /**
- * /race トップ: `/bp_rank user:自分` と同じ BP 詳細 + 馬券購入 / 履歴 / 購入予定（常に Components V2。
- * 購入履歴など V2 画面から戻るとき、フラグを外さないため必須）
- * @param {{ user: import('discord.js').User, guild: import('discord.js').Guild | null, extraFlags?: number }} opts
+ * `/boting` メインパネル: Daily 収支 Container + 操作ボタン（常に Components V2）
+ * @param {{ user: import('discord.js').User, guild: import('discord.js').Guild | null, extraFlags?: number, dailySuccessBanner?: string | null }} opts
  */
-export async function buildRaceHubV2Payload({ user, guild, extraFlags = 0 }) {
-  const container = await buildBpRankUserDetailV2Container(user, guild, user.id);
-  const row = new ActionRowBuilder().addComponents(
+export async function buildBotingPanelPayload({
+  user,
+  guild,
+  extraFlags = 0,
+  dailySuccessBanner = null,
+}) {
+  void guild;
+  const view = await getDailyAccountView(user.id, { withLedgerPreview: false });
+  const debugBypass = canBypassDailyCooldown(user.id);
+  const claimed =
+    view.lastDailyPeriodKey === view.currentPeriodKey && !!view.lastDailyPeriodKey;
+  const dailyDisabled = claimed && !debugBypass;
+
+  const dailyContainer = buildDailyAccountV2Container(view, {
+    claimed,
+    successBanner: dailySuccessBanner,
+  });
+
+  const row1 = new ActionRowBuilder().addComponents(
     new ButtonBuilder()
-      .setCustomId(`${RACE_CMD_HUB_PREFIX}|purchase`)
-      .setLabel('馬券を購入')
-      .setStyle(ButtonStyle.Primary),
+      .setCustomId(`${BOTING_HUB_PREFIX}|daily`)
+      .setLabel('Dailyをもらう')
+      .setEmoji(botingEmoji('daily'))
+      .setStyle(ButtonStyle.Success)
+      .setDisabled(dailyDisabled),
     new ButtonBuilder()
-      .setCustomId(`${RACE_CMD_HUB_PREFIX}|history`)
-      .setLabel('購入履歴')
+      .setCustomId(`${BOTING_HUB_PREFIX}|rank`)
+      .setLabel('ランキング')
+      .setEmoji(botingEmoji('ranking'))
       .setStyle(ButtonStyle.Secondary),
     new ButtonBuilder()
-      .setCustomId(`${RACE_CMD_HUB_PREFIX}|slip`)
-      .setLabel('購入予定')
+      .setCustomId(`${BOTING_HUB_PREFIX}|ledger`)
+      .setLabel('直近の収支')
+      .setEmoji(botingEmoji('syushi'))
       .setStyle(ButtonStyle.Secondary),
   );
+  const row2 = new ActionRowBuilder().addComponents(
+    new ButtonBuilder()
+      .setCustomId(`${BOTING_HUB_PREFIX}|purchase`)
+      .setLabel('馬券を購入')
+      .setEmoji(botingEmoji('ken'))
+      .setStyle(ButtonStyle.Primary),
+    new ButtonBuilder()
+      .setCustomId(`${BOTING_HUB_PREFIX}|history`)
+      .setLabel('購入履歴')
+      .setEmoji(botingEmoji('history'))
+      .setStyle(ButtonStyle.Secondary),
+    new ButtonBuilder()
+      .setCustomId(`${BOTING_HUB_PREFIX}|slip`)
+      .setLabel('購入予定')
+      .setEmoji(botingEmoji('cart'))
+      .setStyle(ButtonStyle.Secondary),
+  );
+
   return {
     content: null,
     embeds: [],
-    components: [container, row],
+    components: [dailyContainer, row1, row2],
     flags: MessageFlags.IsComponentsV2 | extraFlags,
   };
 }
+
+/**
+ * @deprecated 互換のため残す。`buildBotingPanelPayload` と同じ。
+ */
+export const buildRaceHubV2Payload = buildBotingPanelPayload;
 
 /**
  * JRA/NAR 選択へ（説明を Container に載せる）
@@ -75,7 +112,7 @@ export async function buildRaceScheduleIntroV2Payload({ userId, extraFlags = 0 }
   return {
     content: null,
     embeds: [],
-    components: [container, scheduleKindSelectRow(), buildRaceHubBackButtonRow()],
+    components: [container, scheduleKindSelectRow(), buildBotingMenuBackRow()],
     flags: MessageFlags.IsComponentsV2 | extraFlags,
   };
 }

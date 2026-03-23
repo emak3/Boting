@@ -1,4 +1,5 @@
 import { ActionRowBuilder, ButtonBuilder, ButtonStyle } from 'discord.js';
+import { botingEmoji } from './botingEmojis.mjs';
 
 /** `bp_rank_user_history|{discordUserId}` — 購入履歴ボタン用 */
 export const BP_RANK_USER_HISTORY_PREFIX = 'bp_rank_user_history';
@@ -13,6 +14,7 @@ export function buildBpRankProfileBackButtonRow(targetUserId) {
     new ButtonBuilder()
       .setCustomId(`${BP_RANK_BACK_PROFILE_PREFIX}|${targetUserId}`)
       .setLabel('プロフィールに戻る')
+      .setEmoji(botingEmoji('profile'))
       .setStyle(ButtonStyle.Secondary),
   );
 }
@@ -23,10 +25,12 @@ export function buildBpRankProfileButtonsRow(targetUserId) {
     new ButtonBuilder()
       .setCustomId(`${BP_RANK_USER_SLIP_PREFIX}|${targetUserId}`)
       .setLabel('購入予定を見る')
+      .setEmoji(botingEmoji('cart'))
       .setStyle(ButtonStyle.Primary),
     new ButtonBuilder()
       .setCustomId(`${BP_RANK_USER_HISTORY_PREFIX}|${targetUserId}`)
       .setLabel('購入履歴')
+      .setEmoji(botingEmoji('history'))
       .setStyle(ButtonStyle.Secondary),
   );
 }

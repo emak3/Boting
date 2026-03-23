@@ -19,6 +19,7 @@ import {
 } from '../../utils/unitYenKeypadStore.mjs';
 import { buildSlipReviewV2Payload } from '../../utils/betSlipReview.mjs';
 import { buildTextAndRowsV2Payload } from '../../utils/raceCardDisplay.mjs';
+import { buildEphemeralWithBotingBackPayload } from '../../utils/botingBackButton.mjs';
 
 function v2ExtraFlags(interaction) {
   let extraFlags = 0;
@@ -71,20 +72,22 @@ export default async function unitYenKeypadButtons(interaction) {
 
   const parsed = parseUnitKeypadCustomId(customId);
   if (!parsed) {
-    await interaction.reply({
-      content: '❌ このキーは無効です。金額変更を開き直してください。',
-      flags: MessageFlags.Ephemeral,
-    });
+    await interaction.reply(
+      buildEphemeralWithBotingBackPayload(
+        '❌ このキーは無効です。金額変更を開き直してください。',
+      ),
+    );
     return;
   }
 
   const userId = interaction.user.id;
   const draft = ensureDraft(userId, parsed);
   if (!draft) {
-    await interaction.reply({
-      content: '❌ セッションが無効です。画面を開き直してください。',
-      flags: MessageFlags.Ephemeral,
-    });
+    await interaction.reply(
+      buildEphemeralWithBotingBackPayload(
+        '❌ セッションが無効です。画面を開き直してください。',
+      ),
+    );
     return;
   }
 
@@ -146,9 +149,10 @@ export default async function unitYenKeypadButtons(interaction) {
       if (!flow?.purchase) {
         await interaction.editReply(
           buildTextAndRowsV2Payload({
-            headline: '❌ セッションが無効です。もう一度 /race から開き直してください。',
+            headline: '❌ セッションが無効です。もう一度 /boting から開き直してください。',
             actionRows: [],
             extraFlags,
+            withBotingMenuBack: true,
           }),
         );
         return;
@@ -171,6 +175,7 @@ export default async function unitYenKeypadButtons(interaction) {
           headline: '❌ 購入予定の確認セッションが無効です。まとめて購入の画面を開き直してください。',
           actionRows: [],
           extraFlags,
+          withBotingMenuBack: true,
         }),
       );
       return;

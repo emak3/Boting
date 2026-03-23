@@ -13,10 +13,6 @@ import {
   V2_TEXT_TOTAL_MAX,
 } from './raceCardDisplay.mjs';
 import {
-  RACE_CMD_HUB_PREFIX,
-  buildRaceHubBackButtonRow,
-} from './raceCommandHub.mjs';
-import {
   formatBetSlipItemBlock,
   historyRaceHeadingLine,
   slipItemDescriptionForSelect,
@@ -26,6 +22,7 @@ import {
   setSlipPendingReviewPage,
 } from './betSlipStore.mjs';
 import { getBalance } from './userPointsStore.mjs';
+import { botingEmoji } from './botingEmojis.mjs';
 
 /** まとめて購入確認 Container のアクセント */
 const BET_SLIP_REVIEW_ACCENT = 0x2ecc71;
@@ -80,7 +77,7 @@ function buildMoneySummaryText({
   } else {
     lines.push(
       '',
-      `⚠️ **bp が不足**しています（不足 **${fmtBp(grandYen - balance)}** bp）。\`/daily\` で受け取るか、金額・購入予定を調整してください。`,
+      `⚠️ **bp が不足**しています（不足 **${fmtBp(grandYen - balance)}** bp）。\`/boting\` の **Dailyをもらう** で受け取るか、金額・購入予定を調整してください。`,
     );
   }
   lines.push('', `**合計点数**　**${fmtBp(grandPoints)}** 点`);
@@ -157,10 +154,12 @@ function slipReviewActionRows(anchorRaceId, items, { pageIndex, totalPages }) {
     new ButtonBuilder()
       .setCustomId(`race_bet_slip_back|${anchorRaceId}`)
       .setLabel('戻る')
+      .setEmoji(botingEmoji('modoru'))
       .setStyle(ButtonStyle.Secondary),
     new ButtonBuilder()
       .setCustomId(`race_bet_slip_confirm|${anchorRaceId}`)
       .setLabel('この内容で確定')
+      .setEmoji(botingEmoji('kakutei'))
       .setStyle(ButtonStyle.Success),
   );
 
@@ -171,12 +170,14 @@ function slipReviewActionRows(anchorRaceId, items, { pageIndex, totalPages }) {
       new ActionRowBuilder().addComponents(
         new ButtonBuilder()
           .setCustomId(`race_bet_slip_pg|${anchorRaceId}|prev`)
-          .setLabel('◀ 前のページ')
+          .setLabel('前のページ')
+          .setEmoji(botingEmoji('mae'))
           .setStyle(ButtonStyle.Secondary)
           .setDisabled(pageIndex <= 0),
         new ButtonBuilder()
           .setCustomId(`race_bet_slip_pg|${anchorRaceId}|next`)
-          .setLabel('次のページ ▶')
+          .setLabel('次のページ')
+          .setEmoji(botingEmoji('tsugi'))
           .setStyle(ButtonStyle.Secondary)
           .setDisabled(pageIndex >= totalPages - 1),
       ),
@@ -250,9 +251,10 @@ export async function buildSlipReviewV2Payload({ userId, extraFlags = 0 }) {
   const pending = getSlipPendingReview(userId);
   if (!pending?.items?.length) {
     return buildTextAndRowsV2Payload({
-      headline: '❌ 購入予定データがありません。もう一度 /race からやり直してください。',
-      actionRows: [buildRaceHubBackButtonRow()],
+      headline: '❌ 購入予定データがありません。もう一度 /boting からやり直してください。',
+      actionRows: [],
       extraFlags,
+      withBotingMenuBack: true,
     });
   }
 

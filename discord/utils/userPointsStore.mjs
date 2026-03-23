@@ -4,6 +4,8 @@ import { getAdminFirestore } from '../../utils/firebaseAdmin.mjs';
 const COLLECTION = 'userPoints';
 const LEDGER = 'ledger';
 const LEDGER_PREVIEW_LIMIT = 15;
+/** 直近の収支ページング用 1 クエリあたりの取得上限（Firestore の読み取り負荷対策） */
+export const LEDGER_PAGE_MAX_FETCH = 500;
 
 /** JSTはDSTなし。UTC+9のオフセットでJSTの暦・時刻成分を得る */
 function getJstYmdH(date) {
@@ -131,6 +133,7 @@ export function getDailyStreakGrantBp(streakDay) {
 
 /**
  * @param {string} userId
+ * @param {{ withLedgerPreview?: boolean }} [opts] withLedgerPreview=false なら台帳クエリを省略（/boting メイン用）
  * @returns {Promise<{
  *   balance: number,
  *   currentPeriodKey: string,
@@ -140,18 +143,20 @@ export function getDailyStreakGrantBp(streakDay) {
  *   entries: Array<{ delta: number, balanceAfter: number, kind: string, period: string, at: Date | null, streakDay?: number }>,
  * }>}
  */
-export async function getDailyAccountView(userId) {
+export async function getDailyAccountView(userId, opts = {}) {
+  const withLedgerPreview = opts.withLedgerPreview !== false;
   const db = getAdminFirestore();
   const ref = db.collection(COLLECTION).doc(userId);
   const currentPeriodKey = getCurrentDailyPeriodKey();
-  const [snap, ledgerSnap] = await Promise.all([
-    ref.get(),
-    ref
+  const snap = await ref.get();
+  let ledgerSnap = null;
+  if (withLedgerPreview) {
+    ledgerSnap = await ref
       .collection(LEDGER)
       .orderBy('at', 'desc')
       .limit(LEDGER_PREVIEW_LIMIT)
-      .get(),
-  ]);
+      .get();
+  }
 
   const u = snap.exists ? snap.data() : {};
   const balance = normBalance(u.balance);
@@ -172,7 +177,71 @@ export async function getDailyAccountView(userId) {
   }
 
   const entries = [];
-  for (const d of ledgerSnap.docs) {
+  if (ledgerSnap) {
+    for (const d of ledgerSnap.docs) {
+      const row = d.data();
+      const at = row.at?.toDate?.() ?? null;
+      const streakRaw = row.streakDay;
+      const streakNum =
+        streakRaw != null && streakRaw !== ''
+          ? Math.trunc(Number(streakRaw))
+          : undefined;
+      entries.push({
+        delta: normBalance(row.delta),
+        balanceAfter: normBalance(row.balanceAfter),
+        kind: String(row.kind ?? 'daily'),
+        period: row.period != null ? String(row.period) : '',
+        at,
+        streakDay:
+          Number.isFinite(streakNum) && streakNum >= 1 && streakNum <= 7
+            ? streakNum
+            : undefined,
+      });
+    }
+  }
+
+  return {
+    balance,
+    currentPeriodKey,
+    lastDailyPeriodKey,
+    dailyStreakDay,
+    nextClaimAt,
+    entries,
+  };
+}
+
+/**
+ * 台帳をページ取得（新しい順）。1 件多く取り hasMore を判定。
+ * @param {string} userId
+ * @param {number} pageSize 1〜50
+ * @param {number} pageIndex 0 始まり
+ * @returns {Promise<{
+ *   entries: Array<{ delta: number, balanceAfter: number, kind: string, period: string, at: Date | null, streakDay?: number }>,
+ *   hasMore: boolean,
+ *   hasPrev: boolean,
+ *   capped: boolean,
+ * }>}
+ */
+export async function fetchLedgerPage(userId, pageSize, pageIndex) {
+  const ps = Math.min(50, Math.max(1, Math.round(Number(pageSize) || 10)));
+  const pi = Math.max(0, Math.floor(Number(pageIndex) || 0));
+  const need = (pi + 1) * ps;
+  if (pi * ps >= LEDGER_PAGE_MAX_FETCH) {
+    return {
+      entries: [],
+      hasMore: false,
+      hasPrev: pi > 0,
+      capped: true,
+    };
+  }
+
+  const fetchLimit = Math.min(need + 1, LEDGER_PAGE_MAX_FETCH);
+  const db = getAdminFirestore();
+  const ref = db.collection(COLLECTION).doc(userId).collection(LEDGER);
+  const snap = await ref.orderBy('at', 'desc').limit(fetchLimit).get();
+
+  const all = [];
+  for (const d of snap.docs) {
     const row = d.data();
     const at = row.at?.toDate?.() ?? null;
     const streakRaw = row.streakDay;
@@ -180,7 +249,7 @@ export async function getDailyAccountView(userId) {
       streakRaw != null && streakRaw !== ''
         ? Math.trunc(Number(streakRaw))
         : undefined;
-    entries.push({
+    all.push({
       delta: normBalance(row.delta),
       balanceAfter: normBalance(row.balanceAfter),
       kind: String(row.kind ?? 'daily'),
@@ -193,13 +262,18 @@ export async function getDailyAccountView(userId) {
     });
   }
 
+  const start = pi * ps;
+  const page = all.slice(start, start + ps);
+  const hasMore = snap.size > (pi + 1) * ps;
+  const hasPrev = pi > 0;
+  const capped =
+    need + 1 > LEDGER_PAGE_MAX_FETCH && snap.size === LEDGER_PAGE_MAX_FETCH;
+
   return {
-    balance,
-    currentPeriodKey,
-    lastDailyPeriodKey,
-    dailyStreakDay,
-    nextClaimAt,
-    entries,
+    entries: page,
+    hasMore,
+    hasPrev,
+    capped,
   };
 }
 
@@ -248,23 +322,22 @@ export async function fetchFirstLedgerAt(userId) {
   return at instanceof Date && !Number.isNaN(at.getTime()) ? at : null;
 }
 
-const DEBUG_BP_ADJUST_ABS_MAX = 99_999_999;
-
 /**
  * デバッグ用: 指定ユーザーの bp を増減し台帳に記録する（許可ユーザーのみコマンドから呼ぶこと）
+ * 減算時は残高を下回らないよう実効 delta をクランプ（残高 0 まで）。
  * @param {string} targetUserId
- * @param {number} delta 正で追加、負で減算
+ * @param {number} delta 正で追加、負で減算（希望量。減算は残高で打ち切り）
  * @returns {Promise<
  *   | { ok: true, balanceBefore: number, balanceAfter: number, delta: number }
- *   | { ok: false, reason: 'zero_delta' | 'delta_too_large' | 'would_go_negative', balance?: number }
+ *   | { ok: false, reason: 'zero_delta' | 'delta_too_large', balance?: number }
  * >}
  */
 export async function applyDebugBpAdjustment(targetUserId, delta) {
-  const d = Math.trunc(Number(delta));
-  if (!Number.isFinite(d) || d === 0) {
+  const dRaw = Math.trunc(Number(delta));
+  if (!Number.isFinite(dRaw) || dRaw === 0) {
     return { ok: false, reason: 'zero_delta' };
   }
-  if (Math.abs(d) > DEBUG_BP_ADJUST_ABS_MAX) {
+  if (Math.abs(dRaw) > Number.MAX_SAFE_INTEGER) {
     return { ok: false, reason: 'delta_too_large' };
   }
 
@@ -276,14 +349,14 @@ export async function applyDebugBpAdjustment(targetUserId, delta) {
     const snap = await tx.get(ref);
     const u = snap.exists ? snap.data() : {};
     const balanceBefore = normBalance(u.balance);
-    const balanceAfter = balanceBefore + d;
-    if (balanceAfter < 0) {
-      return {
-        ok: false,
-        reason: 'would_go_negative',
-        balance: balanceBefore,
-      };
+    let d = dRaw;
+    if (d < 0) {
+      d = Math.max(d, -balanceBefore);
     }
+    if (d === 0) {
+      return { ok: false, reason: 'zero_delta', balance: balanceBefore };
+    }
+    const balanceAfter = balanceBefore + d;
     tx.set(ref, { balance: balanceAfter }, { merge: true });
     appendLedgerTx(tx, ref, {
       delta: d,

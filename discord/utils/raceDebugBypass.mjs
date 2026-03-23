@@ -8,17 +8,22 @@ import {
   parseNarRaceListSubToVenue,
 } from '../../cheerio/netkeibaSchedule.mjs';
 
-const DEBUG_BYPASS_USER_ID = '864735082732322867';
+import {
+  canUseDebugCommandsSync,
+  getDebugAuthorizedMentionsLineSync,
+  getDebugAuthorizedUserIdsSync,
+} from './debugAuthStore.mjs';
 
-/** `/race_debug` や BP デバッグ調整など、デバッグ系スラッシュを使えるユーザー */
-export function canUseDebugCommands(userId) {
-  return String(userId) === DEBUG_BYPASS_USER_ID;
-}
+export {
+  canUseDebugCommandsSync as canUseDebugCommands,
+  getDebugAuthorizedUserIdsSync as getDebugAuthorizedUserIds,
+  getDebugAuthorizedMentionsLineSync as getDebugAuthorizedMentionsLine,
+};
 
 let debugSalesBypassEnabled = false;
 
 export function canBypassSalesClosed(userId) {
-  return debugSalesBypassEnabled && userId === DEBUG_BYPASS_USER_ID;
+  return debugSalesBypassEnabled && canUseDebugCommandsSync(userId);
 }
 
 export function setDebugSalesBypass(enabled) {
@@ -29,9 +34,9 @@ export function isDebugSalesBypassEnabled() {
   return debugSalesBypassEnabled;
 }
 
-/** デバッグON時に /daily の日次境界を無視して10bpを何度でも（許可ユーザーのみ） */
+/** デバッグON時に Daily の日次境界を無視して10bpを何度でも（許可ユーザーのみ） */
 export function canBypassDailyCooldown(userId) {
-  return debugSalesBypassEnabled && userId === DEBUG_BYPASS_USER_ID;
+  return debugSalesBypassEnabled && canUseDebugCommandsSync(userId);
 }
 
 /**

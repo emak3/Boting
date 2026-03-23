@@ -5,6 +5,7 @@ import {
 } from 'discord.js';
 import { getBetFlow } from './betFlowStore.mjs';
 import { getSlipSavedCount } from './betSlipStore.mjs';
+import { botingEmoji } from './botingEmojis.mjs';
 
 export const BET_SLIP_OPEN_CUSTOM_ID = 'race_bet_slip_open_review';
 export const RACE_PURCHASE_HISTORY_CUSTOM_ID = 'race_bet_purchase_history';
@@ -56,6 +57,7 @@ export function raceBetSlipUtilityButtonRow(raceId, userId, flow) {
   const hist = new ButtonBuilder()
     .setCustomId(`${RACE_PURCHASE_HISTORY_CUSTOM_ID}|${raceId}`)
     .setLabel('購入履歴')
+    .setEmoji(botingEmoji('history'))
     .setStyle(ButtonStyle.Secondary);
   const slipShown = shouldShowBetSlipViewButton(flow);
   const savedN = getSlipSavedCount(userId);
@@ -67,6 +69,7 @@ export function raceBetSlipUtilityButtonRow(raceId, userId, flow) {
       new ButtonBuilder()
         .setCustomId(`${BET_SLIP_OPEN_CUSTOM_ID}|${raceId}`)
         .setLabel(n ? `購入予定(${n})` : '購入予定')
+        .setEmoji(botingEmoji('cart'))
         .setStyle(ButtonStyle.Secondary),
     );
   }

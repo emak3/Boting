@@ -1,11 +1,15 @@
 import { getBetFlow } from './betFlowStore.mjs';
-import { resolveSalesClosedForRace } from './raceDebugBypass.mjs';
+import {
+  canBypassSalesClosed,
+  resolveSalesClosedForRace,
+} from './raceDebugBypass.mjs';
 
 /**
  * 買い目1件が発売締切扱いか（判定不能は締切とみなさない）
  */
 export async function isSlipItemSalesClosed(userId, it, flowCache) {
   if (it?.isResult === true) return true;
+  if (canBypassSalesClosed(userId)) return false;
   const rid = it?.raceId;
   if (!rid || !/^\d{12}$/.test(String(rid))) return false;
   let flow = flowCache.get(rid);

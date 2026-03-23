@@ -76,3 +76,5 @@ boting_delete <:delete:1485541333434236938>
 boting_profile <:profile:1485543261849260102>
 boting_kakunin <:kakunin:1485543265687310346>
 boting_kakutei <:kakutei:1485543263925440644>
+boting_textdelete <:textdelete:1485545070081081384>
+boting_check <:check:1485545068143054879>

@@ -5,6 +5,7 @@ import {
   MessageFlags,
   TextDisplayBuilder,
 } from 'discord.js';
+import { botingEmoji } from './botingEmojis.mjs';
 
 export const BOTING_LEDGER_LIM_KPAD_PREFIX = 'boting_ledger_lim_kpad';
 
@@ -51,6 +52,11 @@ export function buildBotingLedgerLimitKeypadPayload({ buffer, extraFlags = 0 }) 
   const bid = mkId;
   const mk = (label, style, op, arg) =>
     new ButtonBuilder().setCustomId(bid(op, arg)).setLabel(label).setStyle(style);
+  const mkEmoji = (emojiKey, style, op, arg) =>
+    new ButtonBuilder()
+      .setCustomId(bid(op, arg))
+      .setStyle(style)
+      .setEmoji(botingEmoji(emojiKey));
 
   const rows = [
     new ActionRowBuilder().addComponents(
@@ -69,9 +75,9 @@ export function buildBotingLedgerLimitKeypadPayload({ buffer, extraFlags = 0 }) 
       mk('3', ButtonStyle.Secondary, 'd', '3'),
     ),
     new ActionRowBuilder().addComponents(
-      mk('Del', ButtonStyle.Danger, 'del', ''),
+      mkEmoji('textdelete', ButtonStyle.Danger, 'del', ''),
       mk('0', ButtonStyle.Secondary, 'd', '0'),
-      mk('決定', ButtonStyle.Success, 'ok', ''),
+      mkEmoji('check', ButtonStyle.Success, 'ok', ''),
     ),
     new ActionRowBuilder().addComponents(
       new ButtonBuilder()

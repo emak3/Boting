@@ -5,6 +5,7 @@ import {
   MessageFlags,
   TextDisplayBuilder,
 } from 'discord.js';
+import { botingEmoji } from './botingEmojis.mjs';
 
 /** テンキー・正規化で扱える 1点あたり bp の上限（JS の安全な整数。業務上の上限は設けない） */
 const MAX_UNIT_YEN_SAFE = Math.floor(Number.MAX_SAFE_INTEGER / 100) * 100;
@@ -107,6 +108,11 @@ export function buildUnitKeypadPayload({
   const bid = idBuilder(raceId, kind, slipIdx);
   const mk = (label, style, op, arg) =>
     new ButtonBuilder().setCustomId(bid(op, arg)).setLabel(label).setStyle(style);
+  const mkEmoji = (emojiKey, style, op, arg) =>
+    new ButtonBuilder()
+      .setCustomId(bid(op, arg))
+      .setStyle(style)
+      .setEmoji(botingEmoji(emojiKey));
 
   const rows = [
     new ActionRowBuilder().addComponents(
@@ -125,9 +131,9 @@ export function buildUnitKeypadPayload({
       mk('3', ButtonStyle.Secondary, 'd', '3'),
     ),
     new ActionRowBuilder().addComponents(
-      mk('Del', ButtonStyle.Danger, 'del', ''),
+      mkEmoji('textdelete', ButtonStyle.Danger, 'del', ''),
       mk('0', ButtonStyle.Secondary, 'd', '0'),
-      mk('決定', ButtonStyle.Success, 'ok', ''),
+      mkEmoji('check', ButtonStyle.Success, 'ok', ''),
     ),
     new ActionRowBuilder().addComponents(
       new ButtonBuilder()

@@ -5,6 +5,7 @@ import {
   MessageFlags,
   TextDisplayBuilder,
 } from 'discord.js';
+import { botingEmoji } from './botingEmojis.mjs';
 
 export const BP_RANK_OPEN_LIM_PREFIX = 'bp_rank_open_lim';
 export const BP_RANK_LIM_KPAD_PREFIX = 'bp_rank_lim_kpad';
@@ -61,6 +62,11 @@ export function buildBpRankLimitKeypadPayload({ buffer, extraFlags = 0 }) {
   const bid = mkId;
   const mk = (label, style, op, arg) =>
     new ButtonBuilder().setCustomId(bid(op, arg)).setLabel(label).setStyle(style);
+  const mkEmoji = (emojiKey, style, op, arg) =>
+    new ButtonBuilder()
+      .setCustomId(bid(op, arg))
+      .setStyle(style)
+      .setEmoji(botingEmoji(emojiKey));
 
   const rows = [
     new ActionRowBuilder().addComponents(
@@ -79,9 +85,9 @@ export function buildBpRankLimitKeypadPayload({ buffer, extraFlags = 0 }) {
       mk('3', ButtonStyle.Secondary, 'd', '3'),
     ),
     new ActionRowBuilder().addComponents(
-      mk('Del', ButtonStyle.Danger, 'del', ''),
+      mkEmoji('textdelete', ButtonStyle.Danger, 'del', ''),
       mk('0', ButtonStyle.Secondary, 'd', '0'),
-      mk('決定', ButtonStyle.Success, 'ok', ''),
+      mkEmoji('check', ButtonStyle.Success, 'ok', ''),
     ),
     new ActionRowBuilder().addComponents(
       new ButtonBuilder()

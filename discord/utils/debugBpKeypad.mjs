@@ -6,6 +6,7 @@ import {
   TextDisplayBuilder,
 } from 'discord.js';
 import { DEBUG_BP_KPAD_PREFIX } from './debugHubConstants.mjs';
+import { botingEmoji } from './botingEmojis.mjs';
 
 /** JS の安全な整数まで（それ以上は bufferToDebugBpAmount で丸める） */
 const MAX_BUFFER_LEN = 16;
@@ -73,9 +74,9 @@ export function buildDebugBpKeypadPayload({
       mk('3', ButtonStyle.Secondary, 'd', '3'),
     ),
     new ActionRowBuilder().addComponents(
-      mk('Del', ButtonStyle.Danger, 'del', ''),
+      mkEmoji('textdelete', ButtonStyle.Danger, 'del', ''),
       mk('0', ButtonStyle.Secondary, 'd', '0'),
-      mk('決定', ButtonStyle.Success, 'ok', ''),
+      mkEmoji('check', ButtonStyle.Success, 'ok', ''),
     ),
     new ActionRowBuilder().addComponents(
       new ButtonBuilder()

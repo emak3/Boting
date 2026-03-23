@@ -24,6 +24,8 @@ const REQUIRED_KEYS = [
   'profile',
   'kakunin',
   'kakutei',
+  'textdelete',
+  'check',
 ];
 
 function loadBotingEmojiMap() {

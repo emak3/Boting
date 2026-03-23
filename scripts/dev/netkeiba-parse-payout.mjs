@@ -4,8 +4,8 @@
  */
 import axios from 'axios';
 import * as cheerio from 'cheerio';
-import { handleEncoding } from '../../cheerio/utils/encoding.mjs';
-import NetkeibaScraper from '../../cheerio/netkeibaScraper.mjs';
+import { handleEncoding } from '../../src/scrapers/netkeiba/utils/encoding.mjs';
+import NetkeibaScraper from '../../src/scrapers/netkeiba/netkeibaScraper.mjs';
 
 const raceId = process.argv[2] || '202446091009';
 const url = `https://nar.netkeiba.com/race/result.html?race_id=${raceId}`;

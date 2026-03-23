@@ -3,10 +3,10 @@
   "version": "1.0.0",
   "type": "module",
   "description": "Boting",
-  "main": "index.mjs",
+  "main": "src/index.mjs",
   "scripts": {
-    "start": "node --env-file=dev.env index.mjs",
-    "dev": "nodemon --env-file=dev.env index.mjs",
+    "start": "node --env-file=dev.env src/index.mjs",
+    "dev": "nodemon --env-file=dev.env --watch src src/index.mjs",
     "dev:netkeiba-test": "node --env-file=dev.env scripts/dev/netkeiba-scraper-test.mjs",
     "dev:netkeiba-payout": "node scripts/dev/netkeiba-parse-payout.mjs"
   },

@@ -2,7 +2,7 @@
  * Netkeiba スクレイパーの手動試験（開発用）
  * 実行: node --env-file=dev.env scripts/dev/netkeiba-scraper-test.mjs
  */
-import NetkeibaScraper from '../../cheerio/netkeibaScraper.mjs';
+import NetkeibaScraper from '../../src/scrapers/netkeiba/netkeibaScraper.mjs';
 import { pathToFileURL } from 'node:url';
 
 async function testScraper() {

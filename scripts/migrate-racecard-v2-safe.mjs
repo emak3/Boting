@@ -3,12 +3,12 @@
  */
 import fs from 'fs';
 
-const path = 'discord/interactions/menu/raceSchedule.mjs';
+const path = 'src/discord/interactions/menu/raceSchedule.mjs';
 let s = fs.readFileSync(path, 'utf8');
 
 s = s.replace(
   /import \{ buildRaceCardEmbed \} from '\.\.\/\.\.\/utils\/raceCardEmbed\.mjs';/,
-  "import { buildRaceCardV2Payload } from '../../utils/raceCardDisplay.mjs';",
+  "import { buildRaceCardV2Payload } from '../../utils/race/raceCardDisplay.mjs';",
 );
 
 function findMatchingBracket(s, openIdx, openCh, closeCh) {

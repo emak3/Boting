@@ -4,7 +4,7 @@
  */
 import fs from 'fs';
 
-const path = 'discord/interactions/menu/raceSchedule.mjs';
+const path = 'src/discord/interactions/menu/raceSchedule.mjs';
 let s = fs.readFileSync(path, 'utf8');
 
 const blockRe = /buildSelectionRow\(\{[\s\S]*?\r?\n\s*\}\),\r?\n/g;

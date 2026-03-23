@@ -1,0 +1,408 @@
+import {
+  ActionRowBuilder,
+  ButtonBuilder,
+  ButtonStyle,
+  StringSelectMenuBuilder,
+  StringSelectMenuOptionBuilder,
+  MessageFlags,
+} from 'discord.js';
+import {
+  fetchRaceListSub,
+  parseRaceListSub,
+  filterVenueRaces,
+  getRaceSalesStatus,
+  fetchNarVenuesForDate,
+  fetchNarRaceListSub,
+  parseNarRaceListSubToVenue,
+  jstYmd,
+  filterRacesByInteractionPostDateYmd,
+  filterVenuesForInteractionPostDate,
+} from '../../../scrapers/netkeiba/netkeibaSchedule.mjs';
+import { getBetFlow } from '../../utils/bet/betFlowStore.mjs';
+import { buildTextAndRowsV2Payload } from '../../utils/race/raceCardDisplay.mjs';
+import {
+  betSlipOpenReviewButtonRowForSchedule,
+  firstScheduleAnchorRaceIdFromRaces,
+  firstScheduleAnchorRaceIdFromVenues,
+} from '../../utils/bet/betSlipViewUi.mjs';
+import {
+  SCHEDULE_KIND_BACK_BUTTON_ID,
+  scheduleBackToKindSelectButtonRow,
+} from '../../utils/race/scheduleKindUi.mjs';
+import {
+  buildRaceScheduleIntroV2Payload,
+  buildVenuePickIntroV2Payload,
+} from '../../utils/race/raceCommandHub.mjs';
+
+function v2ExtraFlags(interaction) {
+  try {
+    if (interaction.message?.flags?.has(MessageFlags.Ephemeral)) {
+      return MessageFlags.Ephemeral;
+    }
+  } catch (_) {
+    /* ignore */
+  }
+  return 0;
+}
+
+const VENUE_BACK_PREFIX = 'race_sched_back_to_venue|';
+const RACE_LIST_BACK_PREFIX = 'race_sched_back_to_race_list|';
+
+function venueSelectRow(scheduleKind, kaisaiDateYmd, currentGroup, venues) {
+  const menu = new StringSelectMenuBuilder()
+    .setCustomId('race_menu_venue')
+    .setPlaceholder('開催場を選択')
+    .addOptions(
+      venues.slice(0, 25).map((v) => {
+        const value =
+          scheduleKind === 'nar'
+            ? `nar|${kaisaiDateYmd}|${v.kaisaiId}`
+            : `jra|${kaisaiDateYmd}|${currentGroup}|${v.kaisaiId}`;
+        const prefix = scheduleKind === 'nar' ? '[地方] ' : '';
+        return new StringSelectMenuOptionBuilder()
+          .setLabel(`${prefix}${v.title}`.slice(0, 100))
+          .setValue(value)
+          .setDescription(`全${v.races.length}レース`.slice(0, 100));
+      }),
+    );
+  return new ActionRowBuilder().addComponents(menu);
+}
+
+function raceSelectRow(kaisaiDateYmd, races) {
+  const menu = new StringSelectMenuBuilder()
+    .setCustomId('race_menu_race')
+    .setPlaceholder('レースを選択（出馬表を表示）')
+    .addOptions(
+      races.slice(0, 25).map((r) => {
+        const st = getRaceSalesStatus(r, kaisaiDateYmd);
+        const label = `${r.roundLabel} ${r.timeText}`.replace(/\s+/g, ' ').trim().slice(0, 100);
+        const desc = `${st.shortLabel} · ${r.title}`.slice(0, 100);
+        return new StringSelectMenuOptionBuilder()
+          .setLabel(label || r.raceId)
+          .setValue(`${r.raceId}|${r.isResult ? 1 : 0}`)
+          .setDescription(desc);
+      }),
+    );
+  return new ActionRowBuilder().addComponents(menu);
+}
+
+function scheduleBackToVenueButtonRow(kaisaiDateYmd, currentGroup, scheduleKind = 'jra') {
+  const pad = scheduleKind === 'nar' ? '_' : currentGroup;
+  return new ActionRowBuilder().addComponents(
+    new ButtonBuilder()
+      .setCustomId(`race_sched_back_to_venue|${scheduleKind}|${kaisaiDateYmd}|${pad}`)
+      .setLabel('開催場へ')
+      .setStyle(ButtonStyle.Secondary),
+  );
+}
+
+export default async function scheduleBackButtons(interaction) {
+  if (!interaction.isButton()) return;
+  const customId = interaction.customId;
+
+  const isVenueBack = customId.startsWith(VENUE_BACK_PREFIX);
+  const isRaceListBack = customId.startsWith(RACE_LIST_BACK_PREFIX);
+  const isKindBack = customId === SCHEDULE_KIND_BACK_BUTTON_ID;
+  if (!isVenueBack && !isRaceListBack && !isKindBack) return;
+
+  await interaction.deferUpdate();
+
+  try {
+    if (isKindBack) {
+      await interaction.editReply(
+        await buildRaceScheduleIntroV2Payload({
+          userId: interaction.user.id,
+          extraFlags: v2ExtraFlags(interaction),
+        }),
+      );
+      return;
+    }
+
+    if (isVenueBack) {
+      const parts = customId.split('|');
+      const scheduleKind = parts[1];
+      const kaisaiDateYmd = parts[2];
+      const currentGroup = parts[3];
+      if (!kaisaiDateYmd || !scheduleKind || (scheduleKind === 'jra' && !currentGroup)) {
+        await interaction.editReply(
+          buildTextAndRowsV2Payload({
+            headline: '❌ 戻れません。',
+            actionRows: [],
+            extraFlags: v2ExtraFlags(interaction),
+            withBotingMenuBack: true,
+          }),
+        );
+        return;
+      }
+
+      if (scheduleKind === 'nar') {
+        const { venues } = await fetchNarVenuesForDate(kaisaiDateYmd);
+        const venuesDay = filterVenuesForInteractionPostDate(
+          venues,
+          kaisaiDateYmd,
+          jstYmd(),
+          { source: 'nar' },
+        );
+        if (!venuesDay.length) {
+          await interaction.editReply(
+            buildTextAndRowsV2Payload({
+              headline:
+                '❌ この操作日（日本時間）に発走のある地方開催が見つかりませんでした。',
+              actionRows: [],
+              extraFlags: v2ExtraFlags(interaction),
+              withBotingMenuBack: true,
+            }),
+          );
+          return;
+        }
+        const row = venueSelectRow('nar', kaisaiDateYmd, null, venuesDay);
+        await interaction.editReply(
+          await buildVenuePickIntroV2Payload({
+            userId: interaction.user.id,
+            extraFlags: v2ExtraFlags(interaction),
+            actionRows: [
+              row,
+              scheduleBackToKindSelectButtonRow(),
+              betSlipOpenReviewButtonRowForSchedule(
+                interaction.user.id,
+                firstScheduleAnchorRaceIdFromVenues(venuesDay),
+              ),
+            ],
+          }),
+        );
+        return;
+      }
+
+      const html = await fetchRaceListSub(kaisaiDateYmd, currentGroup);
+      const { venues } = parseRaceListSub(html, kaisaiDateYmd);
+      const venuesDay = filterVenuesForInteractionPostDate(
+        venues,
+        kaisaiDateYmd,
+        jstYmd(),
+        { source: 'jra' },
+      );
+      if (!venuesDay.length) {
+        await interaction.editReply(
+          buildTextAndRowsV2Payload({
+            headline:
+              '❌ この操作日（日本時間）に発走のある中央開催が見つかりませんでした。',
+            actionRows: [],
+            extraFlags: v2ExtraFlags(interaction),
+            withBotingMenuBack: true,
+          }),
+        );
+        return;
+      }
+      const row = venueSelectRow('jra', kaisaiDateYmd, currentGroup, venuesDay);
+
+      await interaction.editReply(
+        await buildVenuePickIntroV2Payload({
+          userId: interaction.user.id,
+          extraFlags: v2ExtraFlags(interaction),
+          actionRows: [
+            row,
+            scheduleBackToKindSelectButtonRow(),
+            betSlipOpenReviewButtonRowForSchedule(
+              interaction.user.id,
+              firstScheduleAnchorRaceIdFromVenues(venuesDay),
+            ),
+          ],
+        }),
+      );
+      return;
+    }
+
+    // RACE_LIST_BACK_PREFIX
+    const [, raceId] = customId.split('|');
+    if (!raceId) {
+      await interaction.editReply(
+        buildTextAndRowsV2Payload({
+          headline: '❌ 戻れません。',
+          actionRows: [],
+          extraFlags: v2ExtraFlags(interaction),
+          withBotingMenuBack: true,
+        }),
+      );
+      return;
+    }
+
+    const flow = getBetFlow(interaction.user.id, raceId);
+    const kaisaiDateYmd = flow?.kaisaiDate;
+    const currentGroup = flow?.currentGroup;
+    const kaisaiId = flow?.kaisaiId;
+    const scheduleKind = flow?.source === 'nar' ? 'nar' : 'jra';
+
+    if (!kaisaiDateYmd || !kaisaiId) {
+      await interaction.editReply(
+        buildTextAndRowsV2Payload({
+          headline:
+            '❌ 戻れません（開催情報が見つかりません）。もう一度 /boting から試してください。',
+          actionRows: [],
+          extraFlags: v2ExtraFlags(interaction),
+          withBotingMenuBack: true,
+        }),
+      );
+      return;
+    }
+
+    if (scheduleKind === 'nar') {
+      const html = await fetchNarRaceListSub(kaisaiDateYmd, kaisaiId);
+      const venue = parseNarRaceListSubToVenue(html, kaisaiDateYmd);
+      let races = venue?.races || [];
+      if (!races.length) {
+        await interaction.editReply(
+          buildTextAndRowsV2Payload({
+            headline: '❌ レース一覧を再取得できませんでした。',
+            actionRows: [],
+            extraFlags: v2ExtraFlags(interaction),
+            withBotingMenuBack: true,
+          }),
+        );
+        return;
+      }
+      races = filterRacesByInteractionPostDateYmd(races, kaisaiDateYmd, jstYmd(), {
+        source: 'nar',
+      });
+      if (!races.length) {
+        await interaction.editReply(
+          buildTextAndRowsV2Payload({
+            headline:
+              '❌ この操作日に該当するレースがありません。もう一度 /boting から開催を選び直してください。',
+            actionRows: [],
+            extraFlags: v2ExtraFlags(interaction),
+            withBotingMenuBack: true,
+          }),
+        );
+        return;
+      }
+
+      const lines = races.map((r) => {
+        const st = getRaceSalesStatus(r, kaisaiDateYmd);
+        return `**${r.roundLabel}** ${r.timeText} — ${r.title}\n└ ${st.detail}`;
+      });
+
+      let description = lines.join('\n\n');
+      if (description.length > 4090) description = `${description.slice(0, 4087)}…`;
+
+      const headline = [
+        '🏇 **レース一覧**',
+        '',
+        description,
+        '',
+        `開催日 ${kaisaiDateYmd}（日本時間）`,
+      ].join('\n');
+
+      const raceSelectRow = (() => {
+        const menu = new StringSelectMenuBuilder()
+          .setCustomId('race_menu_race')
+          .setPlaceholder('レースを選択（出馬表を表示）')
+          .addOptions(
+            races.slice(0, 25).map((r) => {
+              const st = getRaceSalesStatus(r, kaisaiDateYmd);
+              const label = `${r.roundLabel} ${r.timeText}`.replace(/\s+/g, ' ').trim().slice(0, 100);
+              const desc = `${st.shortLabel} · ${r.title}`.slice(0, 100);
+              return new StringSelectMenuOptionBuilder()
+                .setLabel(label || r.raceId)
+                .setValue(`${r.raceId}|${r.isResult ? 1 : 0}`)
+                .setDescription(desc);
+            }),
+          );
+        return new ActionRowBuilder().addComponents(menu);
+      })();
+
+      await interaction.editReply(
+        buildTextAndRowsV2Payload({
+          headline,
+          actionRows: [
+            raceSelectRow,
+            scheduleBackToVenueButtonRow(kaisaiDateYmd, '_', 'nar'),
+            scheduleBackToKindSelectButtonRow(),
+            betSlipOpenReviewButtonRowForSchedule(
+              interaction.user.id,
+              firstScheduleAnchorRaceIdFromRaces(races),
+            ),
+          ],
+          extraFlags: v2ExtraFlags(interaction),
+          withBotingMenuBack: true,
+        }),
+      );
+      return;
+    }
+
+    if (!currentGroup) {
+      await interaction.editReply(
+        buildTextAndRowsV2Payload({
+          headline:
+            '❌ 戻れません（開催情報が見つかりません）。もう一度 /boting から試してください。',
+          actionRows: [],
+          extraFlags: v2ExtraFlags(interaction),
+          withBotingMenuBack: true,
+        }),
+      );
+      return;
+    }
+
+    const html = await fetchRaceListSub(kaisaiDateYmd, currentGroup);
+    const { venues } = parseRaceListSub(html, kaisaiDateYmd);
+    let races = filterVenueRaces(venues, kaisaiId);
+    races = filterRacesByInteractionPostDateYmd(races, kaisaiDateYmd, jstYmd(), {
+      source: 'jra',
+    });
+    if (!races.length) {
+      await interaction.editReply(
+        buildTextAndRowsV2Payload({
+          headline:
+            '❌ この操作日に該当するレースがありません。もう一度 /boting から開催を選び直してください。',
+          actionRows: [],
+          extraFlags: v2ExtraFlags(interaction),
+          withBotingMenuBack: true,
+        }),
+      );
+      return;
+    }
+
+    const lines = races.map((r) => {
+      const st = getRaceSalesStatus(r, kaisaiDateYmd);
+      return `**${r.roundLabel}** ${r.timeText} — ${r.title}\n└ ${st.detail}`;
+    });
+
+    let description = lines.join('\n\n');
+    if (description.length > 4090) description = `${description.slice(0, 4087)}…`;
+
+    const headline = [
+      '🏇 **レース一覧**',
+      '',
+      description,
+      '',
+      `開催日 ${kaisaiDateYmd}（日本時間）`,
+    ].join('\n');
+
+    await interaction.editReply(
+      buildTextAndRowsV2Payload({
+        headline,
+        actionRows: [
+          raceSelectRow(kaisaiDateYmd, races),
+          scheduleBackToVenueButtonRow(kaisaiDateYmd, currentGroup, 'jra'),
+          scheduleBackToKindSelectButtonRow(),
+          betSlipOpenReviewButtonRowForSchedule(
+            interaction.user.id,
+            firstScheduleAnchorRaceIdFromRaces(races),
+          ),
+        ],
+        extraFlags: v2ExtraFlags(interaction),
+        withBotingMenuBack: true,
+      }),
+    );
+  } catch (e) {
+    console.error(e);
+    await interaction.editReply(
+      buildTextAndRowsV2Payload({
+        headline: `❌ 戻る処理に失敗: ${e.message}`,
+        actionRows: [],
+        extraFlags: v2ExtraFlags(interaction),
+        withBotingMenuBack: true,
+      }),
+    );
+  }
+}
+

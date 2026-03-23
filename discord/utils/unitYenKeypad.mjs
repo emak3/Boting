@@ -6,9 +6,9 @@ import {
   TextDisplayBuilder,
 } from 'discord.js';
 
-/** 1点あたり bp の上限（従来モーダルに近い桁） */
-export const MAX_UNIT_YEN = 9_999_999;
-const MAX_HUNDREDS = Math.floor(MAX_UNIT_YEN / 100);
+/** テンキー・正規化で扱える 1点あたり bp の上限（JS の安全な整数。業務上の上限は設けない） */
+const MAX_UNIT_YEN_SAFE = Math.floor(Number.MAX_SAFE_INTEGER / 100) * 100;
+const MAX_HUNDREDS = Math.floor(MAX_UNIT_YEN_SAFE / 100);
 const MAX_BUFFER_LEN = String(MAX_HUNDREDS).length;
 
 /**
@@ -19,7 +19,7 @@ export function normalizeUnitYen100(n) {
   let v = Math.round(Number(n) || 0);
   if (!Number.isFinite(v) || v < 100) v = 100;
   v = Math.round(v / 100) * 100;
-  if (v > MAX_UNIT_YEN) v = Math.floor(MAX_UNIT_YEN / 100) * 100;
+  if (v > MAX_UNIT_YEN_SAFE) v = MAX_UNIT_YEN_SAFE;
   return v;
 }
 

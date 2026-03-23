@@ -27,7 +27,7 @@ function formatLedgerLines(entries) {
   const lines = entries.map((e) => {
     const t = e.at ? formatJst(e.at) : '—';
     const sign = e.delta >= 0 ? `+${e.delta}` : `${e.delta}`;
-    return `\`${t}\` **${sign}** bp → **${e.balanceAfter}** bp（${kindLabelJa(e.kind)}）`;
+    return `\`${t}\` **${sign}** bp → **${e.balanceAfter}** bp（${kindLabelJa(e.kind, e.streakDay)}）`;
   });
   let text = lines.join('\n');
   if (text.length > 3500) {
@@ -39,7 +39,9 @@ function formatLedgerLines(entries) {
 const commandObject = {
   command: new SlashCommandBuilder()
     .setName('daily')
-    .setDescription('毎日のポイント（bp）を受け取ります（初回は 10000 bp）')
+    .setDescription(
+      '毎日のポイント（bp）を受け取ります（初回は 10000 bp・連続7日でボーナス）',
+    )
     .setContexts(InteractionContextType.Guild),
 
   async execute(interaction) {
@@ -90,6 +92,14 @@ const commandObject = {
             inline: false,
           },
           {
+            name: 'いまの連続記録',
+            value:
+              view.dailyStreakDay != null
+                ? `**${view.dailyStreakDay}** 日（次の日次帯は ${view.dailyStreakDay >= 7 ? 1 : view.dailyStreakDay + 1} 日目のボーナス）`
+                : '—',
+            inline: false,
+          },
+          {
             name: '直近の収支（最大15件）',
             value: formatLedgerLines(view.entries),
             inline: false,
@@ -101,7 +111,7 @@ const commandObject = {
       return;
     }
 
-    const kindLine = kindLabelJa(result.kind);
+    const kindLine = kindLabelJa(result.kind, result.streakDay);
 
     await interaction.editReply({
       content: `✅ **+${result.granted}** bp（${kindLine}）\n残高: **${result.balance}** bp`,

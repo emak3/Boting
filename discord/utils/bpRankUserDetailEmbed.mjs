@@ -117,6 +117,7 @@ function formatBpRankUserDetailMarkdown(targetUser, d) {
     `購入金額合計: **${agg.totalCostBp}** bp`,
     `1点あたり最大金額: **${agg.maxCostBp}** bp`,
     `精算済み件数: **${agg.settledCount}** 件`,
+    `トータル回収率（精算済み合計）: **${pct(agg.totalRecoveryRate)}**（払戻 **${agg.totalRefundBpSettled}** bp / 購入 **${agg.totalCostBpSettled}** bp）`,
     `最大回収率（精算済み1件あたり）: **${pct(agg.maxRecoveryRate)}**`,
     `最低回収率（精算済み1件あたり）: **${pct(agg.minRecoveryRate)}**`,
     '',

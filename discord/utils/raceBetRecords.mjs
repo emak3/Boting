@@ -610,6 +610,127 @@ export async function resolveDefaultRaceHistoryHoldYmd(
 }
 
 /**
+ * @typedef {object} RaceBetAggregates
+ * @property {number} purchaseCount
+ * @property {number} totalCostBp
+ * @property {number} maxCostBp
+ * @property {Date | null} firstPurchasedAt
+ * @property {number} settledCount
+ * @property {number} hitCount
+ * @property {number | null} maxRecoveryRate
+ * @property {number | null} minRecoveryRate
+ * @property {number} totalRefundBpSettled
+ * @property {number} totalCostBpSettled
+ * @property {number | null} totalRecoveryRate 精算済み合計: 払戻合計 ÷ 購入合計
+ */
+
+function createEmptyMutableRaceBetAggregates() {
+  return {
+    purchaseCount: 0,
+    totalCostBp: 0,
+    maxCostBp: 0,
+    /** @type {Date | null} */
+    firstPurchasedAt: null,
+    settledCount: 0,
+    hitCount: 0,
+    /** @type {number | null} */
+    maxRecoveryRate: null,
+    /** @type {number | null} */
+    minRecoveryRate: null,
+    totalRefundBpSettled: 0,
+    totalCostBpSettled: 0,
+  };
+}
+
+/**
+ * @param {ReturnType<typeof createEmptyMutableRaceBetAggregates>} agg
+ * @param {object} d
+ */
+function accumulateRaceBetDoc(agg, d) {
+  agg.purchaseCount += 1;
+  const cost = Math.max(0, Math.round(Number(d.costBp) || 0));
+  agg.totalCostBp += cost;
+  if (cost > agg.maxCostBp) agg.maxCostBp = cost;
+  const at = d.purchasedAt?.toDate?.() ?? null;
+  if (at instanceof Date && !Number.isNaN(at.getTime())) {
+    if (!agg.firstPurchasedAt || at < agg.firstPurchasedAt) {
+      agg.firstPurchasedAt = at;
+    }
+  }
+  if (String(d.status || '') === 'settled' && cost > 0) {
+    agg.settledCount += 1;
+    const refund = Math.max(0, Math.round(Number(d.refundBp) || 0));
+    agg.totalRefundBpSettled += refund;
+    agg.totalCostBpSettled += cost;
+    const ratio = refund / cost;
+    if (agg.maxRecoveryRate == null || ratio > agg.maxRecoveryRate) {
+      agg.maxRecoveryRate = ratio;
+    }
+    if (agg.minRecoveryRate == null || ratio < agg.minRecoveryRate) {
+      agg.minRecoveryRate = ratio;
+    }
+    if (refund > 0) agg.hitCount += 1;
+  }
+}
+
+/**
+ * @param {ReturnType<typeof createEmptyMutableRaceBetAggregates>} agg
+ * @returns {RaceBetAggregates}
+ */
+function finalizeRaceBetAggregates(agg) {
+  const totalRecoveryRate =
+    agg.totalCostBpSettled > 0
+      ? agg.totalRefundBpSettled / agg.totalCostBpSettled
+      : null;
+  return {
+    purchaseCount: agg.purchaseCount,
+    totalCostBp: agg.totalCostBp,
+    maxCostBp: agg.maxCostBp,
+    firstPurchasedAt: agg.firstPurchasedAt,
+    settledCount: agg.settledCount,
+    hitCount: agg.hitCount,
+    maxRecoveryRate: agg.maxRecoveryRate,
+    minRecoveryRate: agg.minRecoveryRate,
+    totalRefundBpSettled: agg.totalRefundBpSettled,
+    totalCostBpSettled: agg.totalCostBpSettled,
+    totalRecoveryRate,
+  };
+}
+
+/** @returns {RaceBetAggregates} */
+export function emptyRaceBetAggregates() {
+  return finalizeRaceBetAggregates(createEmptyMutableRaceBetAggregates());
+}
+
+/**
+ * 全ユーザーの競馬購入集計（raceBets 全件を1回スキャン）
+ * @returns {Promise<Map<string, RaceBetAggregates>>}
+ */
+export async function fetchAllRaceBetAggregatesByUserId() {
+  const db = getAdminFirestore();
+  const snap = await db.collection(COLLECTION).get();
+  /** @type {Map<string, ReturnType<typeof createEmptyMutableRaceBetAggregates>>} */
+  const mut = new Map();
+  for (const doc of snap.docs) {
+    const d = doc.data();
+    const uid = String(d.userId || '');
+    if (!uid) continue;
+    let agg = mut.get(uid);
+    if (!agg) {
+      agg = createEmptyMutableRaceBetAggregates();
+      mut.set(uid, agg);
+    }
+    accumulateRaceBetDoc(agg, d);
+  }
+  /** @type {Map<string, RaceBetAggregates>} */
+  const out = new Map();
+  for (const [uid, a] of mut) {
+    out.set(uid, finalizeRaceBetAggregates(a));
+  }
+  return out;
+}
+
+/**
  * ユーザーの競馬購入の集計（回収率は精算済みレコードのみ）
  * hitCount: 精算済みかつ払戻 bp > 0（購入履歴の「的中」と同じ）
  * @param {string} userId
@@ -617,64 +738,15 @@ export async function resolveDefaultRaceHistoryHoldYmd(
 export async function fetchUserRaceBetAggregates(userId) {
   const uid = String(userId || '');
   if (!uid) {
-    return {
-      purchaseCount: 0,
-      totalCostBp: 0,
-      maxCostBp: 0,
-      firstPurchasedAt: null,
-      settledCount: 0,
-      hitCount: 0,
-      maxRecoveryRate: null,
-      minRecoveryRate: null,
-    };
+    return emptyRaceBetAggregates();
   }
 
   const db = getAdminFirestore();
   const snap = await db.collection(COLLECTION).where('userId', '==', uid).get();
 
-  let purchaseCount = 0;
-  let totalCostBp = 0;
-  let maxCostBp = 0;
-  /** @type {Date | null} */
-  let firstPurchasedAt = null;
-  let settledCount = 0;
-  let hitCount = 0;
-  /** @type {number[]} */
-  const recoveryRatios = [];
-
+  const agg = createEmptyMutableRaceBetAggregates();
   for (const doc of snap.docs) {
-    const d = doc.data();
-    purchaseCount += 1;
-    const cost = Math.max(0, Math.round(Number(d.costBp) || 0));
-    totalCostBp += cost;
-    if (cost > maxCostBp) maxCostBp = cost;
-    const at = d.purchasedAt?.toDate?.() ?? null;
-    if (at instanceof Date && !Number.isNaN(at.getTime())) {
-      if (!firstPurchasedAt || at < firstPurchasedAt) firstPurchasedAt = at;
-    }
-    if (String(d.status || '') === 'settled' && cost > 0) {
-      settledCount += 1;
-      const refund = Math.max(0, Math.round(Number(d.refundBp) || 0));
-      recoveryRatios.push(refund / cost);
-      if (refund > 0) hitCount += 1;
-    }
+    accumulateRaceBetDoc(agg, doc.data());
   }
-
-  let maxRecoveryRate = null;
-  let minRecoveryRate = null;
-  if (recoveryRatios.length) {
-    maxRecoveryRate = Math.max(...recoveryRatios);
-    minRecoveryRate = Math.min(...recoveryRatios);
-  }
-
-  return {
-    purchaseCount,
-    totalCostBp,
-    maxCostBp,
-    firstPurchasedAt,
-    settledCount,
-    hitCount,
-    maxRecoveryRate,
-    minRecoveryRate,
-  };
+  return finalizeRaceBetAggregates(agg);
 }

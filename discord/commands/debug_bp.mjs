@@ -1,6 +1,7 @@
 import {
   SlashCommandBuilder,
   InteractionContextType,
+  PermissionFlagsBits,
   MessageFlags,
 } from 'discord.js';
 import { canUseDebugCommands } from '../utils/raceDebugBypass.mjs';
@@ -22,6 +23,7 @@ const commandObject = {
         .setMinValue(-99_999_999)
         .setMaxValue(99_999_999),
     )
+    .setDefaultMemberPermissions(PermissionFlagsBits.Administrator)
     .setContexts(InteractionContextType.Guild),
 
   async execute(interaction) {

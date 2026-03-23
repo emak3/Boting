@@ -1,8 +1,8 @@
 {
-  "name": "botting",
+  "name": "boting",
   "version": "1.0.0",
   "type": "module",
-  "description": "Botting",
+  "description": "Boting",
   "main": "index.mjs",
   "scripts": {
     "start": "node --env-file=dev.env index.mjs",

@@ -1,6 +1,7 @@
 import {
   SlashCommandBuilder,
   InteractionContextType,
+  PermissionFlagsBits,
   MessageFlags,
 } from 'discord.js';
 import {
@@ -18,6 +19,7 @@ const commandObject = {
     )
     .addSubcommand((s) => s.setName('off').setDescription('バイパスを無効'))
     .addSubcommand((s) => s.setName('status').setDescription('現在の状態'))
+    .setDefaultMemberPermissions(PermissionFlagsBits.Administrator)
     .setContexts(InteractionContextType.Guild),
 
   async execute(interaction) {

@@ -2,15 +2,16 @@ import {
   SlashCommandBuilder,
   InteractionContextType,
   MessageFlags,
-  EmbedBuilder,
 } from 'discord.js';
-import {
-  fetchAllUsersByBalanceDesc,
-  computeBpRank,
-} from '../utils/bpLeaderboard.mjs';
+import { computeBpRank } from '../utils/bpLeaderboard.mjs';
 import { runPendingRaceRefundsForUser } from '../utils/raceBetRefundSweep.mjs';
 import { buildBpRankUserDetailV2Container } from '../utils/bpRankUserDetailEmbed.mjs';
 import { buildBpRankProfileButtonsRow } from '../utils/bpRankUiButtons.mjs';
+import {
+  buildBpRankLeaderboardEmbed,
+  buildBpRankSelectRow,
+  BP_RANK_MODE,
+} from '../utils/bpRankLeaderboardEmbed.mjs';
 
 const commandObject = {
   command: new SlashCommandBuilder()
@@ -76,35 +77,24 @@ const commandObject = {
     await interaction.deferReply();
     await runPendingRaceRefundsForUser(interaction.user.id);
 
-    let sorted;
+    let embed;
     try {
-      sorted = await fetchAllUsersByBalanceDesc();
+      const built = await buildBpRankLeaderboardEmbed(limit, BP_RANK_MODE.BALANCE);
+      embed = built.embed;
     } catch (e) {
-      console.error('bp_rank / fetchAllUsersByBalanceDesc:', e);
+      console.error('bp_rank / buildBpRankLeaderboardEmbed:', e);
       await interaction.editReply({
         content: `❌ ランキングの取得に失敗しました: ${e.message}`,
       });
       return;
     }
 
-    const slice = sorted.slice(0, limit);
-    const lines = slice.map((row, i) => {
-      const medal =
-        i === 0 ? '🥇' : i === 1 ? '🥈' : i === 2 ? '🥉' : `${i + 1}.`;
-      return `${medal} <@${row.userId}> — **${row.balance}** bp`;
+    const selectRow = buildBpRankSelectRow(limit, BP_RANK_MODE.BALANCE);
+
+    await interaction.editReply({
+      embeds: [embed],
+      components: [selectRow],
     });
-
-    const body =
-      lines.length > 0
-        ? lines.join('\n')
-        : 'まだ誰も BP データがありません。';
-
-    const embed = new EmbedBuilder()
-      .setTitle(`BP ランキング（上位 ${slice.length} / 全 ${sorted.length} 名）`)
-      .setColor(0xf1c40f)
-      .setDescription(body);
-
-    await interaction.editReply({ embeds: [embed] });
   },
 };
 

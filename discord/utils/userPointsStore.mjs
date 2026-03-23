@@ -101,13 +101,32 @@ export function getJstDailyPeriodWindowBounds(periodKey) {
   return { start, end };
 }
 
-export function kindLabelJa(kind) {
+/**
+ * @param {string} kind
+ * @param {number} [streakDay] 連続デイリー（1–7）のときのみ
+ */
+export function kindLabelJa(kind, streakDay) {
   if (kind === 'first') return '初回ボーナス';
   if (kind === 'debug_extra') return 'デバッグ';
   if (kind === 'debug_bp_adjust') return 'デバッグ（BP調整）';
   if (kind === 'race_bet') return '競馬（購入）';
   if (kind === 'race_refund') return '競馬（払戻）';
+  if (kind === 'daily') {
+    const s = Number(streakDay);
+    if (Number.isFinite(s) && s >= 1 && s <= 7) {
+      return `（連続${s}日目）`;
+    }
+    return 'デイリー';
+  }
   return 'デイリー';
+}
+
+/** 連続日数（1–7）に応じたデイリー合計 bp（10 + ボーナス） */
+export function getDailyStreakGrantBp(streakDay) {
+  const d = Math.trunc(Number(streakDay));
+  const bonuses = [0, 20, 30, 40, 50, 60, 130];
+  if (!Number.isFinite(d) || d < 1 || d > 7) return 10;
+  return 10 + bonuses[d - 1];
 }
 
 /**
@@ -116,8 +135,9 @@ export function kindLabelJa(kind) {
  *   balance: number,
  *   currentPeriodKey: string,
  *   lastDailyPeriodKey: string | null,
+ *   dailyStreakDay: number | null,
  *   nextClaimAt: Date | null,
- *   entries: Array<{ delta: number, balanceAfter: number, kind: string, period: string, at: Date | null }>,
+ *   entries: Array<{ delta: number, balanceAfter: number, kind: string, period: string, at: Date | null, streakDay?: number }>,
  * }>}
  */
 export async function getDailyAccountView(userId) {
@@ -137,6 +157,14 @@ export async function getDailyAccountView(userId) {
   const balance = normBalance(u.balance);
   const lastDailyPeriodKey =
     u.lastDailyPeriodKey != null ? String(u.lastDailyPeriodKey) : null;
+  const rawStreak = u.dailyStreakDay;
+  const dailyStreakDay =
+    rawStreak != null &&
+    Number.isFinite(Number(rawStreak)) &&
+    Math.trunc(Number(rawStreak)) >= 1 &&
+    Math.trunc(Number(rawStreak)) <= 7
+      ? Math.trunc(Number(rawStreak))
+      : null;
 
   let nextClaimAt = null;
   if (lastDailyPeriodKey === currentPeriodKey && lastDailyPeriodKey) {
@@ -147,12 +175,21 @@ export async function getDailyAccountView(userId) {
   for (const d of ledgerSnap.docs) {
     const row = d.data();
     const at = row.at?.toDate?.() ?? null;
+    const streakRaw = row.streakDay;
+    const streakNum =
+      streakRaw != null && streakRaw !== ''
+        ? Math.trunc(Number(streakRaw))
+        : undefined;
     entries.push({
       delta: normBalance(row.delta),
       balanceAfter: normBalance(row.balanceAfter),
       kind: String(row.kind ?? 'daily'),
       period: row.period != null ? String(row.period) : '',
       at,
+      streakDay:
+        Number.isFinite(streakNum) && streakNum >= 1 && streakNum <= 7
+          ? streakNum
+          : undefined,
     });
   }
 
@@ -160,6 +197,7 @@ export async function getDailyAccountView(userId) {
     balance,
     currentPeriodKey,
     lastDailyPeriodKey,
+    dailyStreakDay,
     nextClaimAt,
     entries,
   };
@@ -167,13 +205,17 @@ export async function getDailyAccountView(userId) {
 
 export function appendLedgerTx(tx, userRef, payload) {
   const row = userRef.collection(LEDGER).doc();
-  tx.set(row, {
+  const doc = {
     delta: payload.delta,
     balanceAfter: payload.balanceAfter,
     kind: payload.kind,
     period: payload.period,
     at: FieldValue.serverTimestamp(),
-  });
+  };
+  if (payload.streakDay != null) {
+    doc.streakDay = Math.trunc(Number(payload.streakDay));
+  }
+  tx.set(row, doc);
 }
 
 /**
@@ -256,7 +298,10 @@ export async function applyDebugBpAdjustment(targetUserId, delta) {
 /**
  * @param {string} userId
  * @param {{ debugBypass?: boolean }} [opts]
- * @returns {Promise<{ ok: true, granted: number, balance: number, kind: 'first' | 'daily' | 'debug_extra' } | { ok: false, reason: 'already_claimed', balance: number }>}
+ * @returns {Promise<
+ *   | { ok: true, granted: number, balance: number, kind: 'first' | 'daily' | 'debug_extra', streakDay?: number }
+ *   | { ok: false, reason: 'already_claimed', balance: number }
+ * >}
  */
 export async function tryClaimDaily(userId, opts = {}) {
   const debugBypass = !!opts.debugBypass;
@@ -311,21 +356,46 @@ export async function tryClaimDaily(userId, opts = {}) {
       };
     }
 
-    const newBal = balance + 10;
+    const prevPeriod = addJstCalendarDays(period, -1);
+    const prevStreak = u.dailyStreakDay;
+    const hadStreak =
+      prevStreak != null &&
+      Number.isFinite(Number(prevStreak)) &&
+      Math.trunc(Number(prevStreak)) >= 1 &&
+      Math.trunc(Number(prevStreak)) <= 7;
+    const consecutive =
+      lastDailyPeriodKey === prevPeriod && hadStreak;
+
+    let streakDay = 1;
+    if (consecutive) {
+      const p = Math.trunc(Number(prevStreak));
+      streakDay = p >= 7 ? 1 : p + 1;
+    }
+
+    const granted = getDailyStreakGrantBp(streakDay);
+    const newBal = balance + granted;
     tx.set(
       ref,
       {
         balance: newBal,
         lastDailyPeriodKey: period,
+        dailyStreakDay: streakDay,
       },
       { merge: true },
     );
     appendLedgerTx(tx, ref, {
-      delta: 10,
+      delta: granted,
       balanceAfter: newBal,
       kind: 'daily',
       period,
+      streakDay,
     });
-    return { ok: true, granted: 10, balance: newBal, kind: 'daily' };
+    return {
+      ok: true,
+      granted,
+      balance: newBal,
+      kind: 'daily',
+      streakDay,
+    };
   });
 }

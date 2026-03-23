@@ -67,6 +67,13 @@ import {
   raceResultFlagStore,
   venueSelectionStore,
 } from '../../utils/race/venueSelectionStore.mjs';
+import {
+  RACE_MENU_HUB_QUICK_ID,
+  parseHubQuickSelectValue,
+  buildQuickPickItemsFromScheduleVenues,
+  buildHubQuickRacesSelectRow,
+  VENUE_QUICK_PICK_BODY_SUFFIX,
+} from '../../utils/race/raceHubQuickPick.mjs';
 
 const VENUE_MENU_ID = 'race_menu_venue';
 const RACE_MENU_ID = 'race_menu_race';
@@ -1129,12 +1136,52 @@ export default async function raceScheduleMenu(interaction) {
   if (
     customId !== VENUE_MENU_ID &&
     customId !== RACE_MENU_ID &&
+    customId !== RACE_MENU_HUB_QUICK_ID &&
     customId !== SCHEDULE_KIND_MENU_ID &&
     !isScheduleBetSelect
   )
     return;
 
   const userId = interaction.user?.id;
+
+  // 馬券購入トップ: 締切が近い発売中レースから出馬表へ
+  if (customId === RACE_MENU_HUB_QUICK_ID) {
+    await interaction.deferUpdate();
+    const rawVal = interaction.values[0];
+    const parsed = parseHubQuickSelectValue(rawVal);
+    if (!parsed || !userId) {
+      await interaction.editReply(
+        buildTextAndRowsV2Payload({
+          headline:
+            '❌ メニュー値が不正です。中央/地方を選び直すか、もう一度 **馬券を購入** からやり直してください。',
+          actionRows: [],
+          extraFlags: v2ExtraFlags(interaction),
+          withBotingMenuBack: true,
+        }),
+      );
+      return;
+    }
+    venueSelectionStore.set(userId, parsed.venue);
+    raceResultFlagStore.set(`${userId}|${parsed.raceId}`, parsed.isResult);
+    try {
+      const payload = await buildRaceMenuSelectionPayload(interaction, {
+        raceId: parsed.raceId,
+        isResultFlag: parsed.isResult ? '1' : '0',
+      });
+      await interaction.editReply(payload);
+    } catch (e) {
+      console.error(e);
+      await interaction.editReply(
+        buildTextAndRowsV2Payload({
+          headline: `❌ 出馬表の取得に失敗: ${e.message}`,
+          actionRows: [],
+          extraFlags: v2ExtraFlags(interaction),
+          withBotingMenuBack: true,
+        }),
+      );
+    }
+    return;
+  }
 
   // 0) /race 直後: 中央 / 地方
   if (customId === SCHEDULE_KIND_MENU_ID) {
@@ -1164,12 +1211,21 @@ export default async function raceScheduleMenu(interaction) {
           );
           return;
         }
+        const jraQuickItems = buildQuickPickItemsFromScheduleVenues({
+          venuesDay,
+          kaisaiDateYmd,
+          source: 'jra',
+          currentGroup,
+        });
+        const jraQuickRow = buildHubQuickRacesSelectRow(jraQuickItems);
         await interaction.editReply(
           await buildVenuePickIntroV2Payload({
             userId,
             extraFlags: v2ExtraFlags(interaction),
+            introBodySuffix: jraQuickItems.length ? VENUE_QUICK_PICK_BODY_SUFFIX : '',
             actionRows: [
               venueSelectRowFromSchedule('jra', kaisaiDateYmd, currentGroup, venuesDay),
+              ...(jraQuickRow ? [jraQuickRow] : []),
               scheduleBackToKindSelectButtonRow(),
               betSlipOpenReviewButtonRowForSchedule(
                 userId,
@@ -1200,12 +1256,21 @@ export default async function raceScheduleMenu(interaction) {
           );
           return;
         }
+        const narQuickItems = buildQuickPickItemsFromScheduleVenues({
+          venuesDay,
+          kaisaiDateYmd,
+          source: 'nar',
+          currentGroup: null,
+        });
+        const narQuickRow = buildHubQuickRacesSelectRow(narQuickItems);
         await interaction.editReply(
           await buildVenuePickIntroV2Payload({
             userId,
             extraFlags: v2ExtraFlags(interaction),
+            introBodySuffix: narQuickItems.length ? VENUE_QUICK_PICK_BODY_SUFFIX : '',
             actionRows: [
               venueSelectRowFromSchedule('nar', kaisaiDateYmd, null, venuesDay),
+              ...(narQuickRow ? [narQuickRow] : []),
               scheduleBackToKindSelectButtonRow(),
               betSlipOpenReviewButtonRowForSchedule(
                 userId,

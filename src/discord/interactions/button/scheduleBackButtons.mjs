@@ -33,6 +33,11 @@ import {
   buildRaceScheduleIntroV2Payload,
   buildVenuePickIntroV2Payload,
 } from '../../utils/race/raceCommandHub.mjs';
+import {
+  buildQuickPickItemsFromScheduleVenues,
+  buildHubQuickRacesSelectRow,
+  VENUE_QUICK_PICK_BODY_SUFFIX,
+} from '../../utils/race/raceHubQuickPick.mjs';
 
 function v2ExtraFlags(interaction) {
   try {
@@ -156,12 +161,21 @@ export default async function scheduleBackButtons(interaction) {
           return;
         }
         const row = venueSelectRow('nar', kaisaiDateYmd, null, venuesDay);
+        const narQuickItems = buildQuickPickItemsFromScheduleVenues({
+          venuesDay,
+          kaisaiDateYmd,
+          source: 'nar',
+          currentGroup: null,
+        });
+        const narQuickRow = buildHubQuickRacesSelectRow(narQuickItems);
         await interaction.editReply(
           await buildVenuePickIntroV2Payload({
             userId: interaction.user.id,
             extraFlags: v2ExtraFlags(interaction),
+            introBodySuffix: narQuickItems.length ? VENUE_QUICK_PICK_BODY_SUFFIX : '',
             actionRows: [
               row,
+              ...(narQuickRow ? [narQuickRow] : []),
               scheduleBackToKindSelectButtonRow(),
               betSlipOpenReviewButtonRowForSchedule(
                 interaction.user.id,
@@ -194,13 +208,22 @@ export default async function scheduleBackButtons(interaction) {
         return;
       }
       const row = venueSelectRow('jra', kaisaiDateYmd, currentGroup, venuesDay);
+      const jraQuickItems = buildQuickPickItemsFromScheduleVenues({
+        venuesDay,
+        kaisaiDateYmd,
+        source: 'jra',
+        currentGroup,
+      });
+      const jraQuickRow = buildHubQuickRacesSelectRow(jraQuickItems);
 
       await interaction.editReply(
         await buildVenuePickIntroV2Payload({
           userId: interaction.user.id,
           extraFlags: v2ExtraFlags(interaction),
+          introBodySuffix: jraQuickItems.length ? VENUE_QUICK_PICK_BODY_SUFFIX : '',
           actionRows: [
             row,
+            ...(jraQuickRow ? [jraQuickRow] : []),
             scheduleBackToKindSelectButtonRow(),
             betSlipOpenReviewButtonRowForSchedule(
               interaction.user.id,

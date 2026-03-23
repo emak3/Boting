@@ -119,18 +119,19 @@ export async function buildRaceScheduleIntroV2Payload({ userId, extraFlags = 0 }
 
 /**
  * 開催場選択の直前画面（bp + 案内を Container、続けて actionRows）
- * @param {{ userId: string, extraFlags?: number, actionRows?: import('discord.js').ActionRowBuilder[] }} opts
+ * @param {{ userId: string, extraFlags?: number, actionRows?: import('discord.js').ActionRowBuilder[], introBodySuffix?: string }} opts
  */
 export async function buildVenuePickIntroV2Payload({
   userId,
   extraFlags = 0,
   actionRows = [],
+  introBodySuffix = '',
 }) {
   const balance = await getBalance(userId);
   const container = new ContainerBuilder().setAccentColor(HUB_ACCENT);
-  container.addTextDisplayComponents((td) =>
-    td.setContent([fmtBpLine(balance), '', VENUE_PICK_INTRO_BODY].join('\n')),
-  );
+  const bodyParts = [fmtBpLine(balance), '', VENUE_PICK_INTRO_BODY];
+  if (introBodySuffix) bodyParts.push(introBodySuffix);
+  container.addTextDisplayComponents((td) => td.setContent(bodyParts.join('\n')));
   return {
     content: null,
     embeds: [],

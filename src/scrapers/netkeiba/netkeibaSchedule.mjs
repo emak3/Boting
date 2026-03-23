@@ -326,6 +326,27 @@ export function getRaceSalesStatus(race, kaisaiDateYmd, now = new Date()) {
   return { shortLabel: '発売中', detail: '発売中（発走約2分前まで）', closed: false };
 }
 
+/**
+ * 発売締切（発走2分前）の時刻 ms（UTC）。時刻不明・結果確定時は null。
+ * @param {{ isResult?: boolean, timeText?: string }} race
+ * @param {string} kaisaiDateYmd
+ * @returns {number | null}
+ */
+export function getRaceBettingCloseDeadlineMs(race, kaisaiDateYmd) {
+  if (race?.isResult) return null;
+  const tm = String(race?.timeText || '').match(/(\d{1,2})\s*:\s*(\d{2})/);
+  if (!tm) return null;
+  const hh = parseInt(tm[1], 10);
+  const mm = parseInt(tm[2], 10);
+  const y = parseInt(kaisaiDateYmd.slice(0, 4), 10);
+  const mo = parseInt(kaisaiDateYmd.slice(4, 6), 10);
+  const d = parseInt(kaisaiDateYmd.slice(6, 8), 10);
+  const postIso = `${y}-${String(mo).padStart(2, '0')}-${String(d).padStart(2, '0')}T${String(hh).padStart(2, '0')}:${String(mm).padStart(2, '0')}:00+09:00`;
+  const postMs = Date.parse(postIso);
+  if (Number.isNaN(postMs)) return null;
+  return postMs - 2 * 60 * 1000;
+}
+
 export async function fetchTodayVenuesAndRaces() {
   return fetchVenuesAndRacesForJstYmd(jstYmd());
 }

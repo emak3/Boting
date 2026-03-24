@@ -37,6 +37,7 @@ import {
   wakuUmaEmojiResolvable,
   DISCORD_SELECT_OPTION_LABEL_RESERVE_POST_SELECTION,
 } from '../../utils/race/raceNumberEmoji.mjs';
+import { MSG_RACE_BET_FLOW_SESSION_INVALID } from '../../utils/bet/betFlowSessionCopy.mjs';
 import { getBetFlow, setBetFlow, patchBetFlow, clearBetFlow } from '../../utils/bet/betFlowStore.mjs';
 import { getSlipSavedCount } from '../../utils/bet/betSlipStore.mjs';
 import {
@@ -1792,7 +1793,7 @@ export default async function raceScheduleMenu(interaction) {
     if (!flow?.result) {
       await interaction.editReply(
         buildTextAndRowsV2Payload({
-          headline: '❌ セッションが無効です。もう一度 /boting から開始してください。',
+          headline: MSG_RACE_BET_FLOW_SESSION_INVALID,
           actionRows: [],
           extraFlags: v2ExtraFlags(interaction),
           withBotingMenuBack: true,

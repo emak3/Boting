@@ -26,7 +26,8 @@ export function getSlipSavedItems(userId) {
 }
 
 export function getSlipSavedCount(userId) {
-  return getSlipSavedItems(userId).length;
+  const e = savedEntry(userId);
+  return e?.items?.length ?? 0;
 }
 
 /**

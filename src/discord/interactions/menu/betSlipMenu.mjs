@@ -1,4 +1,5 @@
 import { MessageFlags } from 'discord.js';
+import { MSG_SLIP_BATCH_REVIEW_SESSION_INVALID } from '../../utils/bet/betSlipCopy.mjs';
 import {
   getSlipPendingReview,
   replaceSlipPendingItems,
@@ -23,7 +24,7 @@ export default async function betSlipMenu(interaction) {
     const pending = getSlipPendingReview(userId);
     if (!pending?.items?.length) {
       await interaction.reply({
-        content: '❌ 購入予定の確認セッションが無効です。',
+        content: MSG_SLIP_BATCH_REVIEW_SESSION_INVALID,
         flags: MessageFlags.Ephemeral,
       });
       return;
@@ -84,7 +85,7 @@ export default async function betSlipMenu(interaction) {
   const pending = getSlipPendingReview(userId);
   if (!pending?.items?.length) {
     await interaction.reply({
-      content: '❌ 購入予定の確認セッションが無効です。',
+      content: MSG_SLIP_BATCH_REVIEW_SESSION_INVALID,
       flags: MessageFlags.Ephemeral,
     });
     return;

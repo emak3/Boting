@@ -7,6 +7,11 @@ import {
   MessageFlags,
 } from 'discord.js';
 import { getBetFlow, clearBetFlow, patchBetFlow } from '../../utils/bet/betFlowStore.mjs';
+import { MSG_RACE_BET_FLOW_SESSION_INVALID } from '../../utils/bet/betFlowSessionCopy.mjs';
+import {
+  MSG_SLIP_BATCH_REVIEW_SESSION_INVALID,
+  msgSlipSavedMaxItemsExceeded,
+} from '../../utils/bet/betSlipCopy.mjs';
 import {
   addSlipSavedItem,
   clearSlipSaved,
@@ -15,7 +20,6 @@ import {
   replaceSlipPendingItems,
   restoreSlipSavedItems,
   setSlipPendingReviewPage,
-  SLIP_MAX_ITEMS,
 } from '../../utils/bet/betSlipStore.mjs';
 import { canBypassSalesClosed } from '../../utils/debug/raceDebugBypass.mjs';
 import { partitionPendingItemsBySalesClosed } from '../../utils/bet/betSlipSalesPartition.mjs';
@@ -323,7 +327,7 @@ export default async function betFlowButtons(interaction) {
     if (!flow?.result) {
       await interaction.editReply(
         buildTextAndRowsV2Payload({
-          headline: '❌ セッションが切れています。もう一度 /boting から開き直してください。',
+          headline: MSG_RACE_BET_FLOW_SESSION_INVALID,
           actionRows: [],
           extraFlags,
           withBotingMenuBack: true,
@@ -485,9 +489,7 @@ export default async function betFlowButtons(interaction) {
     const pending = getSlipPendingReview(userId);
     if (!pending?.items?.length) {
       await interaction.reply(
-        buildEphemeralWithBotingBackPayload(
-          '❌ 購入予定の確認セッションが無効です。',
-        ),
+        buildEphemeralWithBotingBackPayload(MSG_SLIP_BATCH_REVIEW_SESSION_INVALID),
       );
       return;
     }
@@ -522,9 +524,7 @@ export default async function betFlowButtons(interaction) {
     const pending = getSlipPendingReview(userId);
     if (!pending?.items?.length) {
       await interaction.reply(
-        buildEphemeralWithBotingBackPayload(
-          '❌ 購入予定の確認セッションが無効です。',
-        ),
+        buildEphemeralWithBotingBackPayload(MSG_SLIP_BATCH_REVIEW_SESSION_INVALID),
       );
       return;
     }
@@ -566,9 +566,7 @@ export default async function betFlowButtons(interaction) {
     const pending = getSlipPendingReview(userId);
     if (!pending?.items?.length) {
       await interaction.reply(
-        buildEphemeralWithBotingBackPayload(
-          '❌ 購入予定の確認セッションが無効です。',
-        ),
+        buildEphemeralWithBotingBackPayload(MSG_SLIP_BATCH_REVIEW_SESSION_INVALID),
       );
       return;
     }
@@ -592,9 +590,7 @@ export default async function betFlowButtons(interaction) {
     const pending = getSlipPendingReview(userId);
     if (!pending?.items?.length) {
       await interaction.reply(
-        buildEphemeralWithBotingBackPayload(
-          '❌ 購入予定の確認セッションが無効です。',
-        ),
+        buildEphemeralWithBotingBackPayload(MSG_SLIP_BATCH_REVIEW_SESSION_INVALID),
       );
       return;
     }
@@ -787,7 +783,7 @@ export default async function betFlowButtons(interaction) {
   if (!flow) {
     await interaction.reply(
       buildEphemeralWithBotingBackPayload(
-        '❌ セッションが無効です。もう一度 /boting から開始してください。',
+        MSG_RACE_BET_FLOW_SESSION_INVALID,
       ),
     );
     return;
@@ -842,7 +838,7 @@ export default async function betFlowButtons(interaction) {
     });
     if (!added.ok && added.reason === 'full') {
       await interaction.reply({
-        content: `❌ 購入予定は最大${SLIP_MAX_ITEMS}件までです。**購入予定**で確認するか、購入予定を空にしてください。`,
+        content: msgSlipSavedMaxItemsExceeded(),
         flags: MessageFlags.Ephemeral,
       });
       return;
@@ -893,7 +889,7 @@ export default async function betFlowButtons(interaction) {
     if (!flowFwd) {
       await interaction.reply(
         buildEphemeralWithBotingBackPayload(
-          '❌ セッションが無効です。もう一度 /boting から試してください。',
+          MSG_RACE_BET_FLOW_SESSION_INVALID,
         ),
       );
       return;

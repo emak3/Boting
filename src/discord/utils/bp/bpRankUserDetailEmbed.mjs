@@ -7,6 +7,7 @@ import {
 } from './bpLeaderboard.mjs';
 import { runPendingRaceRefundsForUser } from '../race/raceBetRefundSweep.mjs';
 import { getBetFlow } from '../bet/betFlowStore.mjs';
+import { msgSlipTooManyForOtherUser } from '../bet/betSlipCopy.mjs';
 import { getSlipSavedItems, SLIP_MAX_ITEMS } from '../bet/betSlipStore.mjs';
 import { slipItemFromLiveFlow } from '../bet/betSlipOpenReview.mjs';
 import { formatBetSlipItemBlock } from '../bet/betPurchaseEmbed.mjs';
@@ -204,7 +205,7 @@ export async function buildBpRankUserSlipReadonlyV2Payload({
   }
   if (merged.length > SLIP_MAX_ITEMS) {
     return buildTextAndRowsV2Payload({
-      headline: `❌ 購入予定が多すぎます（最大${SLIP_MAX_ITEMS}件）。`,
+      headline: msgSlipTooManyForOtherUser(targetUser?.username),
       actionRows: [buildBpRankProfileBackButtonRow(uid)],
       extraFlags,
     });

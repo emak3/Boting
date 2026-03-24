@@ -1,6 +1,10 @@
 import { MessageFlags } from 'discord.js';
 import { getBetFlow, patchBetFlow } from './betFlowStore.mjs';
 import {
+  MSG_SLIP_BATCH_REVIEW_OPEN_EMPTY,
+  msgSlipSavedMaxItemsExceeded,
+} from './betSlipCopy.mjs';
+import {
   getSlipSavedItems,
   getSlipPendingReview,
   clearSlipSaved,
@@ -126,6 +130,43 @@ export function buildSlipReviewRestoreSnapshot({ flowOpt, saved, raceId }) {
   };
 }
 
+function raceId12(rid) {
+  return rid && /^\d{12}$/.test(String(rid));
+}
+
+/**
+ * 保存済み + 進行中フローをマージし、まとめて購入（仮）用の状態を組み立てる。
+ * @returns {{ ok: true, merged: object[], restore: object, anchor: string, resetRaceId: string | null } | { ok: false, error: 'empty' | 'over_limit' }}
+ */
+function prepareBetSlipReviewMerge(userId, raceId) {
+  const flowOpt = raceId12(raceId) ? getBetFlow(userId, raceId) : null;
+  const saved = getSlipSavedItems(userId);
+  const merged = [...saved];
+  if (flowOpt?.purchase && raceId12(raceId)) {
+    merged.push(slipItemFromLiveFlow(flowOpt, raceId));
+  }
+  if (!merged.length) return { ok: false, error: 'empty' };
+  if (merged.length > SLIP_MAX_ITEMS) return { ok: false, error: 'over_limit' };
+  const restore = buildSlipReviewRestoreSnapshot({ flowOpt, saved, raceId });
+  const anchor = raceId12(raceId)
+    ? raceId
+    : merged[0].raceId && raceId12(merged[0].raceId)
+      ? merged[0].raceId
+      : '000000000000';
+  if (!restore.raceId && raceId12(anchor)) {
+    restore.raceId = String(anchor);
+  }
+  const resetRaceId =
+    flowOpt?.purchase && raceId12(raceId) ? String(raceId) : null;
+  return {
+    ok: true,
+    merged,
+    restore,
+    anchor,
+    resetRaceId,
+  };
+}
+
 export function resetFlowAfterSlipAction(userId, raceId) {
   patchBetFlow(userId, raceId, {
     purchase: null,
@@ -150,50 +191,28 @@ export function resetFlowAfterSlipAction(userId, raceId) {
  * @returns {Promise<boolean>} 画面を開いたら true
  */
 export async function runOpenBetSlipReviewScreen(interaction, { userId, raceId, extraFlags = 0 }) {
-  const flowOpt =
-    raceId && /^\d{12}$/.test(String(raceId)) ? getBetFlow(userId, raceId) : null;
-  const saved = getSlipSavedItems(userId);
-  const merged = [...saved];
-  if (flowOpt?.purchase && raceId && /^\d{12}$/.test(String(raceId))) {
-    merged.push(slipItemFromLiveFlow(flowOpt, raceId));
-  }
-  if (!merged.length) {
+  const prep = prepareBetSlipReviewMerge(userId, raceId);
+  if (!prep.ok) {
     await interaction.reply({
       content:
-        '❌ 購入予定がありません。「購入予定に追加」で溜めるか、サマリーまで進めてください。',
+        prep.error === 'empty'
+          ? MSG_SLIP_BATCH_REVIEW_OPEN_EMPTY
+          : msgSlipSavedMaxItemsExceeded(),
       flags: MessageFlags.Ephemeral,
     });
     return false;
   }
-  if (merged.length > SLIP_MAX_ITEMS) {
-    await interaction.reply({
-      content: `❌ 一度にまとめられる購入予定は最大${SLIP_MAX_ITEMS}件です。`,
-      flags: MessageFlags.Ephemeral,
-    });
-    return false;
-  }
-
-  const restore = buildSlipReviewRestoreSnapshot({ flowOpt, saved, raceId });
 
   await interaction.deferUpdate();
   clearSlipSaved(userId);
   clearSlipPending(userId);
-  const anchor =
-    raceId && /^\d{12}$/.test(String(raceId))
-      ? raceId
-      : merged[0].raceId && /^\d{12}$/.test(String(merged[0].raceId))
-        ? merged[0].raceId
-        : '000000000000';
-  if (!restore.raceId && /^\d{12}$/.test(String(anchor))) {
-    restore.raceId = String(anchor);
-  }
   setSlipPendingReview(userId, {
-    items: merged,
-    anchorRaceId: anchor,
-    restore,
+    items: prep.merged,
+    anchorRaceId: prep.anchor,
+    restore: prep.restore,
   });
-  if (flowOpt?.purchase && raceId && /^\d{12}$/.test(String(raceId))) {
-    resetFlowAfterSlipAction(userId, raceId);
+  if (prep.resetRaceId) {
+    resetFlowAfterSlipAction(userId, prep.resetRaceId);
   }
 
   await interaction.editReply(
@@ -207,55 +226,30 @@ export async function runOpenBetSlipReviewScreen(interaction, { userId, raceId, 
  * @returns {Promise<boolean>} 画面を開いたら true
  */
 export async function editReplyOpenBetSlipReview(interaction, { userId, raceId, extraFlags = 0 }) {
-  const flowOpt =
-    raceId && /^\d{12}$/.test(String(raceId)) ? getBetFlow(userId, raceId) : null;
-  const saved = getSlipSavedItems(userId);
-  const merged = [...saved];
-  if (flowOpt?.purchase && raceId && /^\d{12}$/.test(String(raceId))) {
-    merged.push(slipItemFromLiveFlow(flowOpt, raceId));
-  }
-  if (!merged.length) {
+  const prep = prepareBetSlipReviewMerge(userId, raceId);
+  if (!prep.ok) {
     await interaction.editReply(
       buildTextAndRowsV2Payload({
         headline:
-          '❌ 購入予定がありません。「購入予定に追加」で溜めるか、サマリーまで進めてください。',
+          prep.error === 'empty'
+            ? MSG_SLIP_BATCH_REVIEW_OPEN_EMPTY
+            : msgSlipSavedMaxItemsExceeded(),
         actionRows: [buildRaceHubBackButtonRow()],
         extraFlags,
       }),
     );
     return false;
   }
-  if (merged.length > SLIP_MAX_ITEMS) {
-    await interaction.editReply(
-      buildTextAndRowsV2Payload({
-        headline: `❌ 一度にまとめられる購入予定は最大${SLIP_MAX_ITEMS}件です。`,
-        actionRows: [buildRaceHubBackButtonRow()],
-        extraFlags,
-      }),
-    );
-    return false;
-  }
-
-  const restore = buildSlipReviewRestoreSnapshot({ flowOpt, saved, raceId });
 
   clearSlipSaved(userId);
   clearSlipPending(userId);
-  const anchor =
-    raceId && /^\d{12}$/.test(String(raceId))
-      ? raceId
-      : merged[0].raceId && /^\d{12}$/.test(String(merged[0].raceId))
-        ? merged[0].raceId
-        : '000000000000';
-  if (!restore.raceId && /^\d{12}$/.test(String(anchor))) {
-    restore.raceId = String(anchor);
-  }
   setSlipPendingReview(userId, {
-    items: merged,
-    anchorRaceId: anchor,
-    restore,
+    items: prep.merged,
+    anchorRaceId: prep.anchor,
+    restore: prep.restore,
   });
-  if (flowOpt?.purchase && raceId && /^\d{12}$/.test(String(raceId))) {
-    resetFlowAfterSlipAction(userId, raceId);
+  if (prep.resetRaceId) {
+    resetFlowAfterSlipAction(userId, prep.resetRaceId);
   }
 
   await interaction.editReply(

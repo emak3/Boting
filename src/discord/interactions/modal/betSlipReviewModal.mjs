@@ -1,5 +1,10 @@
 import { MessageFlags } from 'discord.js';
 import {
+  MSG_SLIP_BATCH_REVIEW_SESSION_INVALID,
+  MSG_SLIP_BATCH_REVIEW_SESSION_MISMATCH,
+  MSG_SLIP_MODAL_CUSTOM_ID_INVALID,
+} from '../../utils/bet/betSlipCopy.mjs';
+import {
   getSlipPendingReview,
   replaceSlipPendingItems,
 } from '../../utils/bet/betSlipStore.mjs';
@@ -24,8 +29,7 @@ export default async function betSlipReviewModal(interaction) {
   const parsed = parseModalCustomId(customId);
   if (!parsed) {
     await interaction.reply({
-      content:
-        '❌ このフォームは使えません。**まとめて購入**の画面を開き直し、メニューから金額変更してください。',
+      content: MSG_SLIP_MODAL_CUSTOM_ID_INVALID,
       flags: MessageFlags.Ephemeral,
     });
     return;
@@ -35,7 +39,7 @@ export default async function betSlipReviewModal(interaction) {
   const pending = getSlipPendingReview(userId);
   if (!pending?.items?.length) {
     await interaction.reply({
-      content: '❌ 購入予定の確認セッションが無効です。',
+      content: MSG_SLIP_BATCH_REVIEW_SESSION_INVALID,
       flags: MessageFlags.Ephemeral,
     });
     return;
@@ -44,7 +48,7 @@ export default async function betSlipReviewModal(interaction) {
   const { raceId, idx } = parsed;
   if (pending.anchorRaceId && pending.anchorRaceId !== raceId) {
     await interaction.reply({
-      content: '❌ 購入予定の確認セッションが一致しません。',
+      content: MSG_SLIP_BATCH_REVIEW_SESSION_MISMATCH,
       flags: MessageFlags.Ephemeral,
     });
     return;

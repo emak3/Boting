@@ -18,6 +18,8 @@ import {
   getUnitKeypadDraft,
   setUnitKeypadDraft,
 } from '../../utils/unit/unitYenKeypadStore.mjs';
+import { MSG_RACE_BET_FLOW_SESSION_INVALID } from '../../utils/bet/betFlowSessionCopy.mjs';
+import { MSG_SLIP_BATCH_REVIEW_SESSION_INVALID } from '../../utils/bet/betSlipCopy.mjs';
 import { buildSlipReviewV2Payload } from '../../utils/bet/betSlipReview.mjs';
 import { buildTextAndRowsV2Payload } from '../../utils/race/raceCardDisplay.mjs';
 import { buildEphemeralWithBotingBackPayload } from '../../utils/boting/botingBackButton.mjs';
@@ -94,7 +96,7 @@ export default async function unitYenKeypadButtons(interaction) {
   if (!draft) {
     await interaction.reply(
       buildEphemeralWithBotingBackPayload(
-        '❌ セッションが無効です。画面を開き直してください。',
+        MSG_RACE_BET_FLOW_SESSION_INVALID,
       ),
     );
     return;
@@ -162,7 +164,7 @@ export default async function unitYenKeypadButtons(interaction) {
       if (!flow?.purchase) {
         await interaction.editReply(
           buildTextAndRowsV2Payload({
-            headline: '❌ セッションが無効です。もう一度 /boting から開き直してください。',
+            headline: MSG_RACE_BET_FLOW_SESSION_INVALID,
             actionRows: [],
             extraFlags,
             withBotingMenuBack: true,
@@ -185,7 +187,7 @@ export default async function unitYenKeypadButtons(interaction) {
     ) {
       await interaction.editReply(
         buildTextAndRowsV2Payload({
-          headline: '❌ 購入予定の確認セッションが無効です。まとめて購入の画面を開き直してください。',
+          headline: MSG_SLIP_BATCH_REVIEW_SESSION_INVALID,
           actionRows: [],
           extraFlags,
           withBotingMenuBack: true,

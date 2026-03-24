@@ -17,6 +17,7 @@ import {
   historyRaceHeadingLine,
   slipItemDescriptionForSelect,
 } from './betPurchaseEmbed.mjs';
+import { MSG_SLIP_BATCH_REVIEW_PENDING_MISSING } from './betSlipCopy.mjs';
 import {
   getSlipPendingReview,
   setSlipPendingReviewPage,
@@ -251,7 +252,7 @@ export async function buildSlipReviewV2Payload({ userId, extraFlags = 0 }) {
   const pending = getSlipPendingReview(userId);
   if (!pending?.items?.length) {
     return buildTextAndRowsV2Payload({
-      headline: '❌ 購入予定データがありません。もう一度 /boting からやり直してください。',
+      headline: MSG_SLIP_BATCH_REVIEW_PENDING_MISSING,
       actionRows: [],
       extraFlags,
       withBotingMenuBack: true,

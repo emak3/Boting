@@ -46,7 +46,11 @@ import {
   firstScheduleAnchorRaceIdFromRaces,
   firstScheduleAnchorRaceIdFromVenues,
 } from '../../utils/bet/betSlipViewUi.mjs';
-import { formatSlipPickDisplayLines } from '../../utils/bet/betPurchaseEmbed.mjs';
+import {
+  applyJraMultiMarkerToSelectionLine,
+  stripJraMultiMarkerFromSelectionLine,
+  formatSlipPickDisplayLines,
+} from '../../utils/bet/betPurchaseEmbed.mjs';
 import { horseNumToFrameFromResult } from '../../utils/bet/betSlipOpenReview.mjs';
 import { botingEmoji } from '../../utils/boting/botingEmojis.mjs';
 import {
@@ -62,7 +66,10 @@ import {
   isJraBetTypeAllowedForFlow,
   frameAllowsWakurenSamePair,
 } from '../../utils/jra/jraBetAvailability.mjs';
-import { buildPayoutTicketsFromFlow } from '../../utils/race/raceBetTickets.mjs';
+import {
+  buildPayoutTicketsFromFlow,
+  jraMultiEligibleLastMenu,
+} from '../../utils/race/raceBetTickets.mjs';
 import { settleOpenRaceBetsForUser } from '../../utils/race/raceBetRecords.mjs';
 import { buildVenuePickIntroV2Payload } from '../../utils/race/raceCommandHub.mjs';
 import {
@@ -424,41 +431,59 @@ function buildSelectionRow({
   return new ActionRowBuilder().addComponents(menu);
 }
 
-/** 購入サマリー下部: 金額変更・購入予定に追加・購入予定（=まとめて確認）・追加済みクリア、その下に戻る・レース一覧 */
+/** 購入サマリー下部: 1行目 金額変更・購入予定に追加・購入履歴 / 2行目 購入予定・(マルチ)・購入予定をクリア。その下に戻る・レース一覧 */
 function summaryPurchaseButtonRows(raceId, userId, backMenuIndex, flow = null) {
   const savedN = getSlipSavedCount(userId);
   const hasCurrent = !!(flow?.purchase?.selectionLine);
   const batchTotal = savedN + (hasCurrent ? 1 : 0);
-  const rows = [
-    new ActionRowBuilder().addComponents(
-      new ButtonBuilder()
-        .setCustomId(`race_bet_unit_edit|${raceId}`)
-        .setLabel('金額変更')
-        .setEmoji(botingEmoji('henko'))
-        .setStyle(ButtonStyle.Primary),
-      new ButtonBuilder()
-        .setCustomId(`race_bet_add_to_cart|${raceId}`)
-        .setLabel('購入予定に追加')
-        .setEmoji(botingEmoji('plus'))
-        .setStyle(ButtonStyle.Success),
-      new ButtonBuilder()
-        .setCustomId(`${RACE_PURCHASE_HISTORY_CUSTOM_ID}|${raceId}`)
-        .setLabel('購入履歴')
-        .setEmoji(botingEmoji('history'))
-        .setStyle(ButtonStyle.Secondary),
-      new ButtonBuilder()
-        .setCustomId(`${BET_SLIP_OPEN_CUSTOM_ID}|${raceId}`)
-        .setLabel(batchTotal ? `購入予定(${batchTotal})` : '購入予定')
-        .setEmoji(botingEmoji('cart'))
-        .setStyle(ButtonStyle.Primary),
-      new ButtonBuilder()
-        .setCustomId(`race_bet_cart_clear|${raceId}`)
-        .setLabel('追加済みを空にする')
-        .setEmoji(botingEmoji('delete'))
-        .setStyle(ButtonStyle.Danger)
-        .setDisabled(savedN === 0),
-    ),
-  ];
+  const lastMenuId = flow?.purchase?.lastMenuCustomId;
+  const jraMultiRow = !!(lastMenuId && jraMultiEligibleLastMenu(lastMenuId));
+  const jraMultiOn = flow?.jraMulti === true;
+
+  const cartClearBtn = new ButtonBuilder()
+    .setCustomId(`race_bet_cart_clear|${raceId}`)
+    .setLabel('購入予定をクリア')
+    .setEmoji(botingEmoji('delete'))
+    .setStyle(ButtonStyle.Danger)
+    .setDisabled(savedN === 0);
+
+  const slipOpenBtn = new ButtonBuilder()
+    .setCustomId(`${BET_SLIP_OPEN_CUSTOM_ID}|${raceId}`)
+    .setLabel(batchTotal ? `購入予定(${batchTotal})` : '購入予定')
+    .setEmoji(botingEmoji('cart'))
+    .setStyle(ButtonStyle.Primary);
+
+  const multiBtn = new ButtonBuilder()
+    .setCustomId(`race_bet_jra_multi_toggle|${raceId}`)
+    .setLabel(jraMultiOn ? 'マルチ: ON' : 'マルチ: OFF')
+    .setStyle(jraMultiOn ? ButtonStyle.Success : ButtonStyle.Secondary);
+
+  const row1 = new ActionRowBuilder().addComponents(
+    new ButtonBuilder()
+      .setCustomId(`race_bet_unit_edit|${raceId}`)
+      .setLabel('金額変更')
+      .setEmoji(botingEmoji('henko'))
+      .setStyle(ButtonStyle.Primary),
+    new ButtonBuilder()
+      .setCustomId(`race_bet_add_to_cart|${raceId}`)
+      .setLabel('購入予定に追加')
+      .setEmoji(botingEmoji('plus'))
+      .setStyle(ButtonStyle.Success),
+    new ButtonBuilder()
+      .setCustomId(`${RACE_PURCHASE_HISTORY_CUSTOM_ID}|${raceId}`)
+      .setLabel('購入履歴')
+      .setEmoji(botingEmoji('history'))
+      .setStyle(ButtonStyle.Secondary),
+  );
+
+  const rows = [row1];
+  if (jraMultiRow) {
+    rows.push(
+      new ActionRowBuilder().addComponents(slipOpenBtn, multiBtn, cartClearBtn),
+    );
+  } else {
+    rows.push(new ActionRowBuilder().addComponents(slipOpenBtn, cartClearBtn));
+  }
   const br = backButtonRow(raceId, backMenuIndex);
   if (br) rows.push(br);
   const sched = scheduleRaceListBackIfScheduled(userId, raceId);
@@ -664,22 +689,43 @@ export async function editReplyPurchaseSummaryFromFlow(interaction, userId, race
 
   const result = flow.result;
   const betType = flow.betType;
-  const { selectionLine, points, lastMenuCustomId } = purch;
-  const unitYen = flow.unitYen ?? DEFAULT_UNIT_YEN;
+  const { selectionLine: selIn, lastMenuCustomId } = purch;
+  const jraMultiOn = flow.jraMulti === true;
+  const selectionLineStored = applyJraMultiMarkerToSelectionLine(
+    stripJraMultiMarkerFromSelectionLine(selIn),
+    jraMultiOn,
+  );
+  const ticketsSynced = buildPayoutTicketsFromFlow(flow, raceId);
+  const points = ticketsSynced.length;
+  patchBetFlow(userId, raceId, {
+    purchase: { ...purch, points, tickets: ticketsSynced, selectionLine: selectionLineStored },
+  });
+  const flowSynced = getBetFlow(userId, raceId) || flow;
+  const unitYen = flowSynced.unitYen ?? DEFAULT_UNIT_YEN;
+  const selectionLine = flowSynced.purchase?.selectionLine ?? selectionLineStored;
 
   const backMenuIds = computeBackMenuIds({
     raceId,
-    flow,
+    flow: flowSynced,
     betType,
     lastMenuCustomId,
   });
   const backMenuIndex = backMenuIds.lastIndexOf(lastMenuCustomId);
 
   const isResult = !!result?.isResult;
-  const origin = netkeibaOriginFromFlow(flow);
+  const origin = netkeibaOriginFromFlow(flowSynced);
   const resultUrl = isResult ? netkeibaResultUrl(raceId, origin) : null;
 
-  const content = `${selectionLine}\n${formatBetPoints(points, unitYen)}${
+  const slipPick = formatSlipPickDisplayLines({
+    selectionLine,
+    betType: flowSynced.betType ?? betType,
+    tickets: flowSynced.purchase?.tickets || [],
+    horseNumToFrame: horseNumToFrameFromResult(result),
+  });
+  const parts = [];
+  if (slipPick) parts.push(slipPick);
+  else parts.push(selectionLine);
+  const content = `${parts.join('\n')}\n${formatBetPoints(points, unitYen)}${
     resultUrl ? `\n結果: ${resultUrl}` : ''
   }`;
 
@@ -688,10 +734,10 @@ export async function editReplyPurchaseSummaryFromFlow(interaction, userId, race
   for (const menuId of backMenuIds) {
     const row =
       menuId === betTypeMenuId
-        ? buildBetTypeMenuRow(raceId, flow)
+        ? buildBetTypeMenuRow(raceId, flowSynced)
         : buildMenuRowFromCustomId({
             menuCustomId: menuId,
-            flow,
+            flow: flowSynced,
             result,
           });
     if (row) summaryMenuRows.push(row);
@@ -702,7 +748,7 @@ export async function editReplyPurchaseSummaryFromFlow(interaction, userId, race
       headline: content,
       actionRows: [
         ...summaryMenuRows,
-        ...summaryPurchaseButtonRows(raceId, userId, backMenuIndex, flow),
+        ...summaryPurchaseButtonRows(raceId, userId, backMenuIndex, flowSynced),
       ].filter(Boolean),
       extraFlags: v2ExtraFlags(interaction),
       withBotingMenuBack: true,
@@ -735,6 +781,11 @@ async function renderFinalSelection({
   const backMenuIndex = backMenuIds.lastIndexOf(lastMenu.customId);
 
   const unitYen = flowUnitYen ?? DEFAULT_UNIT_YEN;
+  const jraMultiOn = currentFlow.jraMulti === true;
+  const selectionLineStored = applyJraMultiMarkerToSelectionLine(
+    stripJraMultiMarkerFromSelectionLine(selectionLine),
+    jraMultiOn,
+  );
   const nextStepSelections = {
     ...(currentFlow.stepSelections || {}),
     [lastMenu.customId]:
@@ -749,24 +800,25 @@ async function renderFinalSelection({
       unitYen,
       stepSelections: nextStepSelections,
       purchase: {
-        selectionLine,
+        selectionLine: selectionLineStored,
         points,
         lastMenuCustomId: lastMenu.customId,
       },
     },
     raceId,
   );
+  const pointsResolved = tickets.length;
   patchBetFlow(userId, raceId, {
     betType,
     unitYen,
     purchase: {
-      selectionLine,
-      points,
+      selectionLine: selectionLineStored,
+      points: pointsResolved,
       lastMenuCustomId: lastMenu.customId,
       tickets,
     },
     stepSelections: nextStepSelections,
-    lastSelectionLine: selectionLine,
+    lastSelectionLine: selectionLineStored,
     backMenuIds,
     backMenuIndex: backMenuIndex >= 0 ? backMenuIndex : backMenuIds.length - 1,
     navViewMenuIndex: null,
@@ -779,13 +831,17 @@ async function renderFinalSelection({
   const resultUrl = isResult ? netkeibaResultUrl(raceId, origin) : null;
 
   const flowAfter = getBetFlow(userId, raceId);
+  const selStored = flowAfter?.purchase?.selectionLine ?? selectionLineStored;
   const slipPick = formatSlipPickDisplayLines({
-    selectionLine: flowAfter?.purchase?.selectionLine ?? selectionLine,
+    selectionLine: selStored,
     betType: flowAfter?.betType ?? betType,
     tickets: flowAfter?.purchase?.tickets || [],
     horseNumToFrame: horseNumToFrameFromResult(result),
   });
-  const content = `${slipPick || selectionLine}\n${formatBetPoints(points, unitYen)}${
+  const parts = [];
+  if (slipPick) parts.push(slipPick);
+  else parts.push(selStored);
+  const content = `${parts.join('\n')}\n${formatBetPoints(pointsResolved, unitYen)}${
     resultUrl ? `\n結果: ${resultUrl}` : ''
   }`;
 
@@ -867,23 +923,7 @@ function frameOptionsFromResult(result, cap = 25, opts = {}) {
   });
 }
 
-function horseNameByNum(result) {
-  const m = new Map();
-  for (const h of result.horses || []) m.set(String(h.horseNumber), h.name);
-  return m;
-}
-
-function frameLabelToHorses(result) {
-  const m = new Map();
-  for (const h of result.horses || []) {
-    if (h.excluded) continue;
-    const f = String(h.frameNumber);
-    if (!m.has(f)) m.set(f, []);
-    m.get(f).push(h);
-  }
-  return m;
-}
-
+/** 買い目テキスト用: 馬名は付けず枠馬絵文字または「N番」のみ */
 function formatNamesByNums(result, nums) {
   const byKey = new Map();
   for (const h of result.horses || []) {
@@ -891,31 +931,29 @@ function formatNamesByNums(result, nums) {
     const k = parseInt(String(h.horseNumber).replace(/\D/g, ''), 10);
     if (Number.isFinite(k)) byKey.set(String(k), h);
   }
-  const nameMap = horseNameByNum(result);
   return nums
     .map((n) => {
       const ns = String(n);
       const kn = parseInt(ns.replace(/\D/g, ''), 10);
       const horse = byKey.get(ns) ?? (Number.isFinite(kn) ? byKey.get(String(kn)) : null);
-      const nm = horse?.name || nameMap.get(ns) || '不明';
       const em = horse?.excluded
         ? jogaiEmoji()
         : horse
           ? wakuUmaEmoji(horse.frameNumber, horse.horseNumber)
           : null;
-      if (em) return `${em} ${nm}`.trim();
-      return `${n}. ${nm}`;
+      if (em) return em;
+      return Number.isFinite(kn) ? `${kn}番` : ns;
     })
     .join(', ');
 }
 
-function formatFrames(result, frames) {
-  const map = frameLabelToHorses(result);
+/** 枠連など: 枠番は枠×枠の枠馬絵文字（名前なし）、無ければ「枠N」 */
+function formatFrames(_result, frames) {
   return frames
     .map((f) => {
-      const horses = map.get(String(f)) || [];
-      const example = horses?.[0]?.name;
-      return `枠${f}${example ? `(${example})` : ''}`;
+      const w = parseInt(String(f).replace(/\D/g, ''), 10);
+      if (!Number.isFinite(w)) return `枠${f}`;
+      return wakuUmaEmoji(w, w) ?? `枠${f}`;
     })
     .join(', ');
 }
@@ -1525,6 +1563,7 @@ export default async function raceScheduleMenu(interaction) {
     }
     patchBetFlow(userId, raceId, {
       betType,
+      jraMulti: false,
       // 賭け方を切り替えたら前の投票形式・軸などを残さない（戻るチェーンが壊れるのを防ぐ）
       pairMode: null,
       pairAxis: null,
@@ -2370,7 +2409,7 @@ export default async function raceScheduleMenu(interaction) {
 
     const flow = getBetFlow(userId, raceId);
     if (!flow?.result) return;
-    patchBetFlow(userId, raceId, { betType: 'umatan', umatanMode: mode });
+    patchBetFlow(userId, raceId, { betType: 'umatan', umatanMode: mode, jraMulti: false });
     const result = flow.result;
     const options = horseOptionsFromResult(result);
 
@@ -2498,7 +2537,7 @@ export default async function raceScheduleMenu(interaction) {
 
     const flow = getBetFlow(userId, raceId);
     if (!flow?.result) return;
-    patchBetFlow(userId, raceId, { umatanFirst: one });
+    patchBetFlow(userId, raceId, { umatanFirst: one, jraMulti: false });
     const result = flow.result;
     const options = horseOptionsFromResult(result);
 
@@ -2743,7 +2782,7 @@ export default async function raceScheduleMenu(interaction) {
 
     const flow = getBetFlow(userId, raceId);
     if (!flow?.result) return;
-    patchBetFlow(userId, raceId, { umatanFormA: picksA });
+    patchBetFlow(userId, raceId, { umatanFormA: picksA, jraMulti: false });
     const result = flow.result;
     const options = horseOptionsFromResult(result);
 
@@ -3239,7 +3278,7 @@ export default async function raceScheduleMenu(interaction) {
 
     const flow = getBetFlow(userId, raceId);
     if (!flow?.result) return;
-    patchBetFlow(userId, raceId, { betType: 'tritan', tritanMode: mode });
+    patchBetFlow(userId, raceId, { betType: 'tritan', tritanMode: mode, jraMulti: false });
     const result = flow.result;
     const options = horseOptionsFromResult(result);
 

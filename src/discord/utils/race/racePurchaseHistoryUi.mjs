@@ -19,7 +19,6 @@ import {
 import {
   formatSlipPickDisplayLines,
   BET_TYPE_LABEL,
-  parseSelectionBetKindLabel,
   historyRaceHeadingLine,
   venuePrefixForHistoryBet,
 } from '../bet/betPurchaseEmbed.mjs';
@@ -106,10 +105,10 @@ export const HISTORY_BETS_PER_PAGE = 10;
 const HISTORY_ACCENT = 0x9b59b6;
 const HISTORY_BTN_LABEL_MAX = 80;
 
-/** 式別のフル表記（例: 馬連（通常）、馬単（1着ながし）） */
+/** 式別のフル表記（例: 馬連（通常）、馬単（1着ながし）、末尾に ` マルチ` が付く場合もそのまま） */
 function fullKindLabel(bet) {
-  const raw = parseSelectionBetKindLabel(bet.selectionLine);
-  if (raw) return raw;
+  const m = String(bet.selectionLine || '').match(/^選択:\s*(.+?)\s*=>\s*/s);
+  if (m) return m[1].trim();
   if (bet.betType && BET_TYPE_LABEL[bet.betType]) return BET_TYPE_LABEL[bet.betType];
   return '購入';
 }

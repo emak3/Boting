@@ -75,6 +75,12 @@ export const RaceBet = sequelize.define(
     tickets: { type: DataTypes.JSON, allowNull: false, defaultValue: [] },
     horseNumToFrame: { type: DataTypes.JSON, allowNull: false, defaultValue: {} },
     trifukuFormation: { type: DataTypes.JSON, allowNull: true },
+    /** JRA マルチ投票 ON で購入したか（履歴の簡易表示用） */
+    jraMulti: { type: DataTypes.BOOLEAN, allowNull: false, defaultValue: false },
+    /** 馬単・3連単のマルチ切替があった券種（履歴で マルチON/OFF 行を出す） */
+    jraMultiOffered: { type: DataTypes.BOOLEAN, allowNull: false, defaultValue: false },
+    /** マルチ展開なしの1行買い目（例: 1>2 または 4>5,6） */
+    pickCompact: { type: DataTypes.STRING(512), allowNull: false, defaultValue: '' },
     netkeibaOrigin: { type: DataTypes.STRING(8), allowNull: false, defaultValue: 'jra' },
     raceHoldYmd: { type: DataTypes.STRING(8), allowNull: true },
     status: { type: DataTypes.STRING(16), allowNull: false, defaultValue: 'open' },

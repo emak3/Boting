@@ -44,6 +44,44 @@ function orderedPairsFromSet(values) {
   return out;
 }
 
+function pushUmatanDistinct(a, b, seen, tickets) {
+  const x = String(a);
+  const y = String(b);
+  if (!x || !y || x === y) return;
+  const k = `${x}>${y}`;
+  if (seen.has(k)) return;
+  seen.add(k);
+  tickets.push({ kind: 'Umatan', nums: [x, y] });
+}
+
+function pushTan3Distinct(a, b, c, seen, tickets) {
+  const x = String(a);
+  const y = String(b);
+  const z = String(c);
+  if (!x || !y || !z || x === y || x === z || y === z) return;
+  const k = `${x}|${y}|${z}`;
+  if (seen.has(k)) return;
+  seen.add(k);
+  tickets.push({ kind: 'Tan3', nums: [x, y, z] });
+}
+
+/**
+ * 購入確認・マルチトグル対象か（JRA マルチ投票: 馬単ながし / 3連単軸ながし）
+ * @param {string | null | undefined} lastMenuCustomId
+ */
+export function jraMultiEligibleLastMenu(lastMenuCustomId) {
+  const id = String(lastMenuCustomId || '');
+  return (
+    id.startsWith('race_bet_umatan_normal_2|') ||
+    id.startsWith('race_bet_umatan_nagashi1_opp|') ||
+    id.startsWith('race_bet_umatan_nagashi2_opp|') ||
+    id.startsWith('race_bet_umatan_formB|') ||
+    id.startsWith('race_bet_tritan_nagashi1_opp|') ||
+    id.startsWith('race_bet_tritan_nagashi2_opp|') ||
+    id.startsWith('race_bet_tritan_nagashi3_opp|')
+  );
+}
+
 /**
  * @param {object} flow betFlow のマージ済みスナップショット
  * @param {string} raceId
@@ -170,17 +208,28 @@ export function buildPayoutTicketsFromFlow(flow, raceId) {
     const one = f.umatanFirst != null ? String(f.umatanFirst) : '';
     const two = ss(f, lastId)[0];
     if (!one || !two || one === two) return [];
-    return [{ kind: 'Umatan', nums: [one, two] }];
+    const seen = new Set();
+    const tickets = [];
+    pushUmatanDistinct(one, two, seen, tickets);
+    if (f.jraMulti === true) {
+      pushUmatanDistinct(two, one, seen, tickets);
+    }
+    return tickets;
   }
 
   // --- 馬単 1着ながし ---
   if (lastId.startsWith('race_bet_umatan_nagashi1_opp|')) {
     const axis = f.umatanAxis != null ? String(f.umatanAxis) : '';
     const opps = ss(f, lastId);
+    const seen = new Set();
     const tickets = [];
     for (const o of opps) {
-      if (o === axis) continue;
-      tickets.push({ kind: 'Umatan', nums: [axis, o] });
+      pushUmatanDistinct(axis, o, seen, tickets);
+    }
+    if (f.jraMulti === true) {
+      for (const o of opps) {
+        pushUmatanDistinct(o, axis, seen, tickets);
+      }
     }
     return tickets;
   }
@@ -189,10 +238,15 @@ export function buildPayoutTicketsFromFlow(flow, raceId) {
   if (lastId.startsWith('race_bet_umatan_nagashi2_opp|')) {
     const axis2 = f.umatanAxis2 != null ? String(f.umatanAxis2) : '';
     const opps = ss(f, lastId);
+    const seen = new Set();
     const tickets = [];
     for (const o of opps) {
-      if (o === axis2) continue;
-      tickets.push({ kind: 'Umatan', nums: [o, axis2] });
+      pushUmatanDistinct(o, axis2, seen, tickets);
+    }
+    if (f.jraMulti === true) {
+      for (const o of opps) {
+        pushUmatanDistinct(axis2, o, seen, tickets);
+      }
     }
     return tickets;
   }
@@ -212,13 +266,20 @@ export function buildPayoutTicketsFromFlow(flow, raceId) {
 
   // --- 馬単 フォーメーション ---
   if (lastId.startsWith('race_bet_umatan_formB|')) {
-    const A = f.umatanFormA || [];
-    const B = ss(f, lastId);
+    const A = uniqValues(f.umatanFormA || []);
+    const B = uniqValues(ss(f, lastId));
+    const seen = new Set();
     const tickets = [];
-    for (const x of uniqValues(A)) {
-      for (const y of uniqValues(B)) {
-        if (x === y) continue;
-        tickets.push({ kind: 'Umatan', nums: [x, y] });
+    for (const x of A) {
+      for (const y of B) {
+        pushUmatanDistinct(x, y, seen, tickets);
+      }
+    }
+    if (f.jraMulti === true) {
+      for (const x of A) {
+        for (const y of B) {
+          pushUmatanDistinct(y, x, seen, tickets);
+        }
       }
     }
     return tickets;
@@ -313,10 +374,25 @@ export function buildPayoutTicketsFromFlow(flow, raceId) {
   // --- 3連単 ながし1（軸1着）---
   if (lastId.startsWith('race_bet_tritan_nagashi1_opp|')) {
     const axis = f.tritanAxis != null ? String(f.tritanAxis) : '';
-    const opp = uniqValues(ss(f, lastId)).filter((x) => x !== axis);
+    const O = uniqValues(ss(f, lastId)).filter((x) => x !== axis);
+    const seen = new Set();
     const tickets = [];
-    for (const [x, y] of orderedPairsFromSet(opp)) {
-      tickets.push({ kind: 'Tan3', nums: [axis, x, y] });
+    for (const [x, y] of orderedPairsFromSet(O)) {
+      pushTan3Distinct(axis, x, y, seen, tickets);
+    }
+    if (f.jraMulti === true) {
+      for (let i = 0; i < O.length; i++) {
+        for (let j = 0; j < O.length; j++) {
+          if (i === j) continue;
+          pushTan3Distinct(O[i], axis, O[j], seen, tickets);
+        }
+      }
+      for (let i = 0; i < O.length; i++) {
+        for (let j = 0; j < O.length; j++) {
+          if (i === j) continue;
+          pushTan3Distinct(O[i], O[j], axis, seen, tickets);
+        }
+      }
     }
     return tickets;
   }
@@ -324,10 +400,25 @@ export function buildPayoutTicketsFromFlow(flow, raceId) {
   // --- ながし2（軸2着）---
   if (lastId.startsWith('race_bet_tritan_nagashi2_opp|')) {
     const axis = f.tritanAxis2 != null ? String(f.tritanAxis2) : '';
-    const opp = uniqValues(ss(f, lastId)).filter((x) => x !== axis);
+    const O = uniqValues(ss(f, lastId)).filter((x) => x !== axis);
+    const seen = new Set();
     const tickets = [];
-    for (const [x, y] of orderedPairsFromSet(opp)) {
-      tickets.push({ kind: 'Tan3', nums: [x, axis, y] });
+    for (const [x, y] of orderedPairsFromSet(O)) {
+      pushTan3Distinct(x, axis, y, seen, tickets);
+    }
+    if (f.jraMulti === true) {
+      for (let i = 0; i < O.length; i++) {
+        for (let j = 0; j < O.length; j++) {
+          if (i === j) continue;
+          pushTan3Distinct(axis, O[i], O[j], seen, tickets);
+        }
+      }
+      for (let i = 0; i < O.length; i++) {
+        for (let j = 0; j < O.length; j++) {
+          if (i === j) continue;
+          pushTan3Distinct(O[i], O[j], axis, seen, tickets);
+        }
+      }
     }
     return tickets;
   }
@@ -335,10 +426,25 @@ export function buildPayoutTicketsFromFlow(flow, raceId) {
   // --- ながし3（軸3着）---
   if (lastId.startsWith('race_bet_tritan_nagashi3_opp|')) {
     const axis = f.tritanAxis3 != null ? String(f.tritanAxis3) : '';
-    const opp = uniqValues(ss(f, lastId)).filter((x) => x !== axis);
+    const O = uniqValues(ss(f, lastId)).filter((x) => x !== axis);
+    const seen = new Set();
     const tickets = [];
-    for (const [x, y] of orderedPairsFromSet(opp)) {
-      tickets.push({ kind: 'Tan3', nums: [x, y, axis] });
+    for (const [x, y] of orderedPairsFromSet(O)) {
+      pushTan3Distinct(x, y, axis, seen, tickets);
+    }
+    if (f.jraMulti === true) {
+      for (let i = 0; i < O.length; i++) {
+        for (let j = 0; j < O.length; j++) {
+          if (i === j) continue;
+          pushTan3Distinct(axis, O[i], O[j], seen, tickets);
+        }
+      }
+      for (let i = 0; i < O.length; i++) {
+        for (let j = 0; j < O.length; j++) {
+          if (i === j) continue;
+          pushTan3Distinct(O[i], axis, O[j], seen, tickets);
+        }
+      }
     }
     return tickets;
   }

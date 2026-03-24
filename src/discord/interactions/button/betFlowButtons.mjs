@@ -21,7 +21,12 @@ import { canBypassSalesClosed } from '../../utils/debug/raceDebugBypass.mjs';
 import { partitionPendingItemsBySalesClosed } from '../../utils/bet/betSlipSalesPartition.mjs';
 import { buildSlipReviewV2Payload } from '../../utils/bet/betSlipReview.mjs';
 import { netkeibaOriginFromFlow } from '../../utils/netkeiba/netkeibaUrls.mjs';
-import { buildBetSlipBatchV2Headline } from '../../utils/bet/betPurchaseEmbed.mjs';
+import {
+  applyJraMultiMarkerToSelectionLine,
+  buildBetSlipBatchV2Headline,
+  buildPickCompactOneLine,
+  stripJraMultiMarkerFromSelectionLine,
+} from '../../utils/bet/betPurchaseEmbed.mjs';
 import {
   horseNumToFrameFromResult,
   trifukuFormationSnapshotFromFlow,
@@ -48,7 +53,11 @@ import {
 import { tryConfirmRacePurchase } from '../../utils/race/raceBetRecords.mjs';
 import { deriveRaceHoldYmdFromFlow } from '../../utils/race/raceHoldDate.mjs';
 import { getBalance } from '../../utils/user/userPointsStore.mjs';
-import { ticketCountForValidation } from '../../utils/race/raceBetTickets.mjs';
+import {
+  buildPayoutTicketsFromFlow,
+  jraMultiEligibleLastMenu,
+  ticketCountForValidation,
+} from '../../utils/race/raceBetTickets.mjs';
 import {
   buildUnitKeypadPayload,
   initBufferFromUnitYen,
@@ -216,6 +225,50 @@ export default async function betFlowButtons(interaction) {
       /* ignore */
     }
     return extra;
+  }
+
+  if (customId.startsWith('race_bet_jra_multi_toggle|')) {
+    const raceId = customId.split('|')[1];
+    if (!raceId || !/^\d{12}$/.test(String(raceId))) {
+      await interaction.reply({
+        content: '❌ 操作が無効です。',
+        flags: MessageFlags.Ephemeral,
+      });
+      return;
+    }
+    const flow = getBetFlow(userId, raceId);
+    const lastId = flow?.purchase?.lastMenuCustomId;
+    if (!flow?.purchase || !lastId || !jraMultiEligibleLastMenu(lastId)) {
+      await interaction.reply({
+        content: '❌ ここではマルチを切り替えられません。',
+        flags: MessageFlags.Ephemeral,
+      });
+      return;
+    }
+    await interaction.deferUpdate();
+    const nextMulti = !(flow.jraMulti === true);
+    const selNext = flow.purchase
+      ? applyJraMultiMarkerToSelectionLine(
+          stripJraMultiMarkerFromSelectionLine(flow.purchase.selectionLine),
+          nextMulti,
+        )
+      : null;
+    patchBetFlow(userId, raceId, {
+      jraMulti: nextMulti,
+      purchase: flow.purchase
+        ? { ...flow.purchase, selectionLine: selNext }
+        : null,
+    });
+    const flow2 = getBetFlow(userId, raceId);
+    const tickets = buildPayoutTicketsFromFlow(flow2, raceId);
+    patchBetFlow(userId, raceId, {
+      purchase: flow2.purchase
+        ? { ...flow2.purchase, points: tickets.length, tickets }
+        : null,
+    });
+    const { editReplyPurchaseSummaryFromFlow } = await import('../menu/raceSchedule.mjs');
+    await editReplyPurchaseSummaryFromFlow(interaction, userId, raceId);
+    return;
   }
 
   if (customId.startsWith('race_bet_slip_back|')) {
@@ -763,6 +816,8 @@ export default async function betFlowButtons(interaction) {
       });
       return;
     }
+    const lastMenuId = flow.purchase?.lastMenuCustomId;
+    const jraMultiOffered = !!(lastMenuId && jraMultiEligibleLastMenu(lastMenuId));
     const added = addSlipSavedItem(userId, {
       raceId: flow.result?.raceId || raceId,
       unitYen: normalizeUnitYen100(flow.unitYen ?? 100),
@@ -779,10 +834,15 @@ export default async function betFlowButtons(interaction) {
       tickets: flow.purchase.tickets,
       horseNumToFrame: horseNumToFrameFromResult(flow.result),
       trifukuFormation: trifukuFormationSnapshotFromFlow(flow),
+      jraMulti: flow.jraMulti === true,
+      jraMultiOffered,
+      pickCompact: jraMultiOffered
+        ? buildPickCompactOneLine(flow.purchase.selectionLine)
+        : '',
     });
     if (!added.ok && added.reason === 'full') {
       await interaction.reply({
-        content: `❌ 購入予定は最大${SLIP_MAX_ITEMS}件までです。**購入予定**で確認するか、追加済みを空にしてください。`,
+        content: `❌ 購入予定は最大${SLIP_MAX_ITEMS}件までです。**購入予定**で確認するか、購入予定を空にしてください。`,
         flags: MessageFlags.Ephemeral,
       });
       return;
@@ -1014,6 +1074,11 @@ export default async function betFlowButtons(interaction) {
       /* ignore */
     }
 
+    const lastMenuId = flow.purchase?.lastMenuCustomId;
+    const jraMultiStrip =
+      lastMenuId && jraMultiEligibleLastMenu(lastMenuId)
+        ? { on: flow.jraMulti === true }
+        : null;
     await interaction.editReply(
       buildUnitKeypadPayload({
         raceId,
@@ -1022,6 +1087,7 @@ export default async function betFlowButtons(interaction) {
         buffer: buf,
         subtitle: null,
         extraFlags,
+        jraMultiStrip,
       }),
     );
   }

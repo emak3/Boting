@@ -95,7 +95,7 @@ function idBuilder(raceId, kind, slipIdx) {
 }
 
 /**
- * @param {{ raceId: string, kind: 'flow' | 'slip', slipIdx?: number | null, buffer: string, subtitle?: string | null, extraFlags?: number }} opts
+ * @param {{ raceId: string, kind: 'flow' | 'slip', slipIdx?: number | null, buffer: string, subtitle?: string | null, extraFlags?: number, jraMultiStrip?: { on: boolean } | null }} opts
  */
 export function buildUnitKeypadPayload({
   raceId,
@@ -104,6 +104,7 @@ export function buildUnitKeypadPayload({
   buffer,
   subtitle = null,
   extraFlags = 0,
+  jraMultiStrip = null,
 }) {
   const bid = idBuilder(raceId, kind, slipIdx);
   const mk = (label, style, op, arg) =>
@@ -145,10 +146,24 @@ export function buildUnitKeypadPayload({
 
   const text = formatUnitKeypadHeadline({ buffer, subtitle }).slice(0, 3900);
   const flags = MessageFlags.IsComponentsV2 | extraFlags;
+  const components = [new TextDisplayBuilder().setContent(text), ...rows];
+  if (jraMultiStrip && kind === 'flow') {
+    const on = jraMultiStrip.on === true;
+    components.splice(
+      1,
+      0,
+      new ActionRowBuilder().addComponents(
+        new ButtonBuilder()
+          .setCustomId(`race_bet_jra_multi_toggle|${raceId}`)
+          .setLabel(on ? 'マルチ: ON' : 'マルチ: OFF')
+          .setStyle(on ? ButtonStyle.Success : ButtonStyle.Secondary),
+      ),
+    );
+  }
   return {
     content: null,
     embeds: [],
-    components: [new TextDisplayBuilder().setContent(text), ...rows],
+    components,
     flags,
   };
 }

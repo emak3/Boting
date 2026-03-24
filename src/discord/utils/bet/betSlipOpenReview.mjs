@@ -11,9 +11,11 @@ import {
 } from './betSlipStore.mjs';
 import { netkeibaOriginFromFlow } from '../netkeiba/netkeibaUrls.mjs';
 import { deriveRaceHoldYmdFromFlow } from '../race/raceHoldDate.mjs';
+import { buildPickCompactOneLine } from './betPurchaseEmbed.mjs';
 import { buildSlipReviewV2Payload } from './betSlipReview.mjs';
 import { buildTextAndRowsV2Payload } from '../race/raceCardDisplay.mjs';
 import { buildRaceHubBackButtonRow } from '../race/raceCommandHub.mjs';
+import { jraMultiEligibleLastMenu } from '../race/raceBetTickets.mjs';
 
 /**
  * まとめて購入レビューを閉じ、開く前の購入予定リスト・進行中フローを復元する（メニューへ戻る用）
@@ -65,6 +67,8 @@ export function trifukuFormationSnapshotFromFlow(flow) {
 export function slipItemFromLiveFlow(flow, raceId) {
   const origin = netkeibaOriginFromFlow(flow);
   const rid = flow.result?.raceId || raceId;
+  const lastMenuId = flow?.purchase?.lastMenuCustomId;
+  const jraMultiOffered = !!(lastMenuId && jraMultiEligibleLastMenu(lastMenuId));
   return {
     id: `live_${Date.now()}_${Math.random().toString(36).slice(2, 9)}`,
     raceId: rid,
@@ -82,6 +86,11 @@ export function slipItemFromLiveFlow(flow, raceId) {
     tickets: Array.isArray(flow.purchase?.tickets) ? flow.purchase.tickets : [],
     horseNumToFrame: horseNumToFrameFromResult(flow.result),
     trifukuFormation: trifukuFormationSnapshotFromFlow(flow),
+    jraMulti: flow.jraMulti === true,
+    jraMultiOffered,
+    pickCompact: jraMultiOffered
+      ? buildPickCompactOneLine(flow.purchase.selectionLine)
+      : '',
   };
 }
 
@@ -106,6 +115,7 @@ export function buildSlipReviewRestoreSnapshot({ flowOpt, saved, raceId }) {
       tritanMode: flowOpt.tritanMode,
       stepSelections: JSON.parse(JSON.stringify(flowOpt.stepSelections || {})),
       unitYen: flowOpt.unitYen,
+      jraMulti: flowOpt.jraMulti === true,
     };
   }
   return {
@@ -131,6 +141,7 @@ export function resetFlowAfterSlipAction(userId, raceId) {
     trifukuMode: null,
     tritanMode: null,
     stepSelections: {},
+    jraMulti: false,
   });
 }
 

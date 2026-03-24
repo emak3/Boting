@@ -132,6 +132,10 @@ export async function tryConfirmRacePurchase(userId, items) {
       horseNumToFrame: h2f,
       trifukuFormation,
       raceHoldYmd: holdFromItem,
+      jraMulti: it.jraMulti === true,
+      jraMultiOffered: it.jraMultiOffered === true,
+      pickCompact:
+        it.pickCompact != null ? String(it.pickCompact).slice(0, 500) : '',
     });
   }
 
@@ -188,6 +192,9 @@ export async function tryConfirmRacePurchase(userId, items) {
       if (row.trifukuFormation) body.trifukuFormation = row.trifukuFormation;
       if (row.venueTitle) body.venueTitle = row.venueTitle;
       if (row.raceHoldYmd) body.raceHoldYmd = row.raceHoldYmd;
+      body.jraMulti = !!row.jraMulti;
+      body.jraMultiOffered = !!row.jraMultiOffered;
+      body.pickCompact = row.pickCompact != null ? String(row.pickCompact).slice(0, 500) : '';
       await RaceBet.create(body, { transaction: t });
     }
 

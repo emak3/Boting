@@ -1,5 +1,6 @@
 import { MessageFlags } from 'discord.js';
 import { getBetFlow, patchBetFlow } from '../../utils/bet/betFlowStore.mjs';
+import { jraMultiEligibleLastMenu } from '../../utils/race/raceBetTickets.mjs';
 import {
   getSlipPendingReview,
   replaceSlipPendingItems,
@@ -31,6 +32,14 @@ function v2ExtraFlags(interaction) {
     /* ignore */
   }
   return extraFlags;
+}
+
+function jraMultiStripForKeypad(userId, raceId, kind) {
+  if (kind !== 'flow') return null;
+  const flow = getBetFlow(userId, raceId);
+  const lastId = flow?.purchase?.lastMenuCustomId;
+  if (!lastId || !jraMultiEligibleLastMenu(lastId)) return null;
+  return { on: flow.jraMulti === true };
 }
 
 function ensureDraft(userId, parsed) {
@@ -98,6 +107,7 @@ export default async function unitYenKeypadButtons(interaction) {
   if (parsed.op === 'digit' && parsed.digit != null) {
     const nextBuf = appendDigit(draft.buffer, parsed.digit);
     setUnitKeypadDraft(userId, { ...draft, buffer: nextBuf });
+    const jraMultiStrip = jraMultiStripForKeypad(userId, parsed.raceId, parsed.kind);
     await interaction.update(
       buildUnitKeypadPayload({
         raceId: parsed.raceId,
@@ -106,6 +116,7 @@ export default async function unitYenKeypadButtons(interaction) {
         buffer: nextBuf,
         subtitle: slipSubtitle,
         extraFlags,
+        jraMultiStrip,
       }),
     );
     return;
@@ -114,6 +125,7 @@ export default async function unitYenKeypadButtons(interaction) {
   if (parsed.op === 'del') {
     const nextBuf = deleteLastDigit(draft.buffer);
     setUnitKeypadDraft(userId, { ...draft, buffer: nextBuf });
+    const jraMultiStrip = jraMultiStripForKeypad(userId, parsed.raceId, parsed.kind);
     await interaction.update(
       buildUnitKeypadPayload({
         raceId: parsed.raceId,
@@ -122,6 +134,7 @@ export default async function unitYenKeypadButtons(interaction) {
         buffer: nextBuf,
         subtitle: slipSubtitle,
         extraFlags,
+        jraMultiStrip,
       }),
     );
     return;

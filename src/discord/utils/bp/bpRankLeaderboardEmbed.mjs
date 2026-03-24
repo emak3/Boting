@@ -24,6 +24,8 @@ import { mapWithConcurrency } from '../../../utils/concurrency/mapWithConcurrenc
 
 /** Discord REST のバーストを抑える（表示名解決の並列度） */
 const BP_RANK_NAME_RESOLVE_CONCURRENCY = 5;
+/** 表示中ランキング行ごとの未精算処理の並列度（netkeiba 負荷と応答時間のバランス） */
+const BP_RANK_SLICE_SETTLE_CONCURRENCY = 3;
 
 /** ランキング Container のアクセント（Embed の黄色に相当） */
 const BP_RANK_ACCENT = 0xf1c40f;
@@ -280,17 +282,13 @@ function appendChunkedToContainer(container, text) {
 }
 
 /**
- * ランキング集計を1回だけ取り、本文・セレクトで共有する
+ * ランキング集計を取り、本文・セレクトで共有する。
+ * 表示件数ぶんの暫定上位ユーザーの未精算馬券を精算したあと、BP・集計を再取得してからスライスを確定する。
  * @param {number} limit
  * @param {string} mode BP_RANK_MODE
- * @param {{ refundForUserId?: string }} [opts]
+ * @param {{ refundForUserId?: string }} [opts] 操作者（上位にいなくても精算する）
  */
 export async function loadBpRankLeaderboardState(limit, mode, opts = {}) {
-  const uid = opts.refundForUserId;
-  if (uid && /^\d{17,20}$/.test(String(uid))) {
-    await runPendingRaceRefundsForUser(uid);
-  }
-
   const lim = Math.min(BP_RANK_DISPLAY_MAX, Math.max(1, limit));
   const m =
     mode === BP_RANK_MODE.RECOVERY ||
@@ -299,15 +297,36 @@ export async function loadBpRankLeaderboardState(limit, mode, opts = {}) {
       ? mode
       : BP_RANK_MODE.BALANCE;
 
-  const [balanceRows, aggMap] = await Promise.all([
-    fetchAllUsersByBalanceDesc(),
-    fetchAllRaceBetAggregatesByUserId(),
-  ]);
+  const fetchMergedSlice = async () => {
+    const [balanceRows, aggMap] = await Promise.all([
+      fetchAllUsersByBalanceDesc(),
+      fetchAllRaceBetAggregatesByUserId(),
+    ]);
+    const merged = mergeLeaderboardRows(balanceRows, aggMap);
+    sortMergedForMode(m, merged);
+    const slice = merged.slice(0, lim);
+    return { merged, slice };
+  };
 
-  const merged = mergeLeaderboardRows(balanceRows, aggMap);
-  sortMergedForMode(m, merged);
+  let { merged, slice } = await fetchMergedSlice();
 
-  const slice = merged.slice(0, lim);
+  const toSettle = new Set(slice.map((r) => r.userId));
+  const uid = opts.refundForUserId;
+  if (uid && /^\d{17,20}$/.test(String(uid))) {
+    toSettle.add(uid);
+  }
+
+  if (toSettle.size > 0) {
+    await mapWithConcurrency(
+      [...toSettle],
+      BP_RANK_SLICE_SETTLE_CONCURRENCY,
+      async (userId) => {
+        await runPendingRaceRefundsForUser(userId);
+      },
+    );
+    ({ merged, slice } = await fetchMergedSlice());
+  }
+
   return { lim, m, merged, slice };
 }
 

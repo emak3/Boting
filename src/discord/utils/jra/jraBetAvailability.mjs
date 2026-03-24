@@ -1,8 +1,9 @@
 /**
- * JRA 勝馬投票券の発売（出走予定頭数による可否）
+ * 勝馬投票券の発売可否（出走予定頭数・枠連の枠内複数頭）
+ * 中央(JRA)・地方(NAR)のどちらも、JRA 公式の発売頭数表に合わせる。
  * @see https://www.jra.go.jp/kouza/baken/index.html#cat_sell
  *
- * 地方競馬（NAR）や頭数が取れない場合は絞り込みを行わない。
+ * 頭数が 2 未満に取れないときは JRA 表に照らし単勝のみ可とみなし、それ以外の券種はメニューに出さない。
  */
 
 export function getStarterCount(result) {
@@ -14,13 +15,6 @@ export function getStarterCount(result) {
   const n = result.totalHorses;
   if (typeof n === 'number' && Number.isFinite(n) && n > 0) return n;
   return horses.length;
-}
-
-export function isNarBetContext(ctx = {}) {
-  const { source, result } = ctx;
-  if (source === 'nar') return true;
-  if (result?.netkeibaOrigin === 'nar') return true;
-  return false;
 }
 
 function hasMultiHorseSameFrame(horses) {
@@ -71,13 +65,16 @@ function jraFramePairAllowed(n, horses) {
  * @param {object[]|undefined} horses 枠連例外判定用
  */
 export function jraBetTypeAllowed(betTypeId, n, horses = []) {
-  if (!betTypeId || n < 2) return true;
+  if (!betTypeId) return true;
+  // 2頭未満（未取得・1頭など）では単勝以外は発売対象外として扱う（メニューから除外）
+  if (n < 2) return betTypeId === 'win';
 
   const frameOk = jraFramePairAllowed(n, horses);
 
   switch (betTypeId) {
     case 'win':
       return true;
+    // JRA 表: 2〜4頭は複勝発売なし、5頭以上で発売（5〜7頭は2着まで払戻）
     case 'place':
     case 'win_place':
       return n >= 5;
@@ -102,15 +99,12 @@ export function jraBetTypeAllowed(betTypeId, n, horses = []) {
  * @param {{ source?: string, result?: object }} ctx
  */
 export function filterBetTypesForJraSale(betTypes, ctx = {}) {
-  if (isNarBetContext(ctx)) return betTypes;
   const n = getStarterCount(ctx.result);
-  if (n < 2) return betTypes;
   return betTypes.filter((t) => jraBetTypeAllowed(t.id, n, ctx.result?.horses));
 }
 
 export function isJraBetTypeAllowedForFlow(betTypeId, flow) {
-  if (!flow || isNarBetContext(flow)) return true;
+  if (!flow) return true;
   const n = getStarterCount(flow.result);
-  if (n < 2) return true;
   return jraBetTypeAllowed(betTypeId, n, flow.result?.horses);
 }

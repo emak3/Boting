@@ -22,7 +22,11 @@ const URL_BAKEN_RULES = 'https://www.jra.go.jp/kouza/baken/';
 
 /** @type {readonly { id: string; label: string; description: string }[]} */
 export const BOTING_HELP_REGION_TABS = [
-  { id: 'overview', label: '概要', description: '馬券の種類・ルール（JRA）' },
+  {
+    id: 'overview',
+    label: '概要',
+    description: '馬券の種類・ルール（参考: JRA 公式）',
+  },
   { id: 'central', label: '中央(JRA)', description: 'JRA公式YouTube' },
   { id: 'hokkaido_tohoku', label: '北海道・東北', description: '帯広・門別札幌・岩手' },
   { id: 'nan_kanto', label: '南関東', description: '浦和・船橋・大井・川崎' },
@@ -227,7 +231,7 @@ export function buildBotingHelpPanelPayload({ extraFlags = 0, region = 'overview
       .addTextDisplayComponents((td) =>
         td.setContent(
           '## ヘルプ\n' +
-            '実馬券の種類・ルールは JRA の公式ページから。ライブ配信は下の**地域タブ**で場所を選ぶと YouTube の公式チャンネルへ飛べます。',
+            '実馬券の種類・ルールは JRA の公式ページから。**券種の発売可否（出走頭数）**はその公式表に合わせ、中央(JRA)・地方(NAR)のどちらでも同じルールで絞り込みます（実際の地方の発売と異なる場合があります）。ライブ配信は下の**地域タブ**で場所を選ぶと YouTube の公式チャンネルへ飛べます。',
         ),
       )
       .addSectionComponents(

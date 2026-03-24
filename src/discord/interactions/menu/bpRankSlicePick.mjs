@@ -6,7 +6,6 @@ import {
   loadBpRankLeaderboardState,
 } from '../../utils/bp/bpRankLeaderboardEmbed.mjs';
 import { buildRacePurchaseHistoryV2Payload } from '../../utils/race/racePurchaseHistoryUi.mjs';
-import { runPendingRaceRefundsForUser } from '../../utils/race/raceBetRefundSweep.mjs';
 import { buildTextAndRowsV2Payload } from '../../utils/race/raceCardDisplay.mjs';
 
 function normalizeMode(raw) {
@@ -63,7 +62,6 @@ export default async function bpRankSlicePick(interaction) {
   }
 
   await interaction.deferUpdate();
-  await runPendingRaceRefundsForUser(targetId);
 
   try {
     const payload = await buildRacePurchaseHistoryV2Payload({

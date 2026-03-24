@@ -1506,7 +1506,7 @@ export default async function raceScheduleMenu(interaction) {
         raceCardPayload(interaction,{
           result: flow.result,
           headline:
-            '❌ この出走頭数ではその券種は発売されません（JRAの発売頭数ルール）。別の券種を選んでください。',
+            '❌ この出走頭数ではその券種は発売されません（JRA 公式の発売頭数表に準拠し、中央(JRA)・地方(NAR)とも同じルールで絞り込み）。\nhttps://www.jra.go.jp/kouza/baken/index.html#cat_sell\n別の券種を選んでください。',
           actionRows: [
             betTypeSelectRow(raceId, null, flow),
             scheduleRaceListBackIfScheduled(userId, raceId),

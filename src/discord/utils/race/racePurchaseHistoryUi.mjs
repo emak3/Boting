@@ -4,6 +4,8 @@ import {
   ButtonStyle,
   ContainerBuilder,
   MessageFlags,
+  StringSelectMenuBuilder,
+  StringSelectMenuOptionBuilder,
 } from 'discord.js';
 import {
   fetchUserRaceBetsForRaceHoldDateYmd,
@@ -19,9 +21,11 @@ import {
 import {
   formatSlipPickDisplayLines,
   BET_TYPE_LABEL,
+  formatCompactPostTimeForHistory,
   historyRaceHeadingLine,
   venuePrefixForHistoryBet,
 } from '../bet/betPurchaseEmbed.mjs';
+import { DISCORD_SELECT_OPTION_LABEL_MAX } from './raceNumberEmoji.mjs';
 import { V2_SINGLE_CHUNK, V2_TEXT_TOTAL_MAX } from './raceCardDisplay.mjs';
 import { buildBotingMenuBackRow } from './raceCommandHub.mjs';
 import {
@@ -96,6 +100,29 @@ function historyCtxSuffix(bpRankProfileUserId, rankLeaderboardReturn) {
 export const RACE_HISTORY_PAGE_PREFIX = 'race_bet_history_pg';
 /** 開催日を前後にずらす（customId: day|対象YYYYMMDD|page|meetingFilter） */
 export const RACE_HISTORY_DAY_PREFIX = 'race_bet_history_day';
+/** 購入履歴ページからレース結果へ（String Select の customId） */
+export const RACE_HISTORY_RESULT_PICK_PREFIX = 'race_hist_result';
+
+/**
+ * 購入履歴のページング・開催フィルタと同じ customId（戻るボタン兼用）
+ * @param {{ periodKey: string, page: number, meetingFilter?: string, bpRankProfileUserId?: string | null, rankLeaderboardReturn?: { limit: number, mode: string } | null }} opts
+ */
+export function buildRaceHistoryNavCustomId(opts) {
+  const mf = String(opts.meetingFilter || 'all').trim() || 'all';
+  const pg = Math.max(0, Math.floor(Number(opts.page) || 0));
+  const sfx = historyCtxSuffix(opts.bpRankProfileUserId, opts.rankLeaderboardReturn);
+  return `${RACE_HISTORY_PAGE_PREFIX}|${opts.periodKey}|${pg}|${mf}${sfx}`;
+}
+
+/**
+ * @param {{ periodKey: string, page: number, meetingFilter?: string, bpRankProfileUserId?: string | null, rankLeaderboardReturn?: { limit: number, mode: string } | null }} opts
+ */
+export function buildRaceHistoryResultPickCustomId(opts) {
+  const mf = String(opts.meetingFilter || 'all').trim() || 'all';
+  const pg = Math.max(0, Math.floor(Number(opts.page) || 0));
+  const sfx = historyCtxSuffix(opts.bpRankProfileUserId, opts.rankLeaderboardReturn);
+  return `${RACE_HISTORY_RESULT_PICK_PREFIX}|${opts.periodKey}|${pg}|${mf}${sfx}`;
+}
 
 /** 1ページあたりの買い目件数（レース見出しはカウントに含めない） */
 export const HISTORY_BETS_PER_PAGE = 10;
@@ -282,8 +309,85 @@ function flattenBetsByRace(bets) {
   return flat;
 }
 
+/**
+ * 見出し用（レース名の後に `10:20`）
+ * @param {object} bet
+ * @param {Map<string, string>} timeByRaceId rid → oddsOfficialTime 生文字列
+ */
+function historyRaceHeadingLineWithPostTime(bet, timeByRaceId) {
+  const base = historyRaceHeadingLine(bet);
+  const rid = String(bet.raceId || '');
+  const raw =
+    (bet.oddsOfficialTime && String(bet.oddsOfficialTime).trim()) ||
+    (rid && timeByRaceId?.get(rid)) ||
+    '';
+  const short = formatCompactPostTimeForHistory(raw);
+  return short ? `${base} \`${short}\`` : base;
+}
+
+/**
+ * ページ内レースの時刻表示用（DB の oddsOfficialTime のみ。netkeiba は叩かない＝履歴表示を速く保つ）
+ * @param {{ rid: string, bet: object }[]} slice
+ */
+function oddsOfficialTimeMapFromSlice(slice) {
+  const map = new Map();
+  for (const { rid, bet } of slice) {
+    const r = String(rid || '');
+    if (!/^\d{12}$/.test(r) || map.has(r)) continue;
+    const dbT = bet.oddsOfficialTime && String(bet.oddsOfficialTime).trim();
+    if (dbT) map.set(r, dbT);
+  }
+  return map;
+}
+
+/** 表示順で初出の race_id のみ（セレクト並び用） */
+function orderedUniqueRidsFromSlice(slice) {
+  const out = [];
+  const seen = new Set();
+  for (const { rid } of slice) {
+    const r = String(rid || '');
+    if (!/^\d{12}$/.test(r) || seen.has(r)) continue;
+    seen.add(r);
+    out.push(r);
+  }
+  return out;
+}
+
+/**
+ * @param {{ rid: string, bet: object }[]} slice
+ * @param {Map<string, string>} timeByRaceId
+ */
+function buildHistoryResultPickRow(slice, pickCustomId, timeByRaceId) {
+  const rids = orderedUniqueRidsFromSlice(slice);
+  if (!rids.length) return null;
+
+  const opts = [];
+  for (const rid of rids) {
+    const row = slice.find((s) => s.rid === rid);
+    if (!row) continue;
+    const { bet } = row;
+    const label = historyRaceHeadingLineWithPostTime(bet, timeByRaceId).slice(
+      0,
+      DISCORD_SELECT_OPTION_LABEL_MAX,
+    );
+    const settled = String(bet.status || 'open') === 'settled';
+    opts.push(
+      new StringSelectMenuOptionBuilder()
+        .setLabel(label || rid)
+        .setValue(`${rid}|${settled ? 1 : 0}`),
+    );
+  }
+  if (!opts.length) return null;
+
+  const menu = new StringSelectMenuBuilder()
+    .setCustomId(pickCustomId)
+    .setPlaceholder('このページのレース結果を表示')
+    .addOptions(opts);
+  return new ActionRowBuilder().addComponents(menu);
+}
+
 /** レース単位のテキストチャンク（チャンクの間に Separator を挟む） */
-function buildHistoryRaceTextChunks(slice) {
+function buildHistoryRaceTextChunks(slice, timeByRaceId) {
   let currentRid = null;
   const chunks = [];
   let raceHead = null;
@@ -302,7 +406,7 @@ function buildHistoryRaceTextChunks(slice) {
     if (rid !== currentRid) {
       flushRace();
       currentRid = rid;
-      const title = historyRaceHeadingLine(bet);
+      const title = historyRaceHeadingLineWithPostTime(bet, timeByRaceId);
       raceHead = `**${title}**`;
     }
     entries.push(formatBetEntryForHistory(bet));
@@ -364,17 +468,21 @@ function historyTitleLineForHoldYmd(holdYmd) {
 }
 
 /**
- * 前後の「購入がある開催日」へ（空の日はスキップ。ページは 0 に戻す）
+ * 前の日・次の日・前へ・次へを 1 行に並べる（ページが 1 枚だけのときは前へ・次へは出さない）
  * @param {string} periodKey YYYYMMDD
  * @param {string} meetingFilter
- * @param {string | null} prevYmd 前方向に購入がある開催日（無ければ null）
- * @param {string | null} nextYmd 次方向に購入がある開催日（無ければ null）
+ * @param {string | null} prevYmd
+ * @param {string | null} nextYmd
+ * @param {number} page
+ * @param {number} totalPages
  */
-function historyDayNavRow(
+function historyDayAndPageNavRow(
   periodKey,
   meetingFilter,
   prevYmd,
   nextYmd,
+  page,
+  totalPages,
   bpRankProfileUserId = null,
   rankLeaderboardReturn = null,
 ) {
@@ -385,7 +493,13 @@ function historyDayNavRow(
   /** 無効時も custom_id は行内で一意（Discord は重複を拒否） */
   const disabledPrevId = `${RACE_HISTORY_DAY_PREFIX}|${periodKey}|0|${mf}|_${sfx}`;
   const disabledNextId = `${RACE_HISTORY_DAY_PREFIX}|${periodKey}|0|${mf}|__${sfx}`;
-  return new ActionRowBuilder().addComponents(
+
+  const navId = (pg) =>
+    `${RACE_HISTORY_PAGE_PREFIX}|${periodKey}|${pg}|${mf}${sfx}`;
+  const showPageNav = totalPages > 1;
+  const safePage = Math.min(Math.max(0, Number(page) || 0), Math.max(0, totalPages - 1));
+
+  const components = [
     new ButtonBuilder()
       .setCustomId(prevYmd ? dayId(prevYmd) : disabledPrevId)
       .setLabel('前の日')
@@ -398,52 +512,48 @@ function historyDayNavRow(
       .setEmoji(botingEmoji('tsugi'))
       .setStyle(ButtonStyle.Secondary)
       .setDisabled(nextYmd == null),
-  );
+  ];
+  if (showPageNav) {
+    components.push(
+      new ButtonBuilder()
+        .setCustomId(navId(Math.max(0, safePage - 1)))
+        .setLabel('前へ')
+        .setEmoji(botingEmoji('mae'))
+        .setStyle(ButtonStyle.Secondary)
+        .setDisabled(safePage <= 0),
+      new ButtonBuilder()
+        .setCustomId(navId(Math.min(totalPages - 1, safePage + 1)))
+        .setLabel('次へ')
+        .setEmoji(botingEmoji('tsugi'))
+        .setStyle(ButtonStyle.Secondary)
+        .setDisabled(safePage >= totalPages - 1),
+    );
+  }
+  return new ActionRowBuilder().addComponents(...components);
 }
 
 /**
+ * 開催場フィルタのみ（前へ・次の日などは {@link historyDayAndPageNavRow} 側）
  * @param {{ periodKey: string, page: number, totalPages: number, meetingFilter: string, meetings: { key: string, label: string }[] }} opts
  * @returns {import('discord.js').ActionRowBuilder[]}
  */
 function historyFilterAndPaginationRows({
   periodKey,
-  page,
-  totalPages,
   meetingFilter,
   meetings,
   bpRankProfileUserId = null,
   rankLeaderboardReturn = null,
 }) {
   const rows = [];
-  const showNav = totalPages > 1;
   const showMeetings = meetings.length >= 2;
-  if (!showNav && !showMeetings) return rows;
+  if (!showMeetings) return rows;
 
   const sfx = historyCtxSuffix(bpRankProfileUserId, rankLeaderboardReturn);
-  const navId = (pg) =>
-    `${RACE_HISTORY_PAGE_PREFIX}|${periodKey}|${pg}|${meetingFilter}${sfx}`;
   const venueId = (key) =>
     `${RACE_HISTORY_PAGE_PREFIX}|${periodKey}|0|${key}${sfx}`;
 
-  const navBtns = showNav
-    ? [
-        new ButtonBuilder()
-          .setCustomId(navId(Math.max(0, page - 1)))
-          .setLabel('前へ')
-          .setEmoji(botingEmoji('mae'))
-          .setStyle(ButtonStyle.Secondary)
-          .setDisabled(page <= 0),
-        new ButtonBuilder()
-          .setCustomId(navId(Math.min(totalPages - 1, page + 1)))
-          .setLabel('次へ')
-          .setEmoji(botingEmoji('tsugi'))
-          .setStyle(ButtonStyle.Secondary)
-          .setDisabled(page >= totalPages - 1),
-      ]
-    : [];
-
   const allBtn =
-    showMeetings && meetingFilter !== 'all'
+    meetingFilter !== 'all'
       ? new ButtonBuilder()
           .setCustomId(`${RACE_HISTORY_PAGE_PREFIX}|${periodKey}|0|all${sfx}`)
           .setLabel('すべて')
@@ -456,20 +566,16 @@ function historyFilterAndPaginationRows({
       .setLabel(m.label)
       .setStyle(meetingFilter === m.key ? ButtonStyle.Success : ButtonStyle.Secondary);
 
-  if (showMeetings) {
-    const head = [...navBtns];
-    if (allBtn) head.push(allBtn);
-    const room = Math.max(0, 5 - head.length);
-    const firstVenues = meetings.slice(0, room);
-    const rest = meetings.slice(room);
-    const firstRow = [...head, ...firstVenues.map(venueBtn)];
-    if (firstRow.length) rows.push(new ActionRowBuilder().addComponents(...firstRow));
-    for (let i = 0; i < rest.length; i += 5) {
-      const chunk = rest.slice(i, i + 5).map(venueBtn);
-      rows.push(new ActionRowBuilder().addComponents(...chunk));
-    }
-  } else if (navBtns.length) {
-    rows.push(new ActionRowBuilder().addComponents(...navBtns));
+  const head = [];
+  if (allBtn) head.push(allBtn);
+  const room = Math.max(0, 5 - head.length);
+  const firstVenues = meetings.slice(0, room);
+  const rest = meetings.slice(room);
+  const firstRow = [...head, ...firstVenues.map(venueBtn)];
+  if (firstRow.length) rows.push(new ActionRowBuilder().addComponents(...firstRow));
+  for (let i = 0; i < rest.length; i += 5) {
+    const chunk = rest.slice(i, i + 5).map(venueBtn);
+    rows.push(new ActionRowBuilder().addComponents(...chunk));
   }
 
   return rows;
@@ -552,6 +658,20 @@ export async function buildRacePurchaseHistoryV2Payload({
   const start = safePage * HISTORY_BETS_PER_PAGE;
   const slice = flat.slice(start, start + HISTORY_BETS_PER_PAGE);
 
+  let timeByRaceId = new Map();
+  let resultPickRow = null;
+  if (bets.length && slice.length) {
+    timeByRaceId = oddsOfficialTimeMapFromSlice(slice);
+    const pickCustomId = buildRaceHistoryResultPickCustomId({
+      periodKey,
+      page: safePage,
+      meetingFilter: filterKey,
+      bpRankProfileUserId,
+      rankLeaderboardReturn,
+    });
+    resultPickRow = buildHistoryResultPickRow(slice, pickCustomId, timeByRaceId);
+  }
+
   const summaryLines = [
     historyTitleLineForHoldYmd(periodKey),
     `対象: **${ymd}** 開催（中央は開催日を保存、地方はレースID先頭の日付でも照合。前日購入分も含みます）`,
@@ -588,7 +708,7 @@ export async function buildRacePurchaseHistoryV2Payload({
   } else if (!bets.length) {
     appendChunkedText(container, '*この開催に該当する購入はありません。*');
   } else {
-    const raceChunks = buildHistoryRaceTextChunks(slice);
+    const raceChunks = buildHistoryRaceTextChunks(slice, timeByRaceId);
     for (let i = 0; i < raceChunks.length; i++) {
       if (i > 0) {
         container.addSeparatorComponents((separator) => separator);
@@ -601,18 +721,18 @@ export async function buildRacePurchaseHistoryV2Payload({
     findAdjacentHoldYmdWithBets(userId, periodKey, -1, filterKey),
     findAdjacentHoldYmdWithBets(userId, periodKey, 1, filterKey),
   ]);
-  const dayRow = historyDayNavRow(
+  const dayRow = historyDayAndPageNavRow(
     periodKey,
     filterKey,
     prevNavYmd,
     nextNavYmd,
+    safePage,
+    totalPages,
     bpRankProfileUserId,
     rankLeaderboardReturn,
   );
   const filterRows = historyFilterAndPaginationRows({
     periodKey,
-    page: safePage,
-    totalPages,
     meetingFilter: filterKey,
     meetings,
     bpRankProfileUserId,
@@ -630,7 +750,13 @@ export async function buildRacePurchaseHistoryV2Payload({
   } else {
     hubBack = buildBotingMenuBackRow();
   }
-  const components = [container, dayRow, ...filterRows, hubBack];
+  const components = [
+    container,
+    ...(resultPickRow ? [resultPickRow] : []),
+    dayRow,
+    ...filterRows,
+    hubBack,
+  ];
 
   const flags = MessageFlags.IsComponentsV2 | extraFlags;
   return {

@@ -82,6 +82,8 @@ export const RaceBet = sequelize.define(
     /** マルチ展開なしの1行買い目（例: 1>2 または 4>5,6） */
     pickCompact: { type: DataTypes.STRING(512), allowNull: false, defaultValue: '' },
     netkeibaOrigin: { type: DataTypes.STRING(8), allowNull: false, defaultValue: 'jra' },
+    /** 購入時点のオッズ確定時刻（netkeiba official_datetime）。発走時刻表示に利用 */
+    oddsOfficialTime: { type: DataTypes.STRING(128), allowNull: true },
     raceHoldYmd: { type: DataTypes.STRING(8), allowNull: true },
     status: { type: DataTypes.STRING(16), allowNull: false, defaultValue: 'open' },
     refundBp: { type: DataTypes.INTEGER, allowNull: false, defaultValue: 0 },

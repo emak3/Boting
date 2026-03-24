@@ -34,6 +34,12 @@ async function ensureRaceBetJraColumns() {
       defaultValue: '',
     });
   }
+  if (!desc.oddsOfficialTime) {
+    await qi.addColumn('race_bets', 'oddsOfficialTime', {
+      type: DataTypes.STRING(128),
+      allowNull: true,
+    });
+  }
 }
 
 /**

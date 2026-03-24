@@ -251,6 +251,17 @@ export function historyRaceHeadingLine(bet) {
   return `${v}${core}`;
 }
 
+/**
+ * netkeiba の official_datetime 等から発走/オッズ時刻の HH:MM を抜き出す（購入履歴の `10:20` 表記用）
+ * @param {string | null | undefined} raw
+ */
+export function formatCompactPostTimeForHistory(raw) {
+  const s = String(raw || '').trim();
+  if (!s) return '';
+  const m = s.match(/(\d{1,2})\s*[:：]\s*(\d{2})/);
+  return m ? `${m[1]}:${m[2]}` : '';
+}
+
 function isWakurenSlip(it) {
   return (
     it.betType === 'frame_pair' ||

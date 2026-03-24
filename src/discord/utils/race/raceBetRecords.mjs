@@ -115,6 +115,10 @@ export async function tryConfirmRacePurchase(userId, items) {
       raceId,
       netkeibaOrigin: origin,
     });
+    const oddsTimeRaw =
+      it.oddsOfficialTime != null && String(it.oddsOfficialTime).trim()
+        ? String(it.oddsOfficialTime).replace(/\s+/g, ' ').trim().slice(0, 128)
+        : '';
     normalized.push({
       raceId,
       raceTitle: it.raceTitle != null ? String(it.raceTitle).slice(0, 200) : '',
@@ -136,6 +140,7 @@ export async function tryConfirmRacePurchase(userId, items) {
       jraMultiOffered: it.jraMultiOffered === true,
       pickCompact:
         it.pickCompact != null ? String(it.pickCompact).slice(0, 500) : '',
+      oddsOfficialTime: oddsTimeRaw || null,
     });
   }
 
@@ -195,6 +200,9 @@ export async function tryConfirmRacePurchase(userId, items) {
       body.jraMulti = !!row.jraMulti;
       body.jraMultiOffered = !!row.jraMultiOffered;
       body.pickCompact = row.pickCompact != null ? String(row.pickCompact).slice(0, 500) : '';
+      if (row.oddsOfficialTime) {
+        body.oddsOfficialTime = String(row.oddsOfficialTime).slice(0, 128);
+      }
       await RaceBet.create(body, { transaction: t });
     }
 

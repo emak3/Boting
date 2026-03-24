@@ -18,7 +18,7 @@ import { deriveRaceHoldYmdFromFlow } from '../race/raceHoldDate.mjs';
 import { buildPickCompactOneLine } from './betPurchaseEmbed.mjs';
 import { buildSlipReviewV2Payload } from './betSlipReview.mjs';
 import { buildTextAndRowsV2Payload } from '../race/raceCardDisplay.mjs';
-import { buildRaceHubBackButtonRow } from '../race/raceCommandHub.mjs';
+import { buildBotingMenuBackRow } from '../race/raceCommandHub.mjs';
 import { jraMultiEligibleLastMenu } from '../race/raceBetTickets.mjs';
 
 /**
@@ -234,7 +234,7 @@ export async function editReplyOpenBetSlipReview(interaction, { userId, raceId, 
           prep.error === 'empty'
             ? MSG_SLIP_BATCH_REVIEW_OPEN_EMPTY
             : msgSlipSavedMaxItemsExceeded(),
-        actionRows: [buildRaceHubBackButtonRow()],
+        actionRows: [buildBotingMenuBackRow()],
         extraFlags,
       }),
     );

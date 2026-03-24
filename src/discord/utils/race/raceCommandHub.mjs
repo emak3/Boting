@@ -14,7 +14,7 @@ import { buildBotingMenuBackRow } from '../boting/botingBackButton.mjs';
 import { botingEmoji } from '../boting/botingEmojis.mjs';
 
 export { BOTING_HUB_PREFIX };
-export { buildBotingMenuBackRow, buildBotingMenuBackRow as buildRaceHubBackButtonRow };
+export { buildBotingMenuBackRow };
 
 const HUB_ACCENT = 0x5865f2;
 
@@ -99,11 +99,6 @@ export async function buildBotingPanelPayload({
     flags: MessageFlags.IsComponentsV2 | extraFlags,
   };
 }
-
-/**
- * @deprecated 互換のため残す。`buildBotingPanelPayload` と同じ。
- */
-export const buildRaceHubV2Payload = buildBotingPanelPayload;
 
 /**
  * JRA/NAR 選択へ（説明を Container に載せる）

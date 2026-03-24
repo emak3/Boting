@@ -23,9 +23,7 @@ import {
   venuePrefixForHistoryBet,
 } from '../bet/betPurchaseEmbed.mjs';
 import { V2_SINGLE_CHUNK, V2_TEXT_TOTAL_MAX } from './raceCardDisplay.mjs';
-import {
-  buildRaceHubBackButtonRow,
-} from './raceCommandHub.mjs';
+import { buildBotingMenuBackRow } from './raceCommandHub.mjs';
 import {
   buildBpRankProfileBackButtonRow,
   buildBpRankLbHistoryFooterRow,
@@ -630,7 +628,7 @@ export async function buildRacePurchaseHistoryV2Payload({
   } else if (bpRankProfileUserId) {
     hubBack = buildBpRankProfileBackButtonRow(bpRankProfileUserId);
   } else {
-    hubBack = buildRaceHubBackButtonRow();
+    hubBack = buildBotingMenuBackRow();
   }
   const components = [container, dayRow, ...filterRows, hubBack];
 

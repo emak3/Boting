@@ -1,7 +1,7 @@
 import { MessageFlags } from 'discord.js';
 import {
   BOTING_HUB_PREFIX,
-  buildRaceHubBackButtonRow,
+  buildBotingMenuBackRow,
   buildBotingPanelPayload,
   buildRaceScheduleIntroV2Payload,
 } from '../../utils/race/raceCommandHub.mjs';
@@ -536,7 +536,7 @@ export default async function raceHubButtons(interaction) {
       .editReply(
         buildTextAndRowsV2Payload({
           headline: `❌ 表示の更新に失敗しました: ${e.message}`,
-          actionRows: [buildRaceHubBackButtonRow()],
+          actionRows: [buildBotingMenuBackRow()],
           extraFlags,
         }),
       )

@@ -1,5 +1,5 @@
 import {
-  ActionRowBuilder,
+  LabelBuilder,
   MessageFlags,
   ModalBuilder,
   TextInputBuilder,
@@ -66,16 +66,17 @@ function buildUserIdModal(mode) {
   return new ModalBuilder()
     .setCustomId(`${DEBUG_HUB_MODAL_PREFIX}|${mode}`)
     .setTitle(title.slice(0, 45))
-    .addComponents(
-      new ActionRowBuilder().addComponents(
-        new TextInputBuilder()
-          .setCustomId('user_id')
-          .setLabel('ユーザーID')
-          .setStyle(TextInputStyle.Short)
-          .setRequired(true)
-          .setMinLength(17)
-          .setMaxLength(20),
-      ),
+    .addLabelComponents(
+      new LabelBuilder()
+        .setLabel('ユーザーID')
+        .setTextInputComponent(
+          new TextInputBuilder()
+            .setCustomId('user_id')
+            .setStyle(TextInputStyle.Short)
+            .setRequired(true)
+            .setMinLength(17)
+            .setMaxLength(20),
+        ),
     );
 }
 
@@ -84,16 +85,17 @@ function buildAclUserIdModal(mode) {
   return new ModalBuilder()
     .setCustomId(`${DEBUG_HUB_MODAL_PREFIX}|acl|${mode}`)
     .setTitle(title.slice(0, 45))
-    .addComponents(
-      new ActionRowBuilder().addComponents(
-        new TextInputBuilder()
-          .setCustomId('user_id')
-          .setLabel('ユーザーID')
-          .setStyle(TextInputStyle.Short)
-          .setRequired(true)
-          .setMinLength(17)
-          .setMaxLength(20),
-      ),
+    .addLabelComponents(
+      new LabelBuilder()
+        .setLabel('ユーザーID')
+        .setTextInputComponent(
+          new TextInputBuilder()
+            .setCustomId('user_id')
+            .setStyle(TextInputStyle.Short)
+            .setRequired(true)
+            .setMinLength(17)
+            .setMaxLength(20),
+        ),
     );
 }
 
@@ -108,6 +110,13 @@ export default async function debugHubButtons(interaction) {
   if (!interaction.isButton()) return;
 
   const customId = interaction.customId;
+  const isDebugHubButton =
+    customId.startsWith(`${DEBUG_BP_KPAD_PREFIX}|`) ||
+    customId.startsWith(`${DEBUG_BP_CFM_PREFIX}|`) ||
+    customId.startsWith(`${DEBUG_ACL_CFM_PREFIX}|`) ||
+    customId.startsWith(`${DEBUG_HUB_PREFIX}|`);
+  if (!isDebugHubButton) return;
+
   const userId = interaction.user.id;
 
   if (customId.startsWith(`${DEBUG_BP_KPAD_PREFIX}|`)) {
@@ -124,8 +133,6 @@ export default async function debugHubButtons(interaction) {
     await handleAclConfirm(interaction);
     return;
   }
-
-  if (!customId.startsWith(`${DEBUG_HUB_PREFIX}|`)) return;
 
   if (!canUseDebugCommands(userId)) {
     await interaction.reply({

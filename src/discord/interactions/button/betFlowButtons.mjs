@@ -68,7 +68,7 @@ import {
   normalizeUnitYen100,
 } from '../../utils/unit/unitYenKeypad.mjs';
 import { setUnitKeypadDraft } from '../../utils/unit/unitYenKeypadStore.mjs';
-import { buildRaceHubBackButtonRow } from '../../utils/race/raceCommandHub.mjs';
+import { buildBotingMenuBackRow } from '../../utils/race/raceCommandHub.mjs';
 import { buildEphemeralWithBotingBackPayload } from '../../utils/boting/botingBackButton.mjs';
 import { botingEmoji } from '../../utils/boting/botingEmojis.mjs';
 
@@ -743,7 +743,7 @@ export default async function betFlowButtons(interaction) {
     await interaction.editReply(
       buildTextAndRowsV2Payload({
         headline,
-        actionRows: [buildRaceHubBackButtonRow()],
+        actionRows: [buildBotingMenuBackRow()],
         extraFlags,
       }),
     );

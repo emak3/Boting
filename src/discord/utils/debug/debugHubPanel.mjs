@@ -3,6 +3,7 @@ import {
   ButtonBuilder,
   ButtonStyle,
   ContainerBuilder,
+  LabelBuilder,
   MessageFlags,
   ModalBuilder,
   StringSelectMenuBuilder,
@@ -34,16 +35,17 @@ export function buildRaceIdModal(kind) {
   return new ModalBuilder()
     .setCustomId(`${DEBUG_RACE_MODAL_PREFIX}|${kind}`)
     .setTitle(`レースID（${label}）`.slice(0, 45))
-    .addComponents(
-      new ActionRowBuilder().addComponents(
-        new TextInputBuilder()
-          .setCustomId('race_id')
-          .setLabel('レースID（12桁の数字）')
-          .setStyle(TextInputStyle.Short)
-          .setRequired(true)
-          .setMinLength(12)
-          .setMaxLength(12),
-      ),
+    .addLabelComponents(
+      new LabelBuilder()
+        .setLabel('レースID（12桁の数字）')
+        .setTextInputComponent(
+          new TextInputBuilder()
+            .setCustomId('race_id')
+            .setStyle(TextInputStyle.Short)
+            .setRequired(true)
+            .setMinLength(12)
+            .setMaxLength(12),
+        ),
     );
 }
 

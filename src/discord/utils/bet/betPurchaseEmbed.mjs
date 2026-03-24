@@ -182,6 +182,51 @@ function parseSelectionDetail(selectionLine) {
     .trim();
 }
 
+/** `軸: 枠3(...) / 相手: 枠4(...)` 形式の枠番列 */
+function extractFrameNumsFromWakurenSummarySegment(seg) {
+  const out = [];
+  const re = /枠\s*(\d+)/g;
+  let m;
+  while ((m = re.exec(String(seg || '')))) {
+    out.push(m[1]);
+  }
+  return out;
+}
+
+/**
+ * raceSchedule のながし要約 `軸: … / 相手: …` から軸1つ＋相手番号列
+ * @returns {{ axis: string, opps: string[] } | null}
+ */
+function parsePairNagashiAxisOpponentFromDetail(detail, it) {
+  const m = String(detail || '').match(
+    /^\s*軸:\s*(.+?)\s*\/\s*相手:\s*(.+)\s*$/s,
+  );
+  if (!m) return null;
+  const axisSeg = m[1].trim();
+  const oppSeg = m[2].trim();
+  if (isWakurenSlip(it)) {
+    const axisFrames = extractFrameNumsFromWakurenSummarySegment(axisSeg);
+    const opps = extractFrameNumsFromWakurenSummarySegment(oppSeg);
+    if (!axisFrames.length || !opps.length) return null;
+    const axis = axisFrames[0];
+    const uniqOpps = [...new Set(opps)].sort((a, b) => Number(a) - Number(b));
+    return { axis, opps: uniqOpps };
+  }
+  const axisNums = extractHorseNumsFromSlipDetailSegment(axisSeg);
+  const oppNums = extractHorseNumsFromSlipDetailSegment(oppSeg);
+  if (!axisNums.length || !oppNums.length) return null;
+  const axis = axisNums[0];
+  const uniqOpps = [...new Set(oppNums)].sort((a, b) => Number(a) - Number(b));
+  return { axis, opps: uniqOpps };
+}
+
+/** 枠連・馬連・ワイドの「ながし」（betType 欠落時も selection ラベルで判定） */
+function isPairStyleNagashiSlip(it, label) {
+  if (!label.includes('（ながし）')) return false;
+  if (isPairBet(it.betType || '')) return true;
+  return /^(枠連|馬連|ワイド)（ながし）/.test(label);
+}
+
 function extractBanNumsFromText(text) {
   return [...String(text || '').matchAll(/(\d+)番/g)].map((m) => m[1]);
 }
@@ -492,6 +537,17 @@ export function formatSlipPickDisplayLines(it) {
   const detail = parseSelectionDetail(it.selectionLine);
   const bt = it.betType || '';
 
+  if (isPairStyleNagashiSlip(it, label)) {
+    let px = tickets.length ? pairNagashiAxisAndOpps(tickets, it) : null;
+    if (!px) px = parsePairNagashiAxisOpponentFromDetail(detail, it);
+    if (px) {
+      return [
+        `${label}【軸】：${fmtC(it, [px.axis])}`,
+        `${label}【相手】：${fmtC(it, px.opps)}`,
+      ].join('\n');
+    }
+  }
+
   if (!tickets.length) return '';
 
   if (label.includes('単勝+複勝')) {
@@ -505,16 +561,6 @@ export function formatSlipPickDisplayLines(it) {
   if (bt === 'win' || bt === 'place') {
     const n = tickets[0]?.nums?.[0];
     return n != null ? `${label}：${fmtC(it, [String(n)])}` : '';
-  }
-
-  if (isPairBet(bt) && label.includes('（ながし）')) {
-    const px = pairNagashiAxisAndOpps(tickets, it);
-    if (px) {
-      return [
-        `${label}【軸】：${fmtC(it, [px.axis])}`,
-        `${label}【相手】：${fmtC(it, px.opps)}`,
-      ].join('\n');
-    }
   }
 
   if (isPairBet(bt) && label.includes('（フォーメーション）')) {

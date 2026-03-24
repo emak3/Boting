@@ -46,6 +46,8 @@ import {
   firstScheduleAnchorRaceIdFromRaces,
   firstScheduleAnchorRaceIdFromVenues,
 } from '../../utils/bet/betSlipViewUi.mjs';
+import { formatSlipPickDisplayLines } from '../../utils/bet/betPurchaseEmbed.mjs';
+import { horseNumToFrameFromResult } from '../../utils/bet/betSlipOpenReview.mjs';
 import { botingEmoji } from '../../utils/boting/botingEmojis.mjs';
 import {
   buildMenuRowFromCustomId,
@@ -776,11 +778,17 @@ async function renderFinalSelection({
   const origin = netkeibaOriginFromFlow(flowForOrigin);
   const resultUrl = isResult ? netkeibaResultUrl(raceId, origin) : null;
 
-  const content = `${selectionLine}\n${formatBetPoints(points, unitYen)}${
+  const flowAfter = getBetFlow(userId, raceId);
+  const slipPick = formatSlipPickDisplayLines({
+    selectionLine: flowAfter?.purchase?.selectionLine ?? selectionLine,
+    betType: flowAfter?.betType ?? betType,
+    tickets: flowAfter?.purchase?.tickets || [],
+    horseNumToFrame: horseNumToFrameFromResult(result),
+  });
+  const content = `${slipPick || selectionLine}\n${formatBetPoints(points, unitYen)}${
     resultUrl ? `\n結果: ${resultUrl}` : ''
   }`;
 
-  const flowAfter = getBetFlow(userId, raceId);
   const betTypeMenuId = `race_bet_type|${raceId}`;
   const summaryMenuRows = [];
   for (const menuId of backMenuIds) {

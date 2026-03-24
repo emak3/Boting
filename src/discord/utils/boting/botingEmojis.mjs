@@ -27,6 +27,9 @@ const REQUIRED_KEYS = [
   'textdelete',
   'check',
   'maru',
+  'help',
+  'youtube',
+  'web',
 ];
 
 function loadBotingEmojiMap() {

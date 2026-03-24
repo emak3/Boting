@@ -85,6 +85,11 @@ export async function buildBotingPanelPayload({
       .setLabel('購入予定')
       .setEmoji(botingEmoji('cart'))
       .setStyle(ButtonStyle.Secondary),
+    new ButtonBuilder()
+      .setCustomId(`${BOTING_HUB_PREFIX}|help`)
+      .setLabel('ヘルプ')
+      .setEmoji(botingEmoji('help'))
+      .setStyle(ButtonStyle.Secondary),
   );
 
   return {

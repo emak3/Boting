@@ -36,7 +36,14 @@ import {
   buildDebugResultPayload,
   buildDebugUserPickPayload,
   buildRaceIdModal,
+  buildWeeklyChallengeRewardsModal,
+  buildWeeklyChallengeThresholdsModal,
 } from '../../utils/debug/debugHubPanel.mjs';
+import {
+  getWeeklyChallengeConfig,
+  setWeeklyChallengeConfig,
+} from '../../utils/challenge/weeklyChallengeConfig.mjs';
+import { saveDebugPanelFromComponentInteraction } from '../../utils/debug/debugPanelWebhookStore.mjs';
 import {
   clearDebugRaceKindDraft,
   getDebugRaceKindDraft,
@@ -149,7 +156,8 @@ export default async function debugHubButtons(interaction) {
   if (action === 'toggle') {
     clearDebugRaceKindDraft(userId);
     setDebugSalesBypass(!isDebugSalesBypassEnabled());
-    await interaction.update(buildDebugPanelPayload({ extraFlags }));
+    await interaction.update(await buildDebugPanelPayload({ extraFlags }));
+    saveDebugPanelFromComponentInteraction(interaction);
     return;
   }
 
@@ -165,11 +173,35 @@ export default async function debugHubButtons(interaction) {
     return;
   }
 
+  if (action === 'weekly_cfg_toggle') {
+    clearDebugRaceKindDraft(userId);
+    const cur = await getWeeklyChallengeConfig();
+    await setWeeklyChallengeConfig({ ...cur, enabled: !cur.enabled });
+    await interaction.update(await buildDebugPanelPayload({ extraFlags }));
+    saveDebugPanelFromComponentInteraction(interaction);
+    return;
+  }
+
+  if (action === 'weekly_cfg_thresh') {
+    clearDebugRaceKindDraft(userId);
+    const cfg = await getWeeklyChallengeConfig();
+    await interaction.showModal(buildWeeklyChallengeThresholdsModal(cfg));
+    return;
+  }
+
+  if (action === 'weekly_cfg_rewards') {
+    clearDebugRaceKindDraft(userId);
+    const cfg = await getWeeklyChallengeConfig();
+    await interaction.showModal(buildWeeklyChallengeRewardsModal(cfg));
+    return;
+  }
+
   if (action === 'back') {
     clearDebugBpDraft(userId);
     clearDebugAclDraft(userId);
     clearDebugRaceKindDraft(userId);
-    await interaction.update(buildDebugPanelPayload({ extraFlags }));
+    await interaction.update(await buildDebugPanelPayload({ extraFlags }));
+    saveDebugPanelFromComponentInteraction(interaction);
     return;
   }
 
@@ -338,7 +370,8 @@ async function handleConfirm(interaction) {
   const buf = String(draft.buffer || '').trim();
   if (!buf) {
     clearDebugBpDraft(userId);
-    await interaction.update(buildDebugPanelPayload({ extraFlags }));
+    await interaction.update(await buildDebugPanelPayload({ extraFlags }));
+    saveDebugPanelFromComponentInteraction(interaction);
     return;
   }
   const amount = bufferToDebugBpAmount(buf);

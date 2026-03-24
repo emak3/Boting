@@ -46,6 +46,11 @@ import {
 } from '../../utils/bet/betSlipOpenReview.mjs';
 import { buildTextAndRowsV2Payload } from '../../utils/race/raceCardDisplay.mjs';
 import { buildBotingHelpPanelPayload } from '../../utils/boting/botingHelpPanel.mjs';
+import {
+  buildAnnualStatsPanelPayload,
+  buildWeeklyChallengePanelPayload,
+} from '../../utils/boting/botingStatsPanels.mjs';
+import { settleWeeklyChallengesForUser } from '../../utils/challenge/weeklyChallengeSettle.mjs';
 
 function normalizeBpRankMode(mode) {
   const m = String(mode || '');
@@ -527,6 +532,32 @@ export default async function raceHubButtons(interaction) {
     if (part === 'help') {
       await interaction.editReply(
         buildBotingHelpPanelPayload({ extraFlags, region: 'overview' }),
+      );
+      return;
+    }
+    if (part === 'annual_stats') {
+      await runPendingRaceRefundsForUser(userId);
+      await interaction.editReply(
+        await buildAnnualStatsPanelPayload({ userId, extraFlags }),
+      );
+      return;
+    }
+    if (part === 'weekly_challenge') {
+      await runPendingRaceRefundsForUser(userId);
+      await interaction.editReply(
+        await buildWeeklyChallengePanelPayload({ userId, extraFlags }),
+      );
+      return;
+    }
+    if (part === 'weekly_claim') {
+      await runPendingRaceRefundsForUser(userId);
+      const { grants } = await settleWeeklyChallengesForUser(userId);
+      await interaction.editReply(
+        await buildWeeklyChallengePanelPayload({
+          userId,
+          extraFlags,
+          claimGrants: grants,
+        }),
       );
       return;
     }

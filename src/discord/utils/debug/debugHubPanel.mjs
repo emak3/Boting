@@ -22,8 +22,13 @@ import {
   DEBUG_HUB_PREFIX,
   DEBUG_HUB_SCHEDULE_KIND_ID,
   DEBUG_RACE_MODAL_PREFIX,
+  DEBUG_WEEKLY_CFG_MODAL_PREFIX,
 } from './debugHubConstants.mjs';
 import { botingEmoji } from '../boting/botingEmojis.mjs';
+import {
+  formatWeeklyChallengeConfigSummary,
+  getWeeklyChallengeConfig,
+} from '../challenge/weeklyChallengeConfig.mjs';
 
 const ACCENT = 0xed4245;
 
@@ -54,17 +59,34 @@ function v2(extraFlags) {
 }
 
 /**
- * @param {{ extraFlags?: number }} [opts]
+ * @param {{ extraFlags?: number, topBanner?: string | null }} [opts]
  */
-export function buildDebugPanelPayload(opts = {}) {
+export async function buildDebugPanelPayload(opts = {}) {
   const extraFlags = opts.extraFlags ?? 0;
+  const topBanner =
+    opts.topBanner != null && String(opts.topBanner).trim()
+      ? `${String(opts.topBanner).trim()}\n\n`
+      : '';
   const on = isDebugSalesBypassEnabled();
+  let weeklySummary = '';
+  try {
+    const wcfg = await getWeeklyChallengeConfig();
+    weeklySummary = [
+      '',
+      '**週間チャレンジ**',
+      formatWeeklyChallengeConfigSummary(wcfg),
+    ].join('\n');
+  } catch (_) {
+    weeklySummary = '\n**週間チャレンジ**: （設定の読み込みに失敗）';
+  }
   const statusLine = [
+    topBanner,
     '**デバッグステータス**',
     `発売締切バイパス / Daily デバッグ: **${on ? 'ON' : 'OFF'}**`,
     '',
     '**デバッグ利用可能**',
     getDebugAuthorizedMentionsLine(),
+    weeklySummary,
   ].join('\n');
 
   const container = new ContainerBuilder().setAccentColor(ACCENT);
@@ -100,12 +122,131 @@ export function buildDebugPanelPayload(opts = {}) {
       .setStyle(ButtonStyle.Secondary),
   );
 
+  const row3 = new ActionRowBuilder().addComponents(
+    new ButtonBuilder()
+      .setCustomId(`${DEBUG_HUB_PREFIX}|weekly_cfg_toggle`)
+      .setLabel('週間・ON/OFF')
+      .setStyle(ButtonStyle.Primary),
+    new ButtonBuilder()
+      .setCustomId(`${DEBUG_HUB_PREFIX}|weekly_cfg_thresh`)
+      .setLabel('条件設定')
+      .setStyle(ButtonStyle.Secondary),
+    new ButtonBuilder()
+      .setCustomId(`${DEBUG_HUB_PREFIX}|weekly_cfg_rewards`)
+      .setLabel('報酬設定')
+      .setStyle(ButtonStyle.Secondary),
+  );
+
   return {
     content: null,
     embeds: [],
-    components: [container, row1, row2],
+    components: [container, row1, row2, row3],
     flags: v2(extraFlags),
   };
+}
+
+/**
+ * @param {Awaited<ReturnType<typeof getWeeklyChallengeConfig>>} cfg
+ */
+export function buildWeeklyChallengeThresholdsModal(cfg) {
+  const c = cfg;
+  return new ModalBuilder()
+    .setCustomId(`${DEBUG_WEEKLY_CFG_MODAL_PREFIX}|thresholds`)
+    .setTitle('週間チャレンジ（しきい値）'.slice(0, 45))
+    .addLabelComponents(
+      new LabelBuilder()
+        .setLabel('今週の的中回数（精算済）がこの回数以上')
+        .setTextInputComponent(
+          new TextInputBuilder()
+            .setCustomId('hits_min')
+            .setStyle(TextInputStyle.Short)
+            .setRequired(true)
+            .setMaxLength(6)
+            .setValue(String(c.hitsMin)),
+        ),
+      new LabelBuilder()
+        .setLabel('回収率がこの％以上（例: 100＝トントン）')
+        .setTextInputComponent(
+          new TextInputBuilder()
+            .setCustomId('recovery_min_pct')
+            .setStyle(TextInputStyle.Short)
+            .setRequired(true)
+            .setMaxLength(8)
+            .setValue(String(c.recoveryMinPct)),
+        ),
+      new LabelBuilder()
+        .setLabel('的中率がこの％以上（精算済のみ）')
+        .setTextInputComponent(
+          new TextInputBuilder()
+            .setCustomId('hit_rate_min_pct')
+            .setStyle(TextInputStyle.Short)
+            .setRequired(true)
+            .setMaxLength(8)
+            .setValue(String(c.hitRateMinPct)),
+        ),
+      new LabelBuilder()
+        .setLabel('購入件数がこの件数以上')
+        .setTextInputComponent(
+          new TextInputBuilder()
+            .setCustomId('purchases_min')
+            .setStyle(TextInputStyle.Short)
+            .setRequired(true)
+            .setMaxLength(6)
+            .setValue(String(c.purchasesMin)),
+        ),
+    );
+}
+
+/**
+ * @param {Awaited<ReturnType<typeof getWeeklyChallengeConfig>>} cfg
+ */
+export function buildWeeklyChallengeRewardsModal(cfg) {
+  const c = cfg;
+  return new ModalBuilder()
+    .setCustomId(`${DEBUG_WEEKLY_CFG_MODAL_PREFIX}|rewards`)
+    .setTitle('週間チャレンジ（報酬bp）'.slice(0, 45))
+    .addLabelComponents(
+      new LabelBuilder()
+        .setLabel('的中回数チャレンジの報酬（bp）')
+        .setTextInputComponent(
+          new TextInputBuilder()
+            .setCustomId('hits_reward_bp')
+            .setStyle(TextInputStyle.Short)
+            .setRequired(true)
+            .setMaxLength(10)
+            .setValue(String(c.hitsRewardBp)),
+        ),
+      new LabelBuilder()
+        .setLabel('回収率チャレンジの報酬（bp）')
+        .setTextInputComponent(
+          new TextInputBuilder()
+            .setCustomId('recovery_reward_bp')
+            .setStyle(TextInputStyle.Short)
+            .setRequired(true)
+            .setMaxLength(10)
+            .setValue(String(c.recoveryRewardBp)),
+        ),
+      new LabelBuilder()
+        .setLabel('的中率チャレンジの報酬（bp）')
+        .setTextInputComponent(
+          new TextInputBuilder()
+            .setCustomId('hit_rate_reward_bp')
+            .setStyle(TextInputStyle.Short)
+            .setRequired(true)
+            .setMaxLength(10)
+            .setValue(String(c.hitRateRewardBp)),
+        ),
+      new LabelBuilder()
+        .setLabel('購入件数チャレンジの報酬（bp）')
+        .setTextInputComponent(
+          new TextInputBuilder()
+            .setCustomId('purchases_reward_bp')
+            .setStyle(TextInputStyle.Short)
+            .setRequired(true)
+            .setMaxLength(10)
+            .setValue(String(c.purchasesRewardBp)),
+        ),
+    );
 }
 
 /**

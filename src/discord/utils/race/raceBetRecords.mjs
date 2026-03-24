@@ -771,3 +771,24 @@ export async function fetchUserRaceBetAggregates(userId) {
   }
   return finalizeRaceBetAggregates(agg);
 }
+
+/**
+ * 購入時刻が [start, end) に入る馬券のみ（精算状況は問わない）
+ * @param {string} userId
+ * @param {Date} start
+ * @param {Date} end
+ */
+export async function fetchUserRaceBetsPurchasedBetween(userId, start, end) {
+  const uid = String(userId || '');
+  if (!uid) return [];
+  return RaceBet.findAll({
+    where: {
+      userId: uid,
+      purchasedAt: {
+        [Op.gte]: start,
+        [Op.lt]: end,
+      },
+    },
+    order: [['purchasedAt', 'ASC']],
+  });
+}

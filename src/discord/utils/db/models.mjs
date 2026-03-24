@@ -114,3 +114,36 @@ export const DebugAuthorizedUser = sequelize.define(
     timestamps: false,
   },
 );
+
+/** アプリ全体のキー値（週間チャレンジ設定 JSON など） */
+export const AppKv = sequelize.define(
+  'AppKv',
+  {
+    key: { type: DataTypes.STRING(64), primaryKey: true },
+    value: { type: DataTypes.TEXT, allowNull: false, defaultValue: '{}' },
+  },
+  {
+    tableName: 'app_kv',
+    timestamps: false,
+  },
+);
+
+/** 週間チャレンジの BP 付与済み記録（二重付与防止） */
+export const WeeklyChallengeClaim = sequelize.define(
+  'WeeklyChallengeClaim',
+  {
+    id: { type: DataTypes.INTEGER, primaryKey: true, autoIncrement: true },
+    userId: { type: DataTypes.STRING(32), allowNull: false },
+    weekMondayYmd: { type: DataTypes.STRING(8), allowNull: false },
+    challengeKey: { type: DataTypes.STRING(24), allowNull: false },
+    grantedBp: { type: DataTypes.INTEGER, allowNull: false },
+    grantedAt: { type: DataTypes.DATE, allowNull: false },
+  },
+  {
+    tableName: 'weekly_challenge_claims',
+    timestamps: false,
+    indexes: [
+      { unique: true, fields: ['userId', 'weekMondayYmd', 'challengeKey'] },
+    ],
+  },
+);

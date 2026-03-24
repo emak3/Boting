@@ -9,7 +9,10 @@ import { canBypassDailyCooldown } from '../debug/raceDebugBypass.mjs';
 import { getBalance, getDailyAccountView } from '../user/userPointsStore.mjs';
 import { scheduleKindSelectRow } from './scheduleKindUi.mjs';
 import { buildDailyAccountV2Container } from '../daily/dailyAccountDisplay.mjs';
-import { BOTING_HUB_PREFIX } from '../boting/botingHubConstants.mjs';
+import {
+  BOTING_HUB_BUTTON_EMOJI,
+  BOTING_HUB_PREFIX,
+} from '../boting/botingHubConstants.mjs';
 import { buildBotingMenuBackRow } from '../boting/botingBackButton.mjs';
 import { botingEmoji } from '../boting/botingEmojis.mjs';
 
@@ -85,6 +88,19 @@ export async function buildBotingPanelPayload({
       .setLabel('購入予定')
       .setEmoji(botingEmoji('cart'))
       .setStyle(ButtonStyle.Secondary),
+  );
+
+  const row3 = new ActionRowBuilder().addComponents(
+    new ButtonBuilder()
+      .setCustomId(`${BOTING_HUB_PREFIX}|annual_stats`)
+      .setLabel('年間統計')
+      .setEmoji(BOTING_HUB_BUTTON_EMOJI.annualStats)
+      .setStyle(ButtonStyle.Secondary),
+    new ButtonBuilder()
+      .setCustomId(`${BOTING_HUB_PREFIX}|weekly_challenge`)
+      .setLabel('週間チャレンジ')
+      .setEmoji(BOTING_HUB_BUTTON_EMOJI.weeklyChallenge)
+      .setStyle(ButtonStyle.Secondary),
     new ButtonBuilder()
       .setCustomId(`${BOTING_HUB_PREFIX}|help`)
       .setLabel('ヘルプ')
@@ -95,7 +111,7 @@ export async function buildBotingPanelPayload({
   return {
     content: null,
     embeds: [],
-    components: [dailyContainer, row1, row2],
+    components: [dailyContainer, row1, row2, row3],
     flags: MessageFlags.IsComponentsV2 | extraFlags,
   };
 }

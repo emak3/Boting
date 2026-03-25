@@ -1,0 +1,3 @@
+boting: "Main menu: Daily, tickets, history, saved picks, rankings"
+debug: "Debug panel: sales bypass, grant/revoke BP, weekly challenge config"
+debug_forbidden: ❌ You cannot use this command.

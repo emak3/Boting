@@ -17,7 +17,8 @@ import {
   historyRaceHeadingLine,
   slipItemDescriptionForSelect,
 } from './betPurchaseEmbed.mjs';
-import { MSG_SLIP_BATCH_REVIEW_PENDING_MISSING } from './betSlipCopy.mjs';
+import { msgSlipBatchReviewPendingMissing } from './betSlipCopy.mjs';
+import { t } from '../../../i18n/index.mjs';
 import {
   getSlipPendingReview,
   setSlipPendingReviewPage,
@@ -62,25 +63,31 @@ function buildMoneySummaryText({
   balance,
   pageIndex,
   totalPages,
+  locale,
 }) {
+  const loc = locale;
   const lines = [
-    '**まとめて購入（仮）**',
+    t('bet_slip_review.summary_title', null, loc),
     '',
-    '**お支払い**',
-    `・合計（確定時）　**${formatBpAmount(grandYen)} bp**`,
-    `・bp残高　　　　　**${formatBpAmount(balance)} bp**`,
+    t('bet_slip_review.payment_header', null, loc),
+    t('bet_slip_review.line_total_at_confirm', { amount: formatBpAmount(grandYen) }, loc),
+    t('bet_slip_review.line_balance', { amount: formatBpAmount(balance) }, loc),
   ];
   if (balance >= grandYen) {
-    lines.push(`・確定後の残高　　**${formatBpAmount(balance - grandYen)} bp**`);
+    lines.push(
+      t('bet_slip_review.line_balance_after', { amount: formatBpAmount(balance - grandYen) }, loc),
+    );
   } else {
     lines.push(
       '',
-      `⚠️ **bp が不足**しています（不足 **${formatBpAmount(grandYen - balance)}** bp）。\`/boting\` の **Dailyをもらう** で受け取るか、金額・購入予定を調整してください。`,
+      t('bet_slip_review.bp_short_warn', { short: formatBpAmount(grandYen - balance) }, loc),
     );
   }
-  lines.push('', `**合計点数**　**${formatBpAmount(grandPoints)}** 点`);
+  lines.push('', t('bet_slip_review.total_points', { n: formatBpAmount(grandPoints) }, loc));
   if (totalPages > 1) {
-    lines.push(`**ページ**　${pageIndex + 1} / ${totalPages}`);
+    lines.push(
+      t('bet_slip_review.page', { cur: pageIndex + 1, total: totalPages }, loc),
+    );
   }
   return lines.join('\n');
 }
@@ -90,7 +97,8 @@ function buildMoneySummaryText({
  * @param {string[]} itemBlocks
  * @returns {string[][]}
  */
-function partitionItemBlocks(itemBlocks) {
+function partitionItemBlocks(itemBlocks, locale) {
+  const trunc = t('bet_slip_review.text_truncated', null, locale);
   const itemBudget = Math.max(
     400,
     V2_TEXT_TOTAL_MAX - SUMMARY_RESERVE,
@@ -107,9 +115,7 @@ function partitionItemBlocks(itemBlocks) {
       if (!chunk.length && len > itemBudget) {
         const cap = itemBudget - 40;
         chunk.push(
-          len > cap
-            ? `${s.slice(0, cap)}\n*…文字数上限のため省略*`
-            : s,
+          len > cap ? `${s.slice(0, cap)}\n${trunc}` : s,
         );
         i++;
         break;
@@ -145,18 +151,19 @@ function rebalancePagesForDiscord(pages, headerForPage) {
   return out.filter((pg) => pg.length > 0);
 }
 
-function slipReviewActionRows(anchorRaceId, items, { pageIndex, totalPages }) {
+function slipReviewActionRows(anchorRaceId, items, { pageIndex, totalPages, locale }) {
+  const loc = locale;
   const opts = slipItemSelectOptions(items);
 
   const rowBtns = new ActionRowBuilder().addComponents(
     new ButtonBuilder()
       .setCustomId(`race_bet_slip_back|${anchorRaceId}`)
-      .setLabel('戻る')
+      .setLabel(t('bet_slip_review.btn_back', null, loc))
       .setEmoji(botingEmoji('modoru'))
       .setStyle(ButtonStyle.Secondary),
     new ButtonBuilder()
       .setCustomId(`race_bet_slip_confirm|${anchorRaceId}`)
-      .setLabel('この内容で確定')
+      .setLabel(t('bet_slip_review.btn_confirm', null, loc))
       .setEmoji(botingEmoji('naiyoukakutei'))
       .setStyle(ButtonStyle.Success),
   );
@@ -168,13 +175,13 @@ function slipReviewActionRows(anchorRaceId, items, { pageIndex, totalPages }) {
       new ActionRowBuilder().addComponents(
         new ButtonBuilder()
           .setCustomId(`race_bet_slip_pg|${anchorRaceId}|prev`)
-          .setLabel('前のページ')
+          .setLabel(t('bet_slip_review.page_prev', null, loc))
           .setEmoji(botingEmoji('mae'))
           .setStyle(ButtonStyle.Secondary)
           .setDisabled(pageIndex <= 0),
         new ButtonBuilder()
           .setCustomId(`race_bet_slip_pg|${anchorRaceId}|next`)
-          .setLabel('次のページ')
+          .setLabel(t('bet_slip_review.page_next', null, loc))
           .setEmoji(botingEmoji('tsugi'))
           .setStyle(ButtonStyle.Secondary)
           .setDisabled(pageIndex >= totalPages - 1),
@@ -186,7 +193,7 @@ function slipReviewActionRows(anchorRaceId, items, { pageIndex, totalPages }) {
     new ActionRowBuilder().addComponents(
       new StringSelectMenuBuilder()
         .setCustomId(`race_bet_slip_unit_pick|${anchorRaceId}`)
-        .setPlaceholder('金額を変える購入予定を選択')
+        .setPlaceholder(t('bet_slip_review.ph_unit_pick', null, loc))
         .setMinValues(1)
         .setMaxValues(1)
         .addOptions(opts),
@@ -194,7 +201,7 @@ function slipReviewActionRows(anchorRaceId, items, { pageIndex, totalPages }) {
     new ActionRowBuilder().addComponents(
       new StringSelectMenuBuilder()
         .setCustomId(`race_bet_slip_remove|${anchorRaceId}`)
-        .setPlaceholder('番号を選んで削除')
+        .setPlaceholder(t('bet_slip_review.ph_remove', null, loc))
         .setMinValues(1)
         .setMaxValues(1)
         .addOptions(opts),
@@ -245,14 +252,15 @@ function buildSlipReviewContainer({ summaryText, itemBlocksOnPage }) {
 /**
  * まとめて購入（仮）確認画面: Container + 確定・ページ・金額変更・削除
  */
-export async function buildSlipReviewV2Payload({ userId, extraFlags = 0 }) {
+export async function buildSlipReviewV2Payload({ userId, extraFlags = 0, locale = null }) {
   const pending = getSlipPendingReview(userId);
   if (!pending?.items?.length) {
     return buildTextAndRowsV2Payload({
-      headline: MSG_SLIP_BATCH_REVIEW_PENDING_MISSING,
+      headline: msgSlipBatchReviewPendingMissing(locale),
       actionRows: [],
       extraFlags,
       withBotingMenuBack: true,
+      locale,
     });
   }
 
@@ -272,15 +280,16 @@ export async function buildSlipReviewV2Payload({ userId, extraFlags = 0 }) {
   const itemBlocks = pending.items.map((it, idx) =>
     formatBetSlipItemBlock(it, idx),
   );
-  let pages = partitionItemBlocks(itemBlocks);
+  let pages = partitionItemBlocks(itemBlocks, locale);
 
-  const headerForPage = (pageIdx, totalPages) =>
+  const headerForPage = (pageIdx, totalPg) =>
     buildMoneySummaryText({
       grandPoints,
       grandYen,
       balance,
       pageIndex: pageIdx,
-      totalPages,
+      totalPages: totalPg,
+      locale,
     });
 
   pages = rebalancePagesForDiscord(pages, headerForPage);
@@ -305,6 +314,7 @@ export async function buildSlipReviewV2Payload({ userId, extraFlags = 0 }) {
   const rows = slipReviewActionRows(pending.anchorRaceId, pending.items, {
     pageIndex,
     totalPages,
+    locale,
   });
 
   return {

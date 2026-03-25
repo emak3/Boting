@@ -18,23 +18,13 @@ import {
   getUnitKeypadDraft,
   setUnitKeypadDraft,
 } from '../../utils/unit/unitYenKeypadStore.mjs';
-import { MSG_RACE_BET_FLOW_SESSION_INVALID } from '../../utils/bet/betFlowSessionCopy.mjs';
-import { MSG_SLIP_BATCH_REVIEW_SESSION_INVALID } from '../../utils/bet/betSlipCopy.mjs';
+import { msgRaceBetFlowSessionInvalid } from '../../utils/bet/betFlowSessionCopy.mjs';
+import { msgSlipBatchReviewSessionInvalid } from '../../utils/bet/betSlipCopy.mjs';
+import { resolveLocaleFromInteraction, t } from '../../../i18n/index.mjs';
 import { buildSlipReviewV2Payload } from '../../utils/bet/betSlipReview.mjs';
 import { buildTextAndRowsV2Payload } from '../../utils/race/raceCardDisplay.mjs';
 import { buildEphemeralWithBotingBackPayload } from '../../utils/boting/botingBackButton.mjs';
-
-function v2ExtraFlags(interaction) {
-  let extraFlags = 0;
-  try {
-    if (interaction.message?.flags?.has(MessageFlags.Ephemeral)) {
-      extraFlags |= MessageFlags.Ephemeral;
-    }
-  } catch (_) {
-    /* ignore */
-  }
-  return extraFlags;
-}
+import { v2ExtraFlags } from '../../utils/shared/interactionResponse.mjs';
 
 function jraMultiStripForKeypad(userId, raceId, kind) {
   if (kind !== 'flow') return null;
@@ -81,12 +71,13 @@ export default async function unitYenKeypadButtons(interaction) {
   const customId = interaction.customId;
   if (!customId.startsWith('race_unit_kpad|')) return;
 
+  const loc = resolveLocaleFromInteraction(interaction);
   const parsed = parseUnitKeypadCustomId(customId);
   if (!parsed) {
     await interaction.reply(
-      buildEphemeralWithBotingBackPayload(
-        '❌ このキーは無効です。金額変更を開き直してください。',
-      ),
+      buildEphemeralWithBotingBackPayload(t('bet_slip.keypad_invalid', null, loc), {
+        locale: loc,
+      }),
     );
     return;
   }
@@ -95,16 +86,18 @@ export default async function unitYenKeypadButtons(interaction) {
   const draft = ensureDraft(userId, parsed);
   if (!draft) {
     await interaction.reply(
-      buildEphemeralWithBotingBackPayload(
-        MSG_RACE_BET_FLOW_SESSION_INVALID,
-      ),
+      buildEphemeralWithBotingBackPayload(msgRaceBetFlowSessionInvalid(loc), {
+        locale: loc,
+      }),
     );
     return;
   }
 
   const extraFlags = v2ExtraFlags(interaction);
   const slipSubtitle =
-    parsed.kind === 'slip' ? `**${parsed.slipIdx + 1}番の購入予定**` : null;
+    parsed.kind === 'slip'
+      ? t('bet_slip.pick_subtitle', { n: parsed.slipIdx + 1 }, loc)
+      : null;
 
   if (parsed.op === 'digit' && parsed.digit != null) {
     const nextBuf = appendDigit(draft.buffer, parsed.digit);
@@ -150,7 +143,9 @@ export default async function unitYenKeypadButtons(interaction) {
       await editReplyPurchaseSummaryFromFlow(interaction, userId, parsed.raceId);
       return;
     }
-    await interaction.editReply(await buildSlipReviewV2Payload({ userId, extraFlags }));
+    await interaction.editReply(
+      await buildSlipReviewV2Payload({ userId, extraFlags, locale: loc }),
+    );
     return;
   }
 
@@ -164,10 +159,11 @@ export default async function unitYenKeypadButtons(interaction) {
       if (!flow?.purchase) {
         await interaction.editReply(
           buildTextAndRowsV2Payload({
-            headline: MSG_RACE_BET_FLOW_SESSION_INVALID,
+            headline: msgRaceBetFlowSessionInvalid(loc),
             actionRows: [],
             extraFlags,
             withBotingMenuBack: true,
+            locale: loc,
           }),
         );
         return;
@@ -187,10 +183,11 @@ export default async function unitYenKeypadButtons(interaction) {
     ) {
       await interaction.editReply(
         buildTextAndRowsV2Payload({
-          headline: MSG_SLIP_BATCH_REVIEW_SESSION_INVALID,
+          headline: msgSlipBatchReviewSessionInvalid(loc),
           actionRows: [],
           extraFlags,
           withBotingMenuBack: true,
+          locale: loc,
         }),
       );
       return;
@@ -200,6 +197,8 @@ export default async function unitYenKeypadButtons(interaction) {
       i === parsed.slipIdx ? { ...it, unitYen } : { ...it },
     );
     replaceSlipPendingItems(userId, next);
-    await interaction.editReply(await buildSlipReviewV2Payload({ userId, extraFlags }));
+    await interaction.editReply(
+      await buildSlipReviewV2Payload({ userId, extraFlags, locale: loc }),
+    );
   }
 }

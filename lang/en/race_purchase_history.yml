@@ -1,0 +1,36 @@
+nav:
+  prev_day: Previous day
+  next_day: Next day
+  prev_page: Prev
+  next_page: Next
+select:
+  all_meetings: All
+  meeting_placeholder: Filter by meeting
+  result_placeholder: Show race results on this page
+post_time_label: ' post'
+title:
+  today: "**Today's purchase history**"
+  tomorrow: "**Tomorrow's purchase history**"
+  yesterday: "**Yesterday's purchase history**"
+  date: '**Purchase history — {{y}}-{{m}}-{{d}}**'
+summary:
+  target_line: 'Target: **{{ymd}}** (JRA uses saved meet date; NAR may match race ID date. Includes prior-day purchases.)'
+  bp_balance: 'BP balance **{{amount}}** bp'
+  hit_counts: 'Won **{{hits}}** · Lost **{{misses}}** · Pending **{{pending}}**'
+  return_rate: 'Return **{{rate}}** (refund **{{refund}}** bp ÷ invested **{{invest}}** bp)'
+  filter_venue_note: '*Showing meet: **{{name}}***'
+  footnote_meeting_cap: '*Meet menu shows up to **{{cap}}** entries.*'
+pagination_line: '*Page **{{a}}** / **{{b}}** (**{{c}}** items)*'
+empty:
+  no_bets_on_day: '*No purchases for this meet date yet.*'
+  no_bets_for_filter: '*No purchases match this meet filter.*'
+errors:
+  invalid_history_param: ❌ Invalid selection.
+  invalid_period: ❌ Invalid meet date.
+  invalid_meeting: ❌ Invalid meet selection.
+  invalid_date: ❌ Invalid date.
+  invalid_page: ❌ Invalid page.
+  update_failed: '❌ Failed to refresh: {{message}}'
+  fetch_failed: '❌ Failed to load purchase history: {{message}}'
+  invalid_race_selection: ❌ Invalid race selection.
+  result_display_failed: '❌ Failed to display: {{message}}'

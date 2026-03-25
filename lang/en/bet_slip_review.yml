@@ -1,0 +1,16 @@
+summary_title: "**Batch purchase (draft)**"
+payment_header: "**Payment**"
+line_total_at_confirm: "· Total (at confirm) **{{amount}} bp**"
+line_balance: "· bp balance **{{amount}} bp**"
+line_balance_after: "· Balance after **{{amount}} bp**"
+bp_short_warn: |-
+  ⚠️ **Not enough bp** (short **{{short}}** bp). Use `/boting` **Daily** or adjust amounts / picks.
+total_points: "**Tickets** **{{n}}**"
+page: "**Page** {{cur}} / {{total}}"
+text_truncated: "*…truncated*"
+btn_back: Back
+btn_confirm: Confirm
+page_prev: Previous page
+page_next: Next page
+ph_unit_pick: Pick a line to change amount
+ph_remove: Pick a number to remove

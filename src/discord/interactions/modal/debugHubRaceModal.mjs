@@ -5,18 +5,8 @@ import { buildRaceMenuSelectionPayload } from '../menu/raceSchedule.mjs';
 import { buildTextAndRowsV2Payload } from '../../utils/race/raceCardDisplay.mjs';
 import { venueSelectionStore } from '../../utils/race/venueSelectionStore.mjs';
 import { DEBUG_RACE_MODAL_PREFIX } from '../../utils/debug/debugHubConstants.mjs';
-
-function v2ExtraFlags(interaction) {
-  let extraFlags = MessageFlags.Ephemeral;
-  try {
-    if (interaction.message?.flags?.has(MessageFlags.Ephemeral)) {
-      extraFlags |= MessageFlags.Ephemeral;
-    }
-  } catch (_) {
-    /* ignore */
-  }
-  return extraFlags;
-}
+import { v2ExtraFlags } from '../../utils/shared/interactionResponse.mjs';
+import { resolveLocaleFromInteraction, t } from '../../../i18n/index.mjs';
 
 /**
  * @param {import('discord.js').ModalSubmitInteraction} interaction
@@ -59,7 +49,7 @@ export default async function debugHubRaceModal(interaction) {
     venueSelectionStore.delete(userId);
   }
 
-  const extraFlags = v2ExtraFlags(interaction);
+  const extraFlags = v2ExtraFlags(interaction, { assumeEphemeral: true });
   await interaction.deferReply({ flags: MessageFlags.Ephemeral });
   try {
     const payload = await buildRaceMenuSelectionPayload(interaction, {
@@ -71,9 +61,10 @@ export default async function debugHubRaceModal(interaction) {
     console.error('debugHubRaceModal', e);
     await interaction.editReply(
       buildTextAndRowsV2Payload({
-        headline: `❌ 出馬表の取得に失敗: ${e.message}`,
+        headline: t('race_schedule.errors.card_fetch_failed', { message: e.message }, loc),
         actionRows: [],
         extraFlags,
+        locale: loc,
       }),
     );
   }

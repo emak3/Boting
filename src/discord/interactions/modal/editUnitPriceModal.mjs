@@ -6,6 +6,7 @@ import {
   extractTopLevelActionRowsFromMessage,
 } from '../../utils/race/raceCardDisplay.mjs';
 import { formatBpAmount } from '../../utils/bp/bpFormat.mjs';
+import { resolveLocaleFromInteraction, t } from '../../../i18n/index.mjs';
 
 function safeParseRaceId(customId) {
   // race_bet_unit_modal|{raceId}
@@ -13,9 +14,17 @@ function safeParseRaceId(customId) {
   return parts[parts.length - 1] || null;
 }
 
-function formatTotal(points, unitYen) {
+function formatTotal(points, unitYen, locale = null) {
   const yen = points * unitYen;
-  return `点数: ${formatBpAmount(points)}点 | 合計: ${formatBpAmount(yen)} bp（${formatBpAmount(unitYen)} bp/点）`;
+  return t(
+    'race_schedule.format.bet_points',
+    {
+      points: formatBpAmount(points),
+      yen: formatBpAmount(yen),
+      unit: formatBpAmount(unitYen),
+    },
+    locale,
+  );
 }
 
 export default async function editUnitPriceModal(interaction) {
@@ -23,12 +32,13 @@ export default async function editUnitPriceModal(interaction) {
   const customId = interaction.customId;
   if (!customId.startsWith('race_bet_unit_modal|')) return;
 
+  const loc = resolveLocaleFromInteraction(interaction);
   const raceId = safeParseRaceId(customId);
   const userId = interaction.user.id;
   const flow = getBetFlow(userId, raceId);
   if (!flow?.purchase) {
     await interaction.reply({
-      content: '❌ セッションが無効です。',
+      content: t('bet_flow.unit_modal.errors.session_invalid', null, loc),
       flags: MessageFlags.Ephemeral,
     });
     return;
@@ -39,7 +49,7 @@ export default async function editUnitPriceModal(interaction) {
 
   if (!Number.isFinite(parsed) || parsed <= 0) {
     await interaction.reply({
-      content: '❌ bp は正の整数で入力してください。',
+      content: t('bet_flow.unit_modal.errors.bp_positive_int', null, loc),
       flags: MessageFlags.Ephemeral,
     });
     return;
@@ -49,15 +59,17 @@ export default async function editUnitPriceModal(interaction) {
 
   patchBetFlow(userId, raceId, { unitYen });
 
-  const selectionLine = flow.purchase.selectionLine || '（選択なし）';
+  const selectionLine =
+    flow.purchase.selectionLine || t('bet_flow.unit_modal.selection_none', null, loc);
   const points = flow.purchase.points || 0;
-  const newLine = formatTotal(points, unitYen);
+  const newLine = formatTotal(points, unitYen, loc);
   const newContent = `${selectionLine}\n${newLine}`;
 
   await interaction.update(
     buildTextAndRowsV2Payload({
       headline: newContent,
       actionRows: extractTopLevelActionRowsFromMessage(interaction.message),
+      locale: loc,
     }),
   );
 }

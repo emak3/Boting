@@ -8,6 +8,8 @@ import {
 import { buildTextAndRowsV2Payload } from '../../utils/race/raceCardDisplay.mjs';
 import { buildAnnualStatsPanelPayload } from '../../utils/boting/botingStatsPanels.mjs';
 import { runPendingRaceRefundsForUser } from '../../utils/race/raceBetRefundSweep.mjs';
+import { v2ExtraFlags } from '../../utils/shared/interactionResponse.mjs';
+import { resolveLocaleFromInteraction, t } from '../../../i18n/index.mjs';
 
 function normalizeMode(raw) {
   const m = String(raw || '');
@@ -24,6 +26,7 @@ export default async function bpRankSlicePick(interaction) {
   const cid = interaction.customId;
   if (!cid.startsWith(`${BP_RANK_SLICE_PICK_PREFIX}|`)) return;
 
+  const loc = resolveLocaleFromInteraction(interaction);
   const parts = cid.split('|');
   const lim = Math.min(BP_RANK_DISPLAY_MAX, Math.max(1, parseInt(parts[1], 10) || 20));
   const mode = normalizeMode(parts[2]);
@@ -37,8 +40,7 @@ export default async function bpRankSlicePick(interaction) {
   );
   if (!allowed.has(targetId)) {
     await interaction.reply({
-      content:
-        '❌ この選択は無効です。ランキングを更新してからもう一度選んでください。',
+      content: t('bp_rank.errors.slice_invalid', null, loc),
       flags: MessageFlags.Ephemeral,
     });
     return;
@@ -47,20 +49,13 @@ export default async function bpRankSlicePick(interaction) {
   const u = await interaction.client.users.fetch(targetId).catch(() => null);
   if (u?.bot) {
     await interaction.reply({
-      content: '❌ BOT の履歴は表示できません。',
+      content: t('bp_rank.errors.bot_stats_forbidden', null, loc),
       flags: MessageFlags.Ephemeral,
     });
     return;
   }
 
-  let extraFlags = 0;
-  try {
-    if (interaction.message?.flags?.has(MessageFlags.Ephemeral)) {
-      extraFlags |= MessageFlags.Ephemeral;
-    }
-  } catch (_) {
-    /* ignore */
-  }
+  const extraFlags = v2ExtraFlags(interaction);
 
   await interaction.deferUpdate();
 
@@ -70,16 +65,18 @@ export default async function bpRankSlicePick(interaction) {
       userId: targetId,
       extraFlags,
       rankLeaderboardReturn: { limit: lim, mode },
+      locale: loc,
     });
     await interaction.editReply(payload);
   } catch (e) {
     console.error('bpRankSlicePick:', e);
     await interaction.editReply(
       buildTextAndRowsV2Payload({
-        headline: `❌ 年間統計の表示に失敗しました: ${e.message}`,
+        headline: t('bp_rank.errors.annual_stats_failed', { message: e.message }, loc),
         actionRows: [],
         extraFlags,
         withBotingMenuBack: true,
+        locale: loc,
       }),
     );
   }

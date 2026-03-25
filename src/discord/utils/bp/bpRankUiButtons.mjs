@@ -1,7 +1,10 @@
 import { ActionRowBuilder, ButtonBuilder, ButtonStyle } from 'discord.js';
-import { BOTING_HUB_BUTTON_EMOJI } from '../boting/botingHubConstants.mjs';
+import {
+  BOTING_HUB_BUTTON_EMOJI,
+} from '../boting/botingHubConstants.mjs';
 import { botingEmoji } from '../boting/botingEmojis.mjs';
 import { BP_RANK_DISPLAY_MAX } from './bpRankLeaderboardEmbed.mjs';
+import { t } from '../../../i18n/index.mjs';
 
 function normalizeBpRankMode(mode) {
   const m = String(mode || '');
@@ -25,27 +28,27 @@ export const BP_RANK_LB_LEDG_PREFIX = 'bp_rank_lb_ledg';
 export const BP_RANK_LB_ANNUAL_PREFIX = 'bp_rank_lb_annual';
 
 /** 購入予定閲覧・購入履歴の下に並べる（BP 詳細へ戻る） */
-export function buildBpRankProfileBackButtonRow(targetUserId) {
+export function buildBpRankProfileBackButtonRow(targetUserId, locale = null) {
   return new ActionRowBuilder().addComponents(
     new ButtonBuilder()
       .setCustomId(`${BP_RANK_BACK_PROFILE_PREFIX}|${targetUserId}`)
-      .setLabel('プロフィールに戻る')
+      .setLabel(t('bp_rank.ui.back_profile', null, locale))
       .setEmoji(botingEmoji('profile'))
       .setStyle(ButtonStyle.Secondary),
   );
 }
 
 /** `/bp_rank user:` の BP 詳細の下に並べる（馬券購入・/race の購入予定は出さない） */
-export function buildBpRankProfileButtonsRow(targetUserId) {
+export function buildBpRankProfileButtonsRow(targetUserId, locale = null) {
   return new ActionRowBuilder().addComponents(
     new ButtonBuilder()
       .setCustomId(`${BP_RANK_USER_SLIP_PREFIX}|${targetUserId}`)
-      .setLabel('購入予定を見る')
+      .setLabel(t('bp_rank.ui.view_saved_slip', null, locale))
       .setEmoji(botingEmoji('cart'))
       .setStyle(ButtonStyle.Primary),
     new ButtonBuilder()
       .setCustomId(`${BP_RANK_USER_HISTORY_PREFIX}|${targetUserId}`)
-      .setLabel('購入履歴')
+      .setLabel(t('boting_hub.buttons.history', null, locale))
       .setEmoji(botingEmoji('history'))
       .setStyle(ButtonStyle.Secondary),
   );
@@ -54,14 +57,15 @@ export function buildBpRankProfileButtonsRow(targetUserId) {
 /**
  * @param {number} limit
  * @param {string} mode BP_RANK_MODE
+ * @param {string | null} [locale]
  */
-export function buildBpRankLeaderboardBackButtonRow(limit, mode) {
+export function buildBpRankLeaderboardBackButtonRow(limit, mode, locale = null) {
   const lim = Math.min(BP_RANK_DISPLAY_MAX, Math.max(1, Math.round(Number(limit) || 20)));
   const m = normalizeBpRankMode(mode);
   return new ActionRowBuilder().addComponents(
     new ButtonBuilder()
       .setCustomId(`${BP_RANK_BACK_LB_PREFIX}|${lim}|${m}`)
-      .setLabel('ランキングに戻る')
+      .setLabel(t('bp_rank.ui.back_to_ranking', null, locale))
       .setEmoji(botingEmoji('ranking'))
       .setStyle(ButtonStyle.Secondary),
   );
@@ -72,25 +76,31 @@ export function buildBpRankLeaderboardBackButtonRow(limit, mode) {
  * @param {number} limit
  * @param {string} mode
  * @param {string} targetUserId 表示中のユーザー
+ * @param {string | null} [locale]
  */
-export function buildBpRankLbHistoryFooterRow(limit, mode, targetUserId) {
+export function buildBpRankLbHistoryFooterRow(
+  limit,
+  mode,
+  targetUserId,
+  locale = null,
+) {
   const lim = Math.min(BP_RANK_DISPLAY_MAX, Math.max(1, Math.round(Number(limit) || 20)));
   const m = normalizeBpRankMode(mode);
   const uid = String(targetUserId || '');
   return new ActionRowBuilder().addComponents(
     new ButtonBuilder()
       .setCustomId(`${BP_RANK_LB_ANNUAL_PREFIX}|${lim}|${m}|${uid}`)
-      .setLabel('年間統計')
+      .setLabel(t('boting_hub.buttons.annual_stats', null, locale))
       .setEmoji(BOTING_HUB_BUTTON_EMOJI.annualStats)
       .setStyle(ButtonStyle.Secondary),
     new ButtonBuilder()
       .setCustomId(`${BP_RANK_LB_LEDG_PREFIX}|${lim}|${m}|${uid}`)
-      .setLabel('直近の収支')
+      .setLabel(t('boting_hub.buttons.ledger', null, locale))
       .setEmoji(botingEmoji('syushi'))
       .setStyle(ButtonStyle.Primary),
     new ButtonBuilder()
       .setCustomId(`${BP_RANK_BACK_LB_PREFIX}|${lim}|${m}`)
-      .setLabel('ランキングに戻る')
+      .setLabel(t('bp_rank.ui.back_to_ranking', null, locale))
       .setEmoji(botingEmoji('ranking'))
       .setStyle(ButtonStyle.Secondary),
   );
@@ -101,25 +111,31 @@ export function buildBpRankLbHistoryFooterRow(limit, mode, targetUserId) {
  * @param {number} limit
  * @param {string} mode
  * @param {string} targetUserId
+ * @param {string | null} [locale]
  */
-export function buildBpRankLbAnnualViewFooterRow(limit, mode, targetUserId) {
+export function buildBpRankLbAnnualViewFooterRow(
+  limit,
+  mode,
+  targetUserId,
+  locale = null,
+) {
   const lim = Math.min(BP_RANK_DISPLAY_MAX, Math.max(1, Math.round(Number(limit) || 20)));
   const m = normalizeBpRankMode(mode);
   const uid = String(targetUserId || '');
   return new ActionRowBuilder().addComponents(
     new ButtonBuilder()
       .setCustomId(`${BP_RANK_LB_HIST_PREFIX}|${lim}|${m}|${uid}`)
-      .setLabel('購入履歴')
+      .setLabel(t('boting_hub.buttons.history', null, locale))
       .setEmoji(botingEmoji('history'))
       .setStyle(ButtonStyle.Primary),
     new ButtonBuilder()
       .setCustomId(`${BP_RANK_LB_LEDG_PREFIX}|${lim}|${m}|${uid}`)
-      .setLabel('直近の収支')
+      .setLabel(t('boting_hub.buttons.ledger', null, locale))
       .setEmoji(botingEmoji('syushi'))
       .setStyle(ButtonStyle.Secondary),
     new ButtonBuilder()
       .setCustomId(`${BP_RANK_BACK_LB_PREFIX}|${lim}|${m}`)
-      .setLabel('ランキングに戻る')
+      .setLabel(t('bp_rank.ui.back_to_ranking', null, locale))
       .setEmoji(botingEmoji('ranking'))
       .setStyle(ButtonStyle.Secondary),
   );

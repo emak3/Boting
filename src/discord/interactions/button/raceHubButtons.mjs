@@ -23,7 +23,7 @@ import {
 import { buildBotingLedgerLimitKeypadPayload } from '../../utils/boting/botingLedgerKeypad.mjs';
 import { setBotingLedgerLimitDraft } from '../../utils/boting/botingLedgerKeypadStore.mjs';
 import { canBypassDailyCooldown } from '../../utils/debug/raceDebugBypass.mjs';
-import { kindLabelJa, tryClaimDaily } from '../../utils/user/userPointsStore.mjs';
+import { tryClaimDaily } from '../../utils/user/userPointsStore.mjs';
 import { formatBpAmount } from '../../utils/bp/bpFormat.mjs';
 import { runPendingRaceRefundsForUser } from '../../utils/race/raceBetRefundSweep.mjs';
 import {
@@ -41,6 +41,8 @@ import {
   buildBpRankProfileButtonsRow,
   buildBpRankProfileBackButtonRow,
 } from '../../utils/bp/bpRankUiButtons.mjs';
+import { resolveLocaleFromInteraction, t } from '../../../i18n/index.mjs';
+import { ledgerKindLabel } from '../../utils/boting/ledgerKindLabel.mjs';
 import { buildRacePurchaseHistoryV2Payload } from '../../utils/race/racePurchaseHistoryUi.mjs';
 import {
   abandonSlipReviewToSavedState,
@@ -106,6 +108,7 @@ export default async function raceHubButtons(interaction) {
     const targetUserId = id.split('|')[1];
     if (!/^\d{17,20}$/.test(String(targetUserId || ''))) return;
     const extraFlags = ephemeralExtraFromMessage(interaction.message);
+    const locHist = resolveLocaleFromInteraction(interaction);
     if (!(await safeDeferUpdate(interaction))) return;
     try {
       const payload = await buildRacePurchaseHistoryV2Payload({
@@ -113,6 +116,7 @@ export default async function raceHubButtons(interaction) {
         page: 0,
         extraFlags,
         bpRankProfileUserId: targetUserId,
+        locale: locHist,
       });
       await interaction.editReply(payload);
     } catch (e) {
@@ -120,9 +124,10 @@ export default async function raceHubButtons(interaction) {
       await interaction
         .editReply(
           buildTextAndRowsV2Payload({
-            headline: `❌ 購入履歴の表示に失敗しました: ${e.message}`,
-            actionRows: [buildBpRankProfileBackButtonRow(targetUserId)],
+            headline: t('bp_rank.errors.profile_history_failed', { message: e.message }, locHist),
+            actionRows: [buildBpRankProfileBackButtonRow(targetUserId, locHist)],
             extraFlags,
+            locale: locHist,
           }),
         )
         .catch(() => {});
@@ -134,15 +139,17 @@ export default async function raceHubButtons(interaction) {
     const targetUserId = id.split('|')[1];
     if (!/^\d{17,20}$/.test(String(targetUserId || ''))) return;
     const extraFlags = ephemeralExtraFromMessage(interaction.message);
+    const locSlip = resolveLocaleFromInteraction(interaction);
     if (!(await safeDeferUpdate(interaction))) return;
     try {
       const targetUser = await interaction.client.users.fetch(targetUserId).catch(() => null);
       if (!targetUser) {
         await interaction.editReply(
           buildTextAndRowsV2Payload({
-            headline: '❌ ユーザーの取得に失敗しました。',
-            actionRows: [buildBpRankProfileBackButtonRow(targetUserId)],
+            headline: t('bp_rank.errors.user_fetch_failed', null, locSlip),
+            actionRows: [buildBpRankProfileBackButtonRow(targetUserId, locSlip)],
             extraFlags,
+            locale: locSlip,
           }),
         );
         return;
@@ -151,6 +158,7 @@ export default async function raceHubButtons(interaction) {
         targetUser,
         targetUserId,
         extraFlags,
+        locale: locSlip,
       });
       await interaction.editReply(payload);
     } catch (e) {
@@ -158,9 +166,10 @@ export default async function raceHubButtons(interaction) {
       await interaction
         .editReply(
           buildTextAndRowsV2Payload({
-            headline: `❌ 購入予定の表示に失敗しました: ${e.message}`,
-            actionRows: [buildBpRankProfileBackButtonRow(targetUserId)],
+            headline: t('bp_rank.errors.profile_slip_failed', { message: e.message }, locSlip),
+            actionRows: [buildBpRankProfileBackButtonRow(targetUserId, locSlip)],
             extraFlags,
+            locale: locSlip,
           }),
         )
         .catch(() => {});
@@ -172,16 +181,18 @@ export default async function raceHubButtons(interaction) {
     const targetUserId = id.split('|')[1];
     if (!/^\d{17,20}$/.test(String(targetUserId || ''))) return;
     const extraFlags = ephemeralExtraFromMessage(interaction.message);
+    const locProf = resolveLocaleFromInteraction(interaction);
     if (!(await safeDeferUpdate(interaction))) return;
     try {
       const targetUser = await interaction.client.users.fetch(targetUserId).catch(() => null);
       if (!targetUser) {
         await interaction.editReply(
           buildTextAndRowsV2Payload({
-            headline: '❌ ユーザーの取得に失敗しました。',
+            headline: t('bp_rank.errors.user_fetch_failed', null, locProf),
             actionRows: [],
             extraFlags,
             withBotingMenuBack: true,
+            locale: locProf,
           }),
         );
         return;
@@ -190,8 +201,9 @@ export default async function raceHubButtons(interaction) {
         targetUser,
         interaction.guild,
         interaction.user.id,
+        locProf,
       );
-      const row = buildBpRankProfileButtonsRow(targetUserId);
+      const row = buildBpRankProfileButtonsRow(targetUserId, locProf);
       await interaction.editReply({
         content: null,
         embeds: [],
@@ -203,9 +215,10 @@ export default async function raceHubButtons(interaction) {
       await interaction
         .editReply(
           buildTextAndRowsV2Payload({
-            headline: `❌ 表示の更新に失敗しました: ${e.message}`,
-            actionRows: [buildBpRankProfileBackButtonRow(targetUserId)],
+            headline: t('bp_rank.errors.profile_display_failed', { message: e.message }, locProf),
+            actionRows: [buildBpRankProfileBackButtonRow(targetUserId, locProf)],
             extraFlags,
+            locale: locProf,
           }),
         )
         .catch(() => {});
@@ -218,6 +231,7 @@ export default async function raceHubButtons(interaction) {
     const lim = Math.min(BP_RANK_DISPLAY_MAX, Math.max(1, parseInt(parts[1], 10) || 20));
     const mode = normalizeBpRankMode(parts[2]);
     const extraFlags = ephemeralExtraFromMessage(interaction.message);
+    const locLb = resolveLocaleFromInteraction(interaction);
     if (!(await safeDeferUpdate(interaction))) return;
     try {
       await interaction.editReply(
@@ -225,6 +239,7 @@ export default async function raceHubButtons(interaction) {
           client: interaction.client,
           guild: interaction.guild,
           refundForUserId: interaction.user.id,
+          locale: locLb,
         }),
       );
     } catch (e) {
@@ -232,10 +247,11 @@ export default async function raceHubButtons(interaction) {
       await interaction
         .editReply(
           buildTextAndRowsV2Payload({
-            headline: `❌ ランキングに戻れませんでした: ${e.message}`,
+            headline: t('bp_rank.errors.back_to_ranking_failed', { message: e.message }, locLb),
             actionRows: [],
             extraFlags,
             withBotingMenuBack: true,
+            locale: locLb,
           }),
         )
         .catch(() => {});
@@ -260,17 +276,20 @@ export default async function raceHubButtons(interaction) {
         extraFlags,
         bpRankProfileUserId: targetUserId,
         rankLeaderboardReturn: { limit: lim, mode },
+        locale: resolveLocaleFromInteraction(interaction),
       });
       await interaction.editReply(payload);
     } catch (e) {
       console.error('raceHubButtons bp_rank_lb_hist', e);
+      const locH = resolveLocaleFromInteraction(interaction);
       await interaction
         .editReply(
           buildTextAndRowsV2Payload({
-            headline: `❌ 購入履歴の表示に失敗しました: ${e.message}`,
+            headline: t('race_purchase_history.errors.fetch_failed', { message: e.message }, locH),
             actionRows: [],
             extraFlags,
             withBotingMenuBack: true,
+            locale: locH,
           }),
         )
         .catch(() => {});
@@ -287,6 +306,7 @@ export default async function raceHubButtons(interaction) {
     if (!/^\d{17,20}$/.test(String(targetUserId || ''))) return;
     const extraFlags = ephemeralExtraFromMessage(interaction.message);
     if (!(await safeDeferUpdate(interaction))) return;
+    const locLedg = resolveLocaleFromInteraction(interaction);
     try {
       await runPendingRaceRefundsForUser(targetUserId);
       await interaction.editReply(
@@ -296,6 +316,7 @@ export default async function raceHubButtons(interaction) {
           pageIndex: 0,
           extraFlags,
           rankLeaderboardReturn: { limit: lim, mode },
+          locale: locLedg,
         }),
       );
     } catch (e) {
@@ -303,10 +324,11 @@ export default async function raceHubButtons(interaction) {
       await interaction
         .editReply(
           buildTextAndRowsV2Payload({
-            headline: `❌ 収支の表示に失敗しました: ${e.message}`,
+            headline: t('bp_rank.errors.ledger_display_failed', { message: e.message }, locLedg),
             actionRows: [],
             extraFlags,
             withBotingMenuBack: true,
+            locale: locLedg,
           }),
         )
         .catch(() => {});
@@ -322,6 +344,7 @@ export default async function raceHubButtons(interaction) {
     const targetUserId = parts[3];
     if (!/^\d{17,20}$/.test(String(targetUserId || ''))) return;
     const extraFlags = ephemeralExtraFromMessage(interaction.message);
+    const locAnnual = resolveLocaleFromInteraction(interaction);
     if (!(await safeDeferUpdate(interaction))) return;
     try {
       await runPendingRaceRefundsForUser(targetUserId);
@@ -330,6 +353,7 @@ export default async function raceHubButtons(interaction) {
           userId: targetUserId,
           extraFlags,
           rankLeaderboardReturn: { limit: lim, mode },
+          locale: locAnnual,
         }),
       );
     } catch (e) {
@@ -337,10 +361,11 @@ export default async function raceHubButtons(interaction) {
       await interaction
         .editReply(
           buildTextAndRowsV2Payload({
-            headline: `❌ 年間統計の表示に失敗しました: ${e.message}`,
+            headline: t('bp_rank.errors.annual_stats_failed', { message: e.message }, locAnnual),
             actionRows: [],
             extraFlags,
             withBotingMenuBack: true,
+            locale: locAnnual,
           }),
         )
         .catch(() => {});
@@ -360,6 +385,7 @@ export default async function raceHubButtons(interaction) {
         ? rawMode
         : BP_RANK_MODE.BALANCE;
     const extraFlags = ephemeralExtraFromMessage(interaction.message);
+    const locKpad = resolveLocaleFromInteraction(interaction);
     if (!(await safeDeferUpdate(interaction))) return;
     setBpRankLimitDraft(interaction.user.id, {
       mode,
@@ -369,6 +395,7 @@ export default async function raceHubButtons(interaction) {
     const kpad = buildBpRankLimitKeypadPayload({
       buffer: String(lim),
       extraFlags,
+      locale: locKpad,
     });
     await interaction.editReply({
       content: null,
@@ -386,6 +413,7 @@ export default async function raceHubButtons(interaction) {
     const pi = Math.max(0, parseInt(parts[3], 10) || 0);
     const extraFlags = ephemeralExtraFromMessage(interaction.message);
     if (!(await safeDeferUpdate(interaction))) return;
+    const locNav = resolveLocaleFromInteraction(interaction);
     let ledgerUserId = interaction.user.id;
     let rankLeaderboardReturn = null;
     if (parts.length >= 8 && parts[5] === 'lb') {
@@ -406,6 +434,7 @@ export default async function raceHubButtons(interaction) {
         pageIndex: nextPi,
         extraFlags,
         rankLeaderboardReturn,
+        locale: locNav,
       }),
     );
     return;
@@ -454,6 +483,8 @@ export default async function raceHubButtons(interaction) {
 
   if (!(await safeDeferUpdate(interaction))) return;
 
+  const loc = resolveLocaleFromInteraction(interaction);
+
   try {
     if (part === 'back') {
       abandonSlipReviewToSavedState(userId);
@@ -462,6 +493,7 @@ export default async function raceHubButtons(interaction) {
           user: interaction.user,
           guild: interaction.guild,
           extraFlags,
+          locale: loc,
         }),
       );
       return;
@@ -476,10 +508,11 @@ export default async function raceHubButtons(interaction) {
         console.error('raceHubButtons tryClaimDaily:', e);
         await interaction.editReply(
           buildTextAndRowsV2Payload({
-            headline: `❌ ポイントの保存に失敗しました: ${e.message}`,
+            headline: t('boting_hub.errors.points_save_failed', { message: e.message }, loc),
             actionRows: [],
             extraFlags,
             withBotingMenuBack: true,
+            locale: loc,
           }),
         );
         return;
@@ -489,6 +522,7 @@ export default async function raceHubButtons(interaction) {
           user: interaction.user,
           guild: interaction.guild,
           extraFlags,
+          locale: loc,
         });
         await interaction.editReply(payload);
         return;
@@ -496,21 +530,31 @@ export default async function raceHubButtons(interaction) {
       if (!result.ok) {
         await interaction.editReply(
           buildTextAndRowsV2Payload({
-            headline: '❌ Daily の受け取りに失敗しました。',
+            headline: t('boting_hub.errors.daily_claim_failed', null, loc),
             actionRows: [],
             extraFlags,
             withBotingMenuBack: true,
+            locale: loc,
           }),
         );
         return;
       }
-      const kindLine = kindLabelJa(result.kind, result.streakDay);
+      const kindLine = ledgerKindLabel(result.kind, result.streakDay, loc);
       await interaction.editReply(
         await buildBotingPanelPayload({
           user: interaction.user,
           guild: interaction.guild,
           extraFlags,
-          dailySuccessBanner: `✅ **+${formatBpAmount(result.granted)}** bp（${kindLine}）\n残高: **${formatBpAmount(result.balance)}** bp`,
+          locale: loc,
+          dailySuccessBanner: t(
+            'boting_hub.daily_success_banner',
+            {
+              granted: formatBpAmount(result.granted),
+              kind: kindLine,
+              balance: formatBpAmount(result.balance),
+            },
+            loc,
+          ),
         }),
       );
       return;
@@ -525,6 +569,7 @@ export default async function raceHubButtons(interaction) {
             client: interaction.client,
             guild: interaction.guild,
             refundForUserId: userId,
+            locale: loc,
           },
         ),
       );
@@ -538,13 +583,14 @@ export default async function raceHubButtons(interaction) {
           pageSize: 10,
           pageIndex: 0,
           extraFlags,
+          locale: loc,
         }),
       );
       return;
     }
     if (part === 'purchase') {
       await interaction.editReply(
-        await buildRaceScheduleIntroV2Payload({ userId, extraFlags }),
+        await buildRaceScheduleIntroV2Payload({ userId, extraFlags, locale: loc }),
       );
       return;
     }
@@ -553,6 +599,7 @@ export default async function raceHubButtons(interaction) {
         userId,
         page: 0,
         extraFlags,
+        locale: loc,
       });
       await interaction.editReply(payload);
       return;
@@ -567,21 +614,21 @@ export default async function raceHubButtons(interaction) {
     }
     if (part === 'help') {
       await interaction.editReply(
-        buildBotingHelpPanelPayload({ extraFlags, region: 'overview' }),
+        buildBotingHelpPanelPayload({ extraFlags, region: 'overview', locale: loc }),
       );
       return;
     }
     if (part === 'annual_stats') {
       await runPendingRaceRefundsForUser(userId);
       await interaction.editReply(
-        await buildAnnualStatsPanelPayload({ userId, extraFlags }),
+        await buildAnnualStatsPanelPayload({ userId, extraFlags, locale: loc }),
       );
       return;
     }
     if (part === 'weekly_challenge') {
       await runPendingRaceRefundsForUser(userId);
       await interaction.editReply(
-        await buildWeeklyChallengePanelPayload({ userId, extraFlags }),
+        await buildWeeklyChallengePanelPayload({ userId, extraFlags, locale: loc }),
       );
       return;
     }
@@ -593,6 +640,7 @@ export default async function raceHubButtons(interaction) {
           userId,
           extraFlags,
           claimGrants: grants,
+          locale: loc,
         }),
       );
       return;
@@ -602,9 +650,10 @@ export default async function raceHubButtons(interaction) {
     await interaction
       .editReply(
         buildTextAndRowsV2Payload({
-          headline: `❌ 表示の更新に失敗しました: ${e.message}`,
-          actionRows: [buildBotingMenuBackRow()],
+          headline: t('bp_rank.errors.hub_display_failed', { message: e.message }, loc),
+          actionRows: [buildBotingMenuBackRow({ locale: loc })],
           extraFlags,
+          locale: loc,
         }),
       )
       .catch(() => {});

@@ -1,0 +1,14 @@
+# /debug hub modals (admin)
+errors:
+  forbidden: ❌ You cannot use this action.
+  invalid_user_id: ❌ Invalid user ID (17–20 digits).
+  user_fetch_failed: ❌ Could not fetch that user.
+  bot_not_allowed: ❌ Specify a user, not a bot.
+  invalid_schedule_choice: ❌ Invalid choice.
+  race_id_invalid: ❌ Race ID must be 12 digits.
+weekly:
+  unknown_modal: ❌ Unknown modal.
+  saved_banner: ✅ Weekly challenge settings saved.
+  saved_no_panel: >-
+    ✅ Saved. Reopen `/debug` to see changes (no panel edit token or it expired).
+  save_failed: "❌ Save or panel update failed: {{message}}"

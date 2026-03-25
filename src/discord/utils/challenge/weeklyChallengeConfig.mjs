@@ -1,5 +1,6 @@
 import { AppKv } from '../db/models.mjs';
 import { formatBpAmount } from '../bp/bpFormat.mjs';
+import { t } from '../../../i18n/index.mjs';
 
 export const WEEKLY_CHALLENGE_CONFIG_KEY = 'weekly_challenge_config_v1';
 
@@ -82,13 +83,33 @@ export async function setWeeklyChallengeConfig(config) {
 
 /**
  * @param {Awaited<ReturnType<typeof getWeeklyChallengeConfig>>} cfg
+ * @param {string | null} [locale]
  */
-export function formatWeeklyChallengeConfigSummary(cfg) {
+export function formatWeeklyChallengeConfigSummary(cfg, locale = null) {
+  const onOff = cfg.enabled
+    ? t('boting_stats.weekly.cfg_on', null, locale)
+    : t('boting_stats.weekly.cfg_off', null, locale);
   return [
-    `有効: **${cfg.enabled ? 'ON' : 'OFF'}**`,
-    `> 的中回数 ≥ **${cfg.hitsMin}** → **+${formatBpAmount(cfg.hitsRewardBp)}** bp`,
-    `> 回収率 ≥ **${cfg.recoveryMinPct}%** → **+${formatBpAmount(cfg.recoveryRewardBp)}** bp`,
-    `> 的中率 ≥ **${cfg.hitRateMinPct}%** → **+${formatBpAmount(cfg.hitRateRewardBp)}** bp`,
-    `> 購入件数 ≥ **${cfg.purchasesMin}** → **+${formatBpAmount(cfg.purchasesRewardBp)}** bp`,
+    t('boting_stats.weekly.cfg_enabled', { on: onOff }, locale),
+    t(
+      'boting_stats.weekly.cfg_row_hits',
+      { min: cfg.hitsMin, bp: formatBpAmount(cfg.hitsRewardBp) },
+      locale,
+    ),
+    t(
+      'boting_stats.weekly.cfg_row_recovery',
+      { min: cfg.recoveryMinPct, bp: formatBpAmount(cfg.recoveryRewardBp) },
+      locale,
+    ),
+    t(
+      'boting_stats.weekly.cfg_row_hit_rate',
+      { min: cfg.hitRateMinPct, bp: formatBpAmount(cfg.hitRateRewardBp) },
+      locale,
+    ),
+    t(
+      'boting_stats.weekly.cfg_row_purchases',
+      { min: cfg.purchasesMin, bp: formatBpAmount(cfg.purchasesRewardBp) },
+      locale,
+    ),
   ].join('\n');
 }

@@ -1,0 +1,19 @@
+other_user_fallback_name: User
+batch_review_invalid: ❌ Your batch review session is invalid. Reopen from **Batch purchase (draft)**.
+batch_review_mismatch: ❌ Session mismatch. Please reopen the screen.
+batch_review_open_empty: ❌ No saved picks. Add picks or proceed to the purchase summary.
+batch_review_pending_missing: ❌ No review data. Reopen **Batch purchase (draft)** from /boting.
+modal_custom_id_invalid: ❌ Invalid input. Reopen **Batch purchase (draft)** and change amounts from the menu.
+saved_max_exceeded: '❌ Saved picks are limited to **{{max}}** items. Trim **Saved picks** or reopen **Batch purchase (draft)**.'
+too_many_for_other_user: '❌ **{{username}}** has more than **{{max}}** saved picks; preview unavailable.'
+keypad_invalid: ❌ Invalid key. Reopen amount edit.
+menu_invalid_op: ❌ Invalid action.
+menu_invalid_pick: ❌ Invalid selection.
+menu_remove_failed: ❌ Could not remove.
+modal_item_not_found: ❌ Pick not found.
+modal_invalid_bp: ❌ Enter a positive whole number for bp.
+pick_subtitle: "**Pick #{{n}}**"
+all_picks_removed: |-
+  All picks were removed.
+
+  Start again from **/boting**.

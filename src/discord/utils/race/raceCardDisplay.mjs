@@ -190,7 +190,7 @@ export function buildRaceResultV2Payload({
 
 /**
  * 出馬表なし（購入サマリー・購入完了等）の Components V2: Container + 操作行
- * @param {{ headline: string, actionRows?: import('discord.js').ActionRowBuilder[], extraFlags?: number, accentColor?: number, withBotingMenuBack?: boolean }} opts
+ * @param {{ headline: string, actionRows?: import('discord.js').ActionRowBuilder[], extraFlags?: number, accentColor?: number, withBotingMenuBack?: boolean, locale?: string | null }} opts
  */
 export function buildTextAndRowsV2Payload({
   headline,
@@ -198,10 +198,11 @@ export function buildTextAndRowsV2Payload({
   extraFlags = 0,
   accentColor = V2_TEXT_PANEL_ACCENT,
   withBotingMenuBack = false,
+  locale = null,
 }) {
   const rows = actionRows.filter(Boolean);
   if (withBotingMenuBack) {
-    rows.push(buildBotingMenuBackRow());
+    rows.push(buildBotingMenuBackRow({ locale }));
   }
   const raw = String(headline || '').trimEnd().slice(0, V2_TEXT_TOTAL_MAX);
   const container = new ContainerBuilder().setAccentColor(accentColor);

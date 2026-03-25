@@ -12,18 +12,9 @@ import {
   RACE_HISTORY_RESULT_PICK_PREFIX,
   buildRaceHistoryNavCustomId,
   stripRaceHistoryBpCtx,
-} from '../../utils/race/racePurchaseHistoryUi.mjs';
-
-function v2ExtraFlags(interaction) {
-  try {
-    if (interaction.message?.flags?.has(MessageFlags.Ephemeral)) {
-      return MessageFlags.Ephemeral;
-    }
-  } catch (_) {
-    /* ignore */
-  }
-  return 0;
-}
+} from '../../components/racePurchaseHistory/ids.mjs';
+import { v2ExtraFlags } from '../../utils/shared/interactionResponse.mjs';
+import { resolveLocaleFromInteraction, t } from '../../../i18n/index.mjs';
 
 /**
  * 出馬表などで `maybeInsertRaceBetUtilityRow` 済みのときは券種セレクト直下に
@@ -49,15 +40,17 @@ function payloadHasUtilityPurchaseHistoryButton(payload) {
 /**
  * レース結果・出馬表ペイロードの本文ブロック直下に「購入履歴に戻る」を差し込む
  * @param {import('discord.js').BaseMessageOptions} payload
+ * @param {object} ctx
+ * @param {'ja'|'en'|string|null} [locale]
  */
-function injectPurchaseHistoryBack(payload, ctx) {
+function injectPurchaseHistoryBack(payload, ctx, locale = null) {
   if (payloadHasUtilityPurchaseHistoryButton(payload)) {
     return payload;
   }
   const row = new ActionRowBuilder().addComponents(
     new ButtonBuilder()
       .setCustomId(buildRaceHistoryNavCustomId(ctx))
-      .setLabel('購入履歴')
+      .setLabel(t('race_schedule.buttons.purchase_history', null, locale))
       .setEmoji(botingEmoji('history'))
       .setStyle(ButtonStyle.Secondary),
   );
@@ -76,6 +69,7 @@ export default async function raceHistoryResultPick(interaction) {
   const cid = interaction.customId;
   if (!cid.startsWith(`${RACE_HISTORY_RESULT_PICK_PREFIX}|`)) return;
 
+  const loc = resolveLocaleFromInteraction(interaction);
   const { withoutCtx, bpctxUserId, rankLeaderboardReturn } = stripRaceHistoryBpCtx(cid);
   const parts = withoutCtx.split('|');
   if (parts.length < 4 || parts[0] !== RACE_HISTORY_RESULT_PICK_PREFIX) return;
@@ -87,14 +81,14 @@ export default async function raceHistoryResultPick(interaction) {
 
   if (!/^\d{8}$/.test(String(periodKey || '')) || !Number.isFinite(page) || page < 0) {
     await interaction.reply({
-      content: '❌ 指定が無効です。',
+      content: t('race_purchase_history.errors.invalid_history_param', null, loc),
       flags: MessageFlags.Ephemeral,
     });
     return;
   }
   if (meetingFilter !== 'all' && !/^\d{10}$/.test(String(meetingFilter))) {
     await interaction.reply({
-      content: '❌ 開催の指定が無効です。',
+      content: t('race_purchase_history.errors.invalid_meeting', null, loc),
       flags: MessageFlags.Ephemeral,
     });
     return;
@@ -104,7 +98,7 @@ export default async function raceHistoryResultPick(interaction) {
   const [raceId, flag] = String(rawVal || '').split('|');
   if (!/^\d{12}$/.test(raceId) || (flag !== '0' && flag !== '1')) {
     await interaction.reply({
-      content: '❌ レースの指定が無効です。',
+      content: t('race_purchase_history.errors.invalid_race_selection', null, loc),
       flags: MessageFlags.Ephemeral,
     });
     return;
@@ -125,7 +119,7 @@ export default async function raceHistoryResultPick(interaction) {
       raceId,
       isResultFlag: flag,
     });
-    payload = injectPurchaseHistoryBack(payload, ctx);
+    payload = injectPurchaseHistoryBack(payload, ctx, loc);
     const xf = v2ExtraFlags(interaction);
     if (xf) {
       payload.flags = (payload.flags ?? 0) | xf;
@@ -135,7 +129,7 @@ export default async function raceHistoryResultPick(interaction) {
     console.error('raceHistoryResultPick', e);
     await interaction
       .editReply({
-        content: `❌ 表示に失敗しました: ${e.message}`,
+        content: t('race_purchase_history.errors.result_display_failed', { message: e.message }, loc),
       })
       .catch(() => {});
   }

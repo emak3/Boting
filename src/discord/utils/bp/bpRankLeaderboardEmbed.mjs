@@ -22,6 +22,7 @@ import {
 import { runPendingRaceRefundsForUser } from '../race/raceBetRefundSweep.mjs';
 import { mapWithConcurrency } from '../../../utils/concurrency/mapWithConcurrency.mjs';
 import { formatBpAmount } from './bpFormat.mjs';
+import { t } from '../../../i18n/index.mjs';
 
 /** Discord REST のバーストを抑える（表示名解決の並列度） */
 const BP_RANK_NAME_RESOLVE_CONCURRENCY = 5;
@@ -113,11 +114,13 @@ export async function resolveBpRankDisplayNames(client, guild, userIds) {
  * @param {object} row
  * @param {Map<string, string>} [nameMap]
  */
-function formatLeaderboardLine(mode, row, nameMap) {
+function formatLeaderboardLine(mode, row, nameMap, locale = null) {
   const dnRaw =
     nameMap instanceof Map ? nameMap.get(row.userId) : null;
   const dn = dnRaw ? sanitizeBpRankDisplayName(dnRaw) : null;
   const who = dn ? `**${dn}**` : `<@${row.userId}>`;
+  const purchaseLine = t('bp_rank.line.purchases', { n: row.agg.purchaseCount }, locale);
+  const msep = t('bp_rank.line.metric_sep', null, locale);
   if (mode === BP_RANK_MODE.BALANCE) {
     return `${who} — **${formatBpAmount(row.balance)}** bp`;
   }
@@ -126,18 +129,18 @@ function formatLeaderboardLine(mode, row, nameMap) {
       row.agg.totalRecoveryRate != null &&
       Number.isFinite(row.agg.totalRecoveryRate)
         ? pct(row.agg.totalRecoveryRate)
-        : '精算なし';
-    return `${who} — **${rate}** ・ 購入 **${row.agg.purchaseCount}** 件`;
+        : t('bp_rank.line.no_settlement', null, locale);
+    return `${who} — **${rate}**${msep}${purchaseLine}`;
   }
   if (mode === BP_RANK_MODE.HIT_RATE) {
     const hr =
       row.agg.purchaseCount > 0
         ? pct(row.agg.hitCount / row.agg.purchaseCount)
-        : '—';
-    return `${who} — **${hr}** ・ 購入 **${row.agg.purchaseCount}** 件`;
+        : t('bp_rank.line.em_dash', null, locale);
+    return `${who} — **${hr}**${msep}${purchaseLine}`;
   }
   if (mode === BP_RANK_MODE.PURCHASE) {
-    return `${who} — **${row.agg.purchaseCount}** 件`;
+    return `${who} — ${t('bp_rank.line.count_only', { n: row.agg.purchaseCount }, locale)}`;
   }
   return `${who}`;
 }
@@ -227,23 +230,23 @@ function sortMergedForMode(mode, merged) {
   }
 }
 
-function titleForMode(mode) {
-  if (mode === BP_RANK_MODE.BALANCE) return 'BP 残高';
-  if (mode === BP_RANK_MODE.RECOVERY) return '回収率';
-  if (mode === BP_RANK_MODE.HIT_RATE) return '的中率';
-  if (mode === BP_RANK_MODE.PURCHASE) return '馬券購入件数';
-  return 'ランキング';
+function titleForMode(mode, locale = null) {
+  if (mode === BP_RANK_MODE.BALANCE) return t('bp_rank.mode_titles.balance', null, locale);
+  if (mode === BP_RANK_MODE.RECOVERY) return t('bp_rank.mode_titles.recovery', null, locale);
+  if (mode === BP_RANK_MODE.HIT_RATE) return t('bp_rank.mode_titles.hit_rate', null, locale);
+  if (mode === BP_RANK_MODE.PURCHASE) return t('bp_rank.mode_titles.purchase', null, locale);
+  return t('bp_rank.mode_titles.default', null, locale);
 }
 
-function footerNoteForMode(mode) {
+function footerNoteForMode(mode, locale = null) {
   if (mode === BP_RANK_MODE.RECOVERY) {
-    return '回収率 = 精算済みの払戻 bp 合計 ÷ 購入bpの合計';
+    return t('bp_rank.footer_note.recovery', null, locale);
   }
   if (mode === BP_RANK_MODE.HIT_RATE) {
-    return '的中率 = (的中件数 ÷ 購入件数) × 100';
+    return t('bp_rank.footer_note.hit_rate', null, locale);
   }
   if (mode === BP_RANK_MODE.PURCHASE) {
-    return '購入件数 = 馬券購入件数';
+    return t('bp_rank.footer_note.purchase', null, locale);
   }
   return '';
 }
@@ -344,20 +347,26 @@ function buildBpRankLeaderboardContainerFromSlice(
   merged,
   lim,
   nameMap = new Map(),
+  locale = null,
 ) {
   const lines = slice.map((row, i) => {
     const medal =
       i === 0 ? '🥇' : i === 1 ? '🥈' : i === 2 ? '🥉' : `${i + 1}.`;
-    return `${medal} ${formatLeaderboardLine(m, row, nameMap)}`;
+    return `${medal} ${formatLeaderboardLine(m, row, nameMap, locale)}`;
   });
 
   const body =
     lines.length > 0
       ? lines.join('\n')
-      : 'まだ誰も BP データがありません。';
+      : t('bp_rank.leaderboard.empty', null, locale);
 
-  const heading = `## ${titleForMode(m)}ランキング（上位 ${slice.length} / 全 ${merged.length} 名）`;
-  const note = footerNoteForMode(m);
+  const modeTitle = titleForMode(m, locale);
+  const heading = t(
+    'bp_rank.leaderboard.heading',
+    { mode: modeTitle, shown: slice.length, total: merged.length },
+    locale,
+  );
+  const note = footerNoteForMode(m, locale);
   const fullText = note
     ? `${heading}\n\n${body}\n\n*${note}*`
     : `${heading}\n\n${body}`;
@@ -392,6 +401,7 @@ export async function buildBpRankLeaderboardContainer(limit, mode, rankContext) 
     state.merged,
     state.lim,
     nameMap,
+    rankContext?.locale ?? null,
   );
 }
 
@@ -402,7 +412,7 @@ export async function buildBpRankLeaderboardContainer(limit, mode, rankContext) 
  * @param {number} rankIndex 0-based
  * @param {Map<string, string>} [nameMap]
  */
-function formatLeaderboardPickLabel(mode, row, rankIndex, nameMap) {
+function formatLeaderboardPickLabel(mode, row, rankIndex, nameMap, locale = null) {
   const medal =
     rankIndex === 0
       ? '🥇'
@@ -416,6 +426,7 @@ function formatLeaderboardPickLabel(mode, row, rankIndex, nameMap) {
   const dn = dnRaw
     ? sanitizeBpRankDisplayName(dnRaw).slice(0, 36)
     : `ID…${String(row.userId).slice(-4)}`;
+  const sep = t('bp_rank.pick_label.sep', null, locale);
   let core;
   if (mode === BP_RANK_MODE.BALANCE) {
     core = `${formatBpAmount(row.balance)} bp`;
@@ -424,16 +435,16 @@ function formatLeaderboardPickLabel(mode, row, rankIndex, nameMap) {
       row.agg.totalRecoveryRate != null &&
       Number.isFinite(row.agg.totalRecoveryRate)
         ? pct(row.agg.totalRecoveryRate)
-        : '精算なし';
-    core = `${rate} ・${row.agg.purchaseCount}件`;
+        : t('bp_rank.line.no_settlement', null, locale);
+    core = `${rate}${sep}${t('bp_rank.pick_label.purchases_short', { n: row.agg.purchaseCount }, locale)}`;
   } else if (mode === BP_RANK_MODE.HIT_RATE) {
     const hr =
       row.agg.purchaseCount > 0
         ? pct(row.agg.hitCount / row.agg.purchaseCount)
-        : '—';
-    core = `${hr} ・${row.agg.purchaseCount}件`;
+        : t('bp_rank.line.em_dash', null, locale);
+    core = `${hr}${sep}${t('bp_rank.pick_label.purchases_short', { n: row.agg.purchaseCount }, locale)}`;
   } else if (mode === BP_RANK_MODE.PURCHASE) {
-    core = `${row.agg.purchaseCount}件`;
+    core = t('bp_rank.pick_label.purchases_short', { n: row.agg.purchaseCount }, locale);
   } else {
     core = String(row.userId).slice(-8);
   }
@@ -450,10 +461,10 @@ function formatLeaderboardPickLabel(mode, row, rankIndex, nameMap) {
  * @param {Map<string, string>} [nameMap]
  * @returns {import('discord.js').ActionRowBuilder | null}
  */
-export function buildBpRankSlicePickRow(lim, m, slice, nameMap = new Map()) {
+export function buildBpRankSlicePickRow(lim, m, slice, nameMap = new Map(), locale = null) {
   if (!slice.length) return null;
   const capped = slice.slice(0, BP_RANK_SLICE_PICK_MAX);
-  const placeholder = '表示中ランキングから選ぶ';
+  const placeholder = t('bp_rank.slice_pick.placeholder', null, locale);
 
   const menu = new StringSelectMenuBuilder()
     .setCustomId(`${BP_RANK_SLICE_PICK_PREFIX}|${lim}|${m}`)
@@ -467,7 +478,7 @@ export function buildBpRankSlicePickRow(lim, m, slice, nameMap = new Map()) {
             ? sanitizeBpRankDisplayName(nameMap.get(row.userId)).slice(0, 40)
             : null;
         return new StringSelectMenuOptionBuilder()
-          .setLabel(formatLeaderboardPickLabel(m, row, i, nameMap))
+          .setLabel(formatLeaderboardPickLabel(m, row, i, nameMap, locale))
           .setValue(row.userId)
           .setDescription(
             (dn ? `${dn} · ` : '') +
@@ -484,7 +495,7 @@ export function buildBpRankSlicePickRow(lim, m, slice, nameMap = new Map()) {
  * @param {number} limit
  * @param {string} mode BP_RANK_MODE
  * @param {number} [extraFlags=0]
- * @param {{ client?: import('discord.js').Client, guild?: import('discord.js').Guild | null, refundForUserId?: string }} [rankContext]
+ * @param {{ client?: import('discord.js').Client, guild?: import('discord.js').Guild | null, refundForUserId?: string, locale?: string | null }} [rankContext]
  */
 export async function buildBpRankLeaderboardFullPayload(
   limit,
@@ -492,6 +503,7 @@ export async function buildBpRankLeaderboardFullPayload(
   extraFlags = 0,
   rankContext,
 ) {
+  const loc = rankContext?.locale ?? null;
   const { lim, m, merged, slice } = await loadBpRankLeaderboardState(
     limit,
     mode,
@@ -511,16 +523,17 @@ export async function buildBpRankLeaderboardFullPayload(
     merged,
     lim,
     nameMap,
+    loc,
   );
-  const pickRow = buildBpRankSlicePickRow(lim, m, slice, nameMap);
+  const pickRow = buildBpRankSlicePickRow(lim, m, slice, nameMap, loc);
   return {
     content: null,
     embeds: [],
     components: [
       container,
-      buildBpRankSelectRow(limit, mode),
+      buildBpRankSelectRow(limit, mode, loc),
       ...(pickRow ? [pickRow] : []),
-      buildBpRankLeaderboardExtraRow(limit, mode),
+      buildBpRankLeaderboardExtraRow(limit, mode, loc),
     ],
     flags: MessageFlags.IsComponentsV2 | extraFlags,
   };
@@ -530,7 +543,7 @@ export async function buildBpRankLeaderboardFullPayload(
  * @param {number} limit
  * @param {string} mode 現在選択中（default 表示用）
  */
-export function buildBpRankSelectRow(limit, mode) {
+export function buildBpRankSelectRow(limit, mode, locale = null) {
   const lim = Math.min(BP_RANK_DISPLAY_MAX, Math.max(1, limit));
   const m =
     mode === BP_RANK_MODE.RECOVERY ||
@@ -542,29 +555,29 @@ export function buildBpRankSelectRow(limit, mode) {
   const opts = [
     {
       value: BP_RANK_MODE.BALANCE,
-      label: 'BP 残高',
-      description: '現在の BP が多い順',
+      label: t('bp_rank.select.opt_balance_label', null, locale),
+      description: t('bp_rank.select.opt_balance_desc', null, locale),
     },
     {
       value: BP_RANK_MODE.RECOVERY,
-      label: '回収率',
-      description: '現在の回収率が高い順',
+      label: t('bp_rank.select.opt_recovery_label', null, locale),
+      description: t('bp_rank.select.opt_recovery_desc', null, locale),
     },
     {
       value: BP_RANK_MODE.HIT_RATE,
-      label: '的中率',
-      description: '現在の的中率が高い順',
+      label: t('bp_rank.select.opt_hit_rate_label', null, locale),
+      description: t('bp_rank.select.opt_hit_rate_desc', null, locale),
     },
     {
       value: BP_RANK_MODE.PURCHASE,
-      label: '購入件数',
-      description: '現在の購入件数が多い順',
+      label: t('bp_rank.select.opt_purchase_label', null, locale),
+      description: t('bp_rank.select.opt_purchase_desc', null, locale),
     },
   ];
 
   const menu = new StringSelectMenuBuilder()
     .setCustomId(`${BP_RANK_SELECT_PREFIX}|${lim}`)
-    .setPlaceholder('ランキングの種類を選ぶ')
+    .setPlaceholder(t('bp_rank.select.placeholder', null, locale))
     .addOptions(
       opts.map((o) =>
         new StringSelectMenuOptionBuilder()
@@ -583,7 +596,7 @@ export function buildBpRankSelectRow(limit, mode) {
  * @param {number} limit
  * @param {string} mode BP_RANK_MODE
  */
-export function buildBpRankLeaderboardExtraRow(limit, mode) {
+export function buildBpRankLeaderboardExtraRow(limit, mode, locale = null) {
   const lim = Math.min(BP_RANK_DISPLAY_MAX, Math.max(1, limit));
   const m =
     mode === BP_RANK_MODE.RECOVERY ||
@@ -596,12 +609,12 @@ export function buildBpRankLeaderboardExtraRow(limit, mode) {
   return new ActionRowBuilder().addComponents(
     new ButtonBuilder()
       .setCustomId(`${BP_RANK_OPEN_LIM_PREFIX}|${lim}|${m}`)
-      .setLabel('表示数を変える')
+      .setLabel(t('bp_rank.buttons.change_limit', null, locale))
       .setEmoji(botingEmoji('hyouji'))
       .setStyle(ButtonStyle.Secondary),
     new ButtonBuilder()
       .setCustomId(`${BOTING_HUB_PREFIX}|back`)
-      .setLabel('メニューに戻る')
+      .setLabel(t('common.menu_back', null, locale))
       .setEmoji(botingEmoji('home'))
       .setStyle(ButtonStyle.Secondary),
   );
@@ -612,9 +625,9 @@ export function buildBpRankLeaderboardExtraRow(limit, mode) {
  * @param {string} mode BP_RANK_MODE
  * @returns {import('discord.js').ActionRowBuilder[]}
  */
-export function buildBpRankLeaderboardRows(limit, mode) {
+export function buildBpRankLeaderboardRows(limit, mode, locale = null) {
   return [
-    buildBpRankSelectRow(limit, mode),
-    buildBpRankLeaderboardExtraRow(limit, mode),
+    buildBpRankSelectRow(limit, mode, locale),
+    buildBpRankLeaderboardExtraRow(limit, mode, locale),
   ];
 }

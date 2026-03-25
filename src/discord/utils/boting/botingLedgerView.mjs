@@ -8,9 +8,10 @@ import {
 } from 'discord.js';
 import {
   fetchLedgerPage,
-  kindLabelJa,
   LEDGER_PAGE_MAX_FETCH,
 } from '../user/userPointsStore.mjs';
+import { ledgerKindLabel } from './ledgerKindLabel.mjs';
+import { normalizeLocale, t } from '../../../i18n/index.mjs';
 import { BOTING_HUB_BUTTON_EMOJI, BOTING_HUB_PREFIX } from './botingHubConstants.mjs';
 import { botingEmoji } from './botingEmojis.mjs';
 import { BP_RANK_DISPLAY_MAX } from '../bp/bpRankLeaderboardEmbed.mjs';
@@ -28,26 +29,27 @@ const ACCENT = 0x3498db;
 const V2_TEXT_TOTAL_MAX = 3900;
 const V2_SINGLE_CHUNK = 3500;
 
-function formatJst(d) {
-  return d.toLocaleString('ja-JP', {
+function formatJst(d, locale = null) {
+  const tag = normalizeLocale(locale) === 'en' ? 'en-US' : 'ja-JP';
+  return d.toLocaleString(tag, {
     timeZone: 'Asia/Tokyo',
     dateStyle: 'medium',
     timeStyle: 'short',
   });
 }
 
-function formatLedgerLines(entries) {
+function formatLedgerLines(entries, locale = null) {
   if (!entries.length) {
-    return '（このページに表示する収支がありません）';
+    return t('boting_hub.ledger.empty_page', null, locale);
   }
   const lines = entries.map((e) => {
-    const t = e.at ? formatJst(e.at) : '—';
+    const timeStr = e.at ? formatJst(e.at, locale) : '—';
     const sign = e.delta >= 0 ? `+${formatBpAmount(e.delta)}` : formatBpAmount(e.delta);
-    return `\`${t}\` **${sign}** bp → **${formatBpAmount(e.balanceAfter)}** bp（${kindLabelJa(e.kind, e.streakDay)}）`;
+    return `\`${timeStr}\` **${sign}** bp → **${formatBpAmount(e.balanceAfter)}** bp（${ledgerKindLabel(e.kind, e.streakDay, locale)}）`;
   });
   let text = lines.join('\n');
   if (text.length > 3500) {
-    text = lines.slice(0, 8).join('\n') + '\n…他省略';
+    text = lines.slice(0, 8).join('\n') + t('boting_hub.ledger.truncated_suffix', null, locale);
   }
   return text;
 }
@@ -86,7 +88,7 @@ function appendChunkedToContainer(container, text) {
 }
 
 /**
- * @param {{ userId: string, pageSize: number, pageIndex: number, extraFlags?: number, rankLeaderboardReturn?: { limit: number, mode: string } | null }} opts
+ * @param {{ userId: string, pageSize: number, pageIndex: number, extraFlags?: number, rankLeaderboardReturn?: { limit: number, mode: string } | null, locale?: string | null }} opts
  */
 export async function buildBotingLedgerViewPayload({
   userId,
@@ -94,6 +96,7 @@ export async function buildBotingLedgerViewPayload({
   pageIndex,
   extraFlags = 0,
   rankLeaderboardReturn = null,
+  locale = null,
 }) {
   const ps = Math.min(50, Math.max(1, Math.round(Number(pageSize) || 10)));
   const pi = Math.max(0, Math.floor(Number(pageIndex) || 0));
@@ -106,21 +109,21 @@ export async function buildBotingLedgerViewPayload({
 
   const targetLine =
     rankLeaderboardReturn && userId
-      ? `対象: <@${userId}>\n\n`
+      ? t('boting_hub.ledger.target_line', { mention: `<@${userId}>` }, locale)
       : '';
 
   const head = [
-    '## 直近の収支',
+    t('boting_hub.ledger.title', null, locale),
     targetLine,
-    `**${ps}** 件/ページ ・ **${pi + 1}** ページ目`,
+    t('boting_hub.ledger.page_line', { size: ps, page: pi + 1 }, locale),
     capped
-      ? `\n⚠️ 一度に読める件数は最大 **${LEDGER_PAGE_MAX_FETCH}** 件までです。ページを戻すか、表示件数を小さくしてください。`
+      ? t('boting_hub.ledger.capped_warning', { max: LEDGER_PAGE_MAX_FETCH }, locale)
       : '',
   ]
     .filter(Boolean)
     .join('');
 
-  const body = `${head}\n\n${formatLedgerLines(entries)}`;
+  const body = `${head}\n\n${formatLedgerLines(entries, locale)}`;
 
   const container = new ContainerBuilder().setAccentColor(ACCENT);
   appendChunkedToContainer(container, body);
@@ -148,7 +151,7 @@ export async function buildBotingLedgerViewPayload({
       .setCustomId(
         `${BOTING_LEDGER_NAV_PREFIX}|prev|${ps}|${pi}${navSuffix}`,
       )
-      .setLabel('前へ')
+      .setLabel(t('race_purchase_history.nav.prev_page', null, locale))
       .setEmoji(botingEmoji('mae'))
       .setStyle(ButtonStyle.Secondary)
       .setDisabled(!hasPrev),
@@ -156,24 +159,28 @@ export async function buildBotingLedgerViewPayload({
       .setCustomId(
         `${BOTING_LEDGER_NAV_PREFIX}|next|${ps}|${pi}${navSuffix}`,
       )
-      .setLabel('次へ')
+      .setLabel(t('race_purchase_history.nav.next_page', null, locale))
       .setEmoji(botingEmoji('tsugi'))
       .setStyle(ButtonStyle.Secondary)
       .setDisabled(!hasMore),
     new ButtonBuilder()
       .setCustomId(`${BOTING_LEDGER_OPEN_LIM_PREFIX}|${ps}|${pi}${navSuffix}`)
-      .setLabel('表示数を変える')
+      .setLabel(t('boting_hub.ledger.change_page_size', null, locale))
       .setEmoji(botingEmoji('hyouji'))
       .setStyle(ButtonStyle.Secondary),
   );
 
   const menuBackBtn = new ButtonBuilder()
     .setCustomId(`${BOTING_HUB_PREFIX}|back`)
-    .setLabel('メニューに戻る')
+    .setLabel(t('common.menu_back', null, locale))
     .setEmoji(botingEmoji('home'))
     .setStyle(ButtonStyle.Secondary);
 
-  const rankBackRow = buildBpRankLeaderboardBackButtonRow(rkLim ?? 20, safeMode);
+  const rankBackRow = buildBpRankLeaderboardBackButtonRow(
+    rkLim ?? 20,
+    safeMode,
+    locale,
+  );
   const rankBackBtn = lb ? rankBackRow.components.at(0) : null;
 
   const histBackBtn =
@@ -182,7 +189,7 @@ export async function buildBotingLedgerViewPayload({
           .setCustomId(
             `${BP_RANK_LB_HIST_PREFIX}|${rkLim}|${safeMode}|${userId}`,
           )
-          .setLabel('購入履歴')
+          .setLabel(t('race_schedule.buttons.purchase_history', null, locale))
           .setEmoji(botingEmoji('history'))
           .setStyle(ButtonStyle.Secondary)
       : null;
@@ -193,7 +200,7 @@ export async function buildBotingLedgerViewPayload({
           .setCustomId(
             `${BP_RANK_LB_ANNUAL_PREFIX}|${rkLim}|${safeMode}|${userId}`,
           )
-          .setLabel('年間統計')
+          .setLabel(t('boting_hub.buttons.annual_stats', null, locale))
           .setEmoji(BOTING_HUB_BUTTON_EMOJI.annualStats)
           .setStyle(ButtonStyle.Secondary)
       : null;

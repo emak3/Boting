@@ -1,4 +1,3 @@
-import { MessageFlags } from 'discord.js';
 import {
   appendDigitLimit,
   BP_RANK_DISPLAY_MAX,
@@ -18,18 +17,8 @@ import {
 } from '../../utils/bp/bpRankLeaderboardEmbed.mjs';
 import { buildEphemeralWithBotingBackPayload } from '../../utils/boting/botingBackButton.mjs';
 import { buildTextAndRowsV2Payload } from '../../utils/race/raceCardDisplay.mjs';
-
-function v2ExtraFlags(interaction) {
-  let extraFlags = 0;
-  try {
-    if (interaction.message?.flags?.has(MessageFlags.Ephemeral)) {
-      extraFlags |= MessageFlags.Ephemeral;
-    }
-  } catch (_) {
-    /* ignore */
-  }
-  return extraFlags;
-}
+import { v2ExtraFlags } from '../../utils/shared/interactionResponse.mjs';
+import { resolveLocaleFromInteraction, t } from '../../../i18n/index.mjs';
 
 /**
  * @param {import('discord.js').ButtonInteraction} interaction
@@ -39,11 +28,14 @@ export default async function bpRankLimitKeypadButtons(interaction) {
   const customId = interaction.customId;
   if (!customId.startsWith('bp_rank_lim_kpad|')) return;
 
+  const loc = resolveLocaleFromInteraction(interaction);
+
   const parsed = parseBpRankLimitKeypadId(customId);
   if (!parsed) {
     await interaction.reply(
       buildEphemeralWithBotingBackPayload(
-        '❌ このキーは無効です。表示数変更を開き直してください。',
+        t('bp_rank.errors.keypad_invalid', null, loc),
+        { locale: loc },
       ),
     );
     return;
@@ -54,7 +46,8 @@ export default async function bpRankLimitKeypadButtons(interaction) {
   if (!draft || !draft.mode) {
     await interaction.reply(
       buildEphemeralWithBotingBackPayload(
-        '❌ セッションが無効です。ランキングを開き直してください。',
+        t('bp_rank.errors.keypad_session_expired', null, loc),
+        { locale: loc },
       ),
     );
     return;
@@ -74,7 +67,11 @@ export default async function bpRankLimitKeypadButtons(interaction) {
     const nextBuf = appendDigitLimit(draft.buffer, parsed.digit);
     setBpRankLimitDraft(userId, { ...draft, buffer: nextBuf });
     await interaction.update(
-      buildBpRankLimitKeypadPayload({ buffer: nextBuf, extraFlags }),
+      buildBpRankLimitKeypadPayload({
+        buffer: nextBuf,
+        extraFlags,
+        locale: loc,
+      }),
     );
     return;
   }
@@ -83,7 +80,11 @@ export default async function bpRankLimitKeypadButtons(interaction) {
     const nextBuf = deleteLastDigitLimit(draft.buffer);
     setBpRankLimitDraft(userId, { ...draft, buffer: nextBuf });
     await interaction.update(
-      buildBpRankLimitKeypadPayload({ buffer: nextBuf, extraFlags }),
+      buildBpRankLimitKeypadPayload({
+        buffer: nextBuf,
+        extraFlags,
+        locale: loc,
+      }),
     );
     return;
   }
@@ -98,16 +99,18 @@ export default async function bpRankLimitKeypadButtons(interaction) {
           client: interaction.client,
           guild: interaction.guild,
           refundForUserId: userId,
+          locale: loc,
         }),
       );
     } catch (e) {
       console.error('bpRankLimitKeypad cancel:', e);
       await interaction.editReply(
         buildTextAndRowsV2Payload({
-          headline: `❌ ランキングの復元に失敗しました: ${e.message}`,
+          headline: t('bp_rank.errors.leaderboard_restore_failed', { message: e.message }, loc),
           actionRows: [],
           extraFlags,
           withBotingMenuBack: true,
+          locale: loc,
         }),
       );
     }
@@ -124,16 +127,18 @@ export default async function bpRankLimitKeypadButtons(interaction) {
           client: interaction.client,
           guild: interaction.guild,
           refundForUserId: userId,
+          locale: loc,
         }),
       );
     } catch (e) {
       console.error('bpRankLimitKeypad ok:', e);
       await interaction.editReply(
         buildTextAndRowsV2Payload({
-          headline: `❌ ランキングの更新に失敗しました: ${e.message}`,
+          headline: t('bp_rank.errors.leaderboard_update_failed', { message: e.message }, loc),
           actionRows: [],
           extraFlags,
           withBotingMenuBack: true,
+          locale: loc,
         }),
       );
     }

@@ -11,6 +11,7 @@ import {
 } from 'discord.js';
 import { buildBotingMenuBackRow } from './botingBackButton.mjs';
 import { botingEmoji } from './botingEmojis.mjs';
+import { t } from '../../../i18n/index.mjs';
 
 /** ヘルプ内の地域タブ用セレクト（`client.menus` で処理） */
 export const BOTING_HELP_REGION_SELECT = 'boting_help_region';
@@ -20,30 +21,21 @@ const HUB_ACCENT = 0x5865f2;
 const URL_BAKEN_TYPES = 'https://www.jra.go.jp/kouza/beginner/baken/';
 const URL_BAKEN_RULES = 'https://www.jra.go.jp/kouza/baken/';
 
-/** @type {readonly { id: string; label: string; description: string }[]} */
-export const BOTING_HELP_REGION_TABS = [
-  {
-    id: 'overview',
-    label: '概要',
-    description: '馬券の種類・ルール（参考: JRA 公式）',
-  },
-  { id: 'central', label: '中央(JRA)', description: 'JRA公式YouTube' },
-  { id: 'hokkaido_tohoku', label: '北海道・東北', description: '帯広・門別札幌・岩手' },
-  { id: 'nan_kanto', label: '南関東', description: '浦和・船橋・大井・川崎' },
-  { id: 'chubu_hokuriku', label: '中部・北陸', description: '金沢・笠松・名古屋' },
-  {
-    id: 'kinki_shikoku_kyushu',
-    label: '近畿・四国・九州',
-    description: '園田・姫路・高知・佐賀',
-  },
+/** @type {readonly string[]} */
+export const BOTING_HELP_REGION_TAB_IDS = [
+  'overview',
+  'central',
+  'hokkaido_tohoku',
+  'nan_kanto',
+  'chubu_hokuriku',
+  'kinki_shikoku_kyushu',
 ];
 
 /** @type {Record<string, undefined>} */
-const VALID_REGION = Object.fromEntries(BOTING_HELP_REGION_TABS.map((t) => [t.id, undefined]));
+const VALID_REGION = Object.fromEntries(BOTING_HELP_REGION_TAB_IDS.map((id) => [id, undefined]));
 
 /**
  * @param {string} region
- * @returns {typeof BOTING_HELP_REGION_TABS[number]['id']}
  */
 export function normalizeBotingHelpRegion(region) {
   const r = String(region || '');
@@ -196,23 +188,24 @@ function linkSection(body, button) {
 
 /**
  * @param {string} currentId
+ * @param {'ja'|'en'|string|null} [locale]
  */
-function buildHelpRegionSelectRow(currentId) {
+function buildHelpRegionSelectRow(currentId, locale = null) {
   const cur = normalizeBotingHelpRegion(currentId);
-  const tab = BOTING_HELP_REGION_TABS.find((t) => t.id === cur);
-  const placeholder = tab ? `地域タブ（表示中: ${tab.label}）` : '地域タブを選択';
+  const curLabel = t(`boting_help.tabs.${cur}.label`, null, locale);
+  const placeholder = t('boting_help.select_placeholder_active', { label: curLabel }, locale);
 
   return new ActionRowBuilder().addComponents(
     new StringSelectMenuBuilder()
       .setCustomId(BOTING_HELP_REGION_SELECT)
       .setPlaceholder(placeholder)
       .addOptions(
-        ...BOTING_HELP_REGION_TABS.map((t) =>
+        ...BOTING_HELP_REGION_TAB_IDS.map((id) =>
           new StringSelectMenuOptionBuilder()
-            .setLabel(t.label)
-            .setValue(t.id)
-            .setDescription(t.description)
-            .setDefault(t.id === cur),
+            .setLabel(t(`boting_help.tabs.${id}.label`, null, locale))
+            .setValue(id)
+            .setDescription(t(`boting_help.tabs.${id}.description`, null, locale))
+            .setDefault(id === cur),
         ),
       ),
   );
@@ -220,46 +213,39 @@ function buildHelpRegionSelectRow(currentId) {
 
 /**
  * `/boting` のヘルプ（JRA 初心者向け・地域別 YouTube）
- * @param {{ extraFlags?: number, region?: string }} opts
+ * @param {{ extraFlags?: number, region?: string, locale?: string | null }} opts
  */
-export function buildBotingHelpPanelPayload({ extraFlags = 0, region = 'overview' } = {}) {
+export function buildBotingHelpPanelPayload({ extraFlags = 0, region = 'overview', locale = null } = {}) {
   const r = normalizeBotingHelpRegion(region);
   const container = new ContainerBuilder().setAccentColor(HUB_ACCENT);
 
   if (r === 'overview') {
     container
       .addTextDisplayComponents((td) =>
-        td.setContent(
-          '## ヘルプ\n' +
-            '実馬券の種類・ルールは JRA の公式ページから。**券種の発売可否（出走頭数）**はその公式表に合わせ、中央(JRA)・地方(NAR)のどちらでも同じルールで絞り込みます（実際の地方の発売と異なる場合があります）。ライブ配信は下の**地域タブ**で場所を選ぶと YouTube の公式チャンネルへ飛べます。',
-        ),
+        td.setContent(`${t('boting_help.title', null, locale)}\n${t('boting_help.overview_intro', null, locale)}`),
       )
       .addSectionComponents(
         linkSection(
           channelEntryBody(
-            '馬券の種類（はじめての方へ）',
-            '単勝・複勝など10種類の概要',
+            t('boting_help.link_types_heading', null, locale),
+            t('boting_help.link_types_sub', null, locale),
           ),
-          webLinkButton(URL_BAKEN_TYPES, 'JRA：馬券の種類'),
+          webLinkButton(URL_BAKEN_TYPES, t('boting_help.link_types_btn', null, locale)),
         ),
         linkSection(
-          channelEntryBody('馬券のルール', '発売・払戻・成立など'),
-          webLinkButton(URL_BAKEN_RULES, 'JRA：馬券のルール'),
+          channelEntryBody(
+            t('boting_help.link_rules_heading', null, locale),
+            t('boting_help.link_rules_sub', null, locale),
+          ),
+          webLinkButton(URL_BAKEN_RULES, t('boting_help.link_rules_btn', null, locale)),
         ),
       )
-      .addTextDisplayComponents((td) =>
-        td.setContent(
-          '### YouTube（ライブ）\n南関東・北海道など、**地域タブ**から選んでください。',
-        ),
-      );
+      .addTextDisplayComponents((td) => td.setContent(t('boting_help.youtube_section', null, locale)));
   } else {
-    const tab = BOTING_HELP_REGION_TABS.find((t) => t.id === r);
     const yt = YOUTUBE_BY_REGION[r] || [];
-    const title = tab ? tab.label : r;
+    const title = t(`boting_help.tabs.${r}.label`, null, locale);
     container.addTextDisplayComponents((td) =>
-      td.setContent(
-        `## ${title}\n右のボタンから各公式チャンネル（YouTube）を開けます。`,
-      ),
+      td.setContent(`## ${title}\n${t('boting_help.region_intro', null, locale)}`),
     );
     for (const row of yt) {
       container.addSectionComponents(
@@ -269,15 +255,13 @@ export function buildBotingHelpPanelPayload({ extraFlags = 0, region = 'overview
         ),
       );
     }
-    container.addTextDisplayComponents((td) =>
-      td.setContent('別の地域は下の**地域タブ**から選び直せます。'),
-    );
+    container.addTextDisplayComponents((td) => td.setContent(t('boting_help.region_footer', null, locale)));
   }
 
   return {
     content: null,
     embeds: [],
-    components: [container, buildHelpRegionSelectRow(r), buildBotingMenuBackRow()],
+    components: [container, buildHelpRegionSelectRow(r, locale), buildBotingMenuBackRow({ locale })],
     flags: MessageFlags.IsComponentsV2 | extraFlags,
   };
 }

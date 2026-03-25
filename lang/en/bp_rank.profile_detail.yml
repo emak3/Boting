@@ -1,0 +1,31 @@
+user_fallback: User
+
+rank:
+  line: "**{{rank}}** / {{total}} (tied ranks share placement)"
+  outside: (Not ranked / no data)
+
+detail:
+  title: "**BP profile — {{username}}**"
+  current_bp: "**Current BP**  **{{amount}}** bp"
+  rank_row: "**Rank**  {{line}}"
+  section_guild: "**Server join date**"
+  section_first_use: "**First activity** (earlier of ledger / first purchase)"
+  section_racing: "**Race betting**"
+  hit_count: "Hits: **{{n}}**"
+  purchase_count: "Purchases: **{{n}}**"
+  total_cost: "Total staked: **{{amount}}** bp"
+  max_cost_per_bet: "Max per bet: **{{amount}}** bp"
+  settled_count: "Settled: **{{n}}**"
+  total_recovery: "Recovery (settled total): **{{pct}}** (refund **{{refund}}** bp / staked **{{cost}}** bp)"
+  max_recovery: "Best single-ticket recovery (settled): **{{pct}}**"
+  min_recovery: "Worst single-ticket recovery (settled): **{{pct}}**"
+  recovery_footnote: "*Recovery = refund bp ÷ stake bp (unsettled excluded).*"
+
+slip_readonly:
+  errors:
+    invalid_user: ❌ Invalid user selection.
+  empty: "❌ **{{username}}** has no saved picks."
+  title: "**{{username}}'s saved picks (view only)**"
+  balance: "Balance **{{amount}}** bp"
+  totals: "Total **{{points}}** pts · **{{yen}}** bp (estimate if confirmed)"
+  disclaimer: "*Other users' picks are view-only. Edit or purchase from /boting.*"

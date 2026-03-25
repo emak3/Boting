@@ -7,9 +7,9 @@ import {
   MessageFlags,
 } from 'discord.js';
 import { getBetFlow, clearBetFlow, patchBetFlow } from '../../utils/bet/betFlowStore.mjs';
-import { MSG_RACE_BET_FLOW_SESSION_INVALID } from '../../utils/bet/betFlowSessionCopy.mjs';
+import { msgRaceBetFlowSessionInvalid } from '../../utils/bet/betFlowSessionCopy.mjs';
 import {
-  MSG_SLIP_BATCH_REVIEW_SESSION_INVALID,
+  msgSlipBatchReviewSessionInvalid,
   msgSlipSavedMaxItemsExceeded,
 } from '../../utils/bet/betSlipCopy.mjs';
 import {
@@ -38,12 +38,13 @@ import {
   runOpenBetSlipReviewScreen,
 } from '../../utils/bet/betSlipOpenReview.mjs';
 import { buildRaceCardV2Payload, buildTextAndRowsV2Payload } from '../../utils/race/raceCardDisplay.mjs';
+import { resolveLocaleFromInteraction, t } from '../../../i18n/index.mjs';
+import { buildRacePurchaseHistoryV2Payload } from '../../utils/race/racePurchaseHistoryUi.mjs';
 import {
-  buildRacePurchaseHistoryV2Payload,
   RACE_HISTORY_DAY_PREFIX,
   RACE_HISTORY_PAGE_PREFIX,
   stripRaceHistoryBpCtx,
-} from '../../utils/race/racePurchaseHistoryUi.mjs';
+} from '../../components/racePurchaseHistory/ids.mjs';
 import { RACE_PURCHASE_HISTORY_CUSTOM_ID } from '../../utils/bet/betSlipViewUi.mjs';
 import {
   selectHorseLabel,
@@ -72,53 +73,14 @@ import { setUnitKeypadDraft } from '../../utils/unit/unitYenKeypadStore.mjs';
 import { buildBotingMenuBackRow } from '../../utils/race/raceCommandHub.mjs';
 import { buildEphemeralWithBotingBackPayload } from '../../utils/boting/botingBackButton.mjs';
 import { botingEmoji } from '../../utils/boting/botingEmojis.mjs';
-
-const BET_TYPES = [
-  { id: 'win', label: '単勝' },
-  { id: 'place', label: '複勝' },
-  { id: 'win_place', label: '単勝+複勝' },
-  { id: 'frame_pair', label: '枠連' },
-  { id: 'horse_pair', label: '馬連' },
-  { id: 'wide', label: 'ワイド' },
-  { id: 'umatan', label: '馬単' },
-  { id: 'trifuku', label: '3連複' },
-  { id: 'tritan', label: '3連単' },
-];
-
-const PAIR_MODE_OPTIONS = [
-  { id: 'normal', label: '通常' },
-  { id: 'nagashi', label: 'ながし' },
-  { id: 'box', label: 'ボックス' },
-  { id: 'formation', label: 'フォーメーション' },
-];
-
-const UMATAN_MODE_OPTIONS = [
-  { id: 'normal', label: '通常' },
-  { id: 'nagashi1', label: '1着ながし' },
-  { id: 'nagashi2', label: '2着ながし' },
-  { id: 'box', label: 'ボックス' },
-  { id: 'formation', label: 'フォーメーション' },
-];
-
-const TRIFUKU_MODE_OPTIONS = [
-  { id: 'normal', label: '通常' },
-  { id: 'nagashi1', label: '軸1頭ながし' },
-  { id: 'nagashi2', label: '軸2頭ながし' },
-  { id: 'box', label: 'ボックス' },
-  { id: 'formation', label: 'フォーメーション' },
-];
-
-const TRITAN_MODE_OPTIONS = [
-  { id: 'normal', label: '通常' },
-  { id: 'nagashi1', label: '1着ながし' },
-  { id: 'nagashi2', label: '2着ながし' },
-  { id: 'nagashi3', label: '3着ながし' },
-  { id: 'nagashi12', label: '1・2着ながし' },
-  { id: 'nagashi13', label: '1・3着ながし' },
-  { id: 'nagashi23', label: '2・3着ながし' },
-  { id: 'box', label: 'ボックス' },
-  { id: 'formation', label: 'フォーメーション' },
-];
+import {
+  betTypesLabeled,
+  labeledModes,
+  PAIR_MODE_IDS,
+  UMATAN_MODE_IDS,
+  TRIFUKU_MODE_IDS,
+  TRITAN_MODE_IDS,
+} from '../../utils/bet/betFlowLabels.mjs';
 
 function safeParseRaceId(customId) {
   // race_bet_*|{raceId}（末尾セグメントが raceId）
@@ -126,11 +88,11 @@ function safeParseRaceId(customId) {
   return parts[parts.length - 1] || null;
 }
 
-function scheduleRaceListBackRow(raceId) {
+function scheduleRaceListBackRow(raceId, locale) {
   return new ActionRowBuilder().addComponents(
     new ButtonBuilder()
       .setCustomId(`race_sched_back_to_race_list|${raceId}`)
-      .setLabel('レース一覧へ')
+      .setLabel(t('bet_flow.nav.to_race_list', null, locale))
       .setStyle(ButtonStyle.Secondary),
   );
 }
@@ -153,33 +115,35 @@ function shouldShowForwardNav(flow) {
 /**
  * 戻る導線で1メニューだけ表示するときの UI（戻る・進むは同一行、レース一覧は別行）
  */
-export async function renderBetFlowResumeView(interaction, { userId, raceId, flow, viewIndex, headline }) {
+export async function renderBetFlowResumeView(interaction, { userId, raceId, flow, viewIndex, headline, locale: localeOpt = null }) {
+  const loc = localeOpt ?? resolveLocaleFromInteraction(interaction);
   const backMenuIds = flow.backMenuIds || [];
   const betTypeMenuId = `race_bet_type|${raceId}`;
   const currentMenuCustomId = backMenuIds[viewIndex];
   const menuRow =
     currentMenuCustomId === betTypeMenuId
-      ? buildBetTypeMenuRow(raceId, flow)
+      ? buildBetTypeMenuRow(raceId, flow, loc)
       : buildMenuRowFromCustomId({
           menuCustomId: currentMenuCustomId,
           flow,
           result: flow.result,
+          locale: loc,
         });
   const components = [];
   if (menuRow) components.push(menuRow);
-  else components.push(buildBetTypeMenuRow(raceId, flow));
+  else components.push(buildBetTypeMenuRow(raceId, flow, loc));
 
   const nextIndex = viewIndex - 1;
   const showBack = viewIndex === 0 || nextIndex >= 0;
   const backBtn = new ButtonBuilder()
     .setCustomId(`race_bet_back|${raceId}`)
-    .setLabel('戻る')
+    .setLabel(t('bet_flow.nav.back', null, loc))
     .setEmoji(botingEmoji('modoru'))
     .setStyle(ButtonStyle.Secondary);
   const forwardBtn = shouldShowForwardNav(flow)
     ? new ButtonBuilder()
         .setCustomId(`race_bet_forward|${raceId}`)
-        .setLabel('進む')
+        .setLabel(t('bet_flow.nav.forward', null, loc))
         .setEmoji(botingEmoji('susumu'))
         .setStyle(ButtonStyle.Success)
     : null;
@@ -192,10 +156,10 @@ export async function renderBetFlowResumeView(interaction, { userId, raceId, flo
   }
 
   if (hasScheduleContext(flow)) {
-    components.push(scheduleRaceListBackRow(raceId));
+    components.push(scheduleRaceListBackRow(raceId, loc));
   }
 
-  const h = headline ?? '購入前（戻り）';
+  const h = headline ?? t('bet_flow.resume_headline', null, loc);
   let extraCard = 0;
   try {
     if (interaction.message?.flags?.has(MessageFlags.Ephemeral)) {
@@ -219,6 +183,7 @@ export default async function betFlowButtons(interaction) {
   if (!interaction.isButton()) return;
   const customId = interaction.customId;
   const userId = interaction.user.id;
+  const loc = resolveLocaleFromInteraction(interaction);
 
   function extraFlagsFromMessage() {
     let extra = 0;
@@ -236,7 +201,7 @@ export default async function betFlowButtons(interaction) {
     const raceId = customId.split('|')[1];
     if (!raceId || !/^\d{12}$/.test(String(raceId))) {
       await interaction.reply({
-        content: '❌ 操作が無効です。',
+        content: t('bet_flow.errors.invalid_op', null, loc),
         flags: MessageFlags.Ephemeral,
       });
       return;
@@ -245,7 +210,7 @@ export default async function betFlowButtons(interaction) {
     const lastId = flow?.purchase?.lastMenuCustomId;
     if (!flow?.purchase || !lastId || !jraMultiEligibleLastMenu(lastId)) {
       await interaction.reply({
-        content: '❌ ここではマルチを切り替えられません。',
+        content: t('bet_flow.errors.jra_multi_here', null, loc),
         flags: MessageFlags.Ephemeral,
       });
       return;
@@ -282,7 +247,8 @@ export default async function betFlowButtons(interaction) {
     if (!pending?.restore) {
       await interaction.reply(
         buildEphemeralWithBotingBackPayload(
-          '❌ 戻れません。もう一度 /boting から開き直してください。',
+          t('bet_flow.errors.slip_back_invalid', null, loc),
+          { locale: loc },
         ),
       );
       return;
@@ -290,7 +256,8 @@ export default async function betFlowButtons(interaction) {
     if (String(pending.anchorRaceId) !== String(parsedRaceId)) {
       await interaction.reply(
         buildEphemeralWithBotingBackPayload(
-          '❌ このメッセージは古いです。もう一度開き直してください。',
+          t('bet_flow.errors.slip_back_stale', null, loc),
+          { locale: loc },
         ),
       );
       return;
@@ -298,7 +265,10 @@ export default async function betFlowButtons(interaction) {
     const rid = pending.restore.raceId || parsedRaceId;
     if (!rid || !/^\d{12}$/.test(String(rid))) {
       await interaction.reply(
-        buildEphemeralWithBotingBackPayload('❌ 戻れません。'),
+        buildEphemeralWithBotingBackPayload(
+          t('bet_flow.errors.slip_back_failed', null, loc),
+          { locale: loc },
+        ),
       );
       return;
     }
@@ -328,18 +298,19 @@ export default async function betFlowButtons(interaction) {
     if (!flow?.result) {
       await interaction.editReply(
         buildTextAndRowsV2Payload({
-          headline: MSG_RACE_BET_FLOW_SESSION_INVALID,
+          headline: msgRaceBetFlowSessionInvalid(loc),
           actionRows: [],
           extraFlags,
           withBotingMenuBack: true,
+          locale: loc,
         }),
       );
       return;
     }
 
-    const components = [buildBetTypeMenuRow(rid, flow)];
+    const components = [buildBetTypeMenuRow(rid, flow, loc)];
     if (hasScheduleContext(flow)) {
-      components.push(scheduleRaceListBackRow(rid));
+      components.push(scheduleRaceListBackRow(rid, loc));
     }
     await interaction.editReply(
       buildRaceCardV2Payload({
@@ -358,16 +329,19 @@ export default async function betFlowButtons(interaction) {
       flags: MessageFlags.Ephemeral,
     });
     try {
+      const loc = resolveLocaleFromInteraction(interaction);
       const payload = await buildRacePurchaseHistoryV2Payload({
         userId,
         page: 0,
         extraFlags: MessageFlags.Ephemeral,
+        locale: loc,
       });
       await interaction.editReply(payload);
     } catch (e) {
       console.error('race_bet_purchase_history', e);
+      const loc = resolveLocaleFromInteraction(interaction);
       await interaction.editReply({
-        content: `❌ 購入履歴の取得に失敗しました: ${e.message}`,
+        content: t('race_purchase_history.errors.fetch_failed', { message: e.message }, loc),
       });
     }
     return;
@@ -389,20 +363,29 @@ export default async function betFlowButtons(interaction) {
       !/^\d{10}$/.test(String(meetingFilter))
     ) {
       await interaction.reply({
-        content: '❌ 開催の指定が無効です。',
+        content: t(
+          'race_purchase_history.errors.invalid_meeting',
+          null,
+          resolveLocaleFromInteraction(interaction),
+        ),
         flags: MessageFlags.Ephemeral,
       });
       return;
     }
     if (!/^\d{8}$/.test(String(pk || '')) || !Number.isFinite(pg) || pg < 0) {
       await interaction.reply({
-        content: '❌ 日付の指定が無効です。',
+        content: t(
+          'race_purchase_history.errors.invalid_date',
+          null,
+          resolveLocaleFromInteraction(interaction),
+        ),
         flags: MessageFlags.Ephemeral,
       });
       return;
     }
     await interaction.deferUpdate();
     try {
+      const loc = resolveLocaleFromInteraction(interaction);
       const payload = await buildRacePurchaseHistoryV2Payload({
         userId: subjectUserId,
         periodKey: pk,
@@ -411,12 +394,17 @@ export default async function betFlowButtons(interaction) {
         extraFlags: extraFlagsFromMessage(),
         bpRankProfileUserId: bpctxUserId || null,
         rankLeaderboardReturn: rankLeaderboardReturn || null,
+        locale: loc,
       });
       await interaction.editReply(payload);
     } catch (e) {
       console.error('race_bet_history_day', e);
       await interaction.editReply({
-        content: `❌ 表示の更新に失敗しました: ${e.message}`,
+        content: t(
+          'race_purchase_history.errors.update_failed',
+          { message: e.message },
+          resolveLocaleFromInteraction(interaction),
+        ),
       }).catch(() => {});
     }
     return;
@@ -438,20 +426,29 @@ export default async function betFlowButtons(interaction) {
       !/^\d{10}$/.test(String(meetingFilter))
     ) {
       await interaction.reply({
-        content: '❌ 開催の指定が無効です。',
+        content: t(
+          'race_purchase_history.errors.invalid_meeting',
+          null,
+          resolveLocaleFromInteraction(interaction),
+        ),
         flags: MessageFlags.Ephemeral,
       });
       return;
     }
     if (!/^\d{8}$/.test(String(pk || '')) || !Number.isFinite(pg) || pg < 0) {
       await interaction.reply({
-        content: '❌ ページ指定が無効です。',
+        content: t(
+          'race_purchase_history.errors.invalid_page',
+          null,
+          resolveLocaleFromInteraction(interaction),
+        ),
         flags: MessageFlags.Ephemeral,
       });
       return;
     }
     await interaction.deferUpdate();
     try {
+      const loc = resolveLocaleFromInteraction(interaction);
       const payload = await buildRacePurchaseHistoryV2Payload({
         userId: subjectUserId,
         periodKey: pk,
@@ -460,12 +457,17 @@ export default async function betFlowButtons(interaction) {
         extraFlags: extraFlagsFromMessage(),
         bpRankProfileUserId: bpctxUserId || null,
         rankLeaderboardReturn: rankLeaderboardReturn || null,
+        locale: loc,
       });
       await interaction.editReply(payload);
     } catch (e) {
       console.error('race_bet_history_pg', e);
       await interaction.editReply({
-        content: `❌ 表示の更新に失敗しました: ${e.message}`,
+        content: t(
+          'race_purchase_history.errors.update_failed',
+          { message: e.message },
+          resolveLocaleFromInteraction(interaction),
+        ),
       }).catch(() => {});
     }
     return;
@@ -490,21 +492,25 @@ export default async function betFlowButtons(interaction) {
     const pending = getSlipPendingReview(userId);
     if (!pending?.items?.length) {
       await interaction.reply(
-        buildEphemeralWithBotingBackPayload(MSG_SLIP_BATCH_REVIEW_SESSION_INVALID),
+        buildEphemeralWithBotingBackPayload(
+          msgSlipBatchReviewSessionInvalid(loc),
+          { locale: loc },
+        ),
       );
       return;
     }
     if (!anchor || String(pending.anchorRaceId) !== String(anchor)) {
       await interaction.reply(
         buildEphemeralWithBotingBackPayload(
-          '❌ このメッセージは古いです。もう一度開き直してください。',
+          t('bet_flow.errors.slip_back_stale', null, loc),
+          { locale: loc },
         ),
       );
       return;
     }
     if (dir !== 'prev' && dir !== 'next') {
       await interaction.reply({
-        content: '❌ 操作が無効です。',
+        content: t('bet_flow.errors.invalid_op', null, loc),
         flags: MessageFlags.Ephemeral,
       });
       return;
@@ -515,7 +521,11 @@ export default async function betFlowButtons(interaction) {
       dir === 'prev' ? Math.max(0, cur - 1) : cur + 1;
     setSlipPendingReviewPage(userId, next);
     await interaction.editReply(
-      await buildSlipReviewV2Payload({ userId, extraFlags: slipReviewExtraFlags() }),
+      await buildSlipReviewV2Payload({
+        userId,
+        extraFlags: slipReviewExtraFlags(),
+        locale: loc,
+      }),
     );
     return;
   }
@@ -525,14 +535,18 @@ export default async function betFlowButtons(interaction) {
     const pending = getSlipPendingReview(userId);
     if (!pending?.items?.length) {
       await interaction.reply(
-        buildEphemeralWithBotingBackPayload(MSG_SLIP_BATCH_REVIEW_SESSION_INVALID),
+        buildEphemeralWithBotingBackPayload(
+          msgSlipBatchReviewSessionInvalid(loc),
+          { locale: loc },
+        ),
       );
       return;
     }
     if (String(pending.anchorRaceId) !== String(anchor)) {
       await interaction.reply(
         buildEphemeralWithBotingBackPayload(
-          '❌ このメッセージは古いです。もう一度開き直してください。',
+          t('bet_flow.errors.slip_back_stale', null, loc),
+          { locale: loc },
         ),
       );
       return;
@@ -541,24 +555,28 @@ export default async function betFlowButtons(interaction) {
     const extraFlags = slipReviewExtraFlags();
     const { closed, open } = await partitionPendingItemsBySalesClosed(userId, pending.items);
     if (!closed.length) {
-      await interaction.editReply(await buildSlipReviewV2Payload({ userId, extraFlags }));
+      await interaction.editReply(
+        await buildSlipReviewV2Payload({ userId, extraFlags, locale: loc }),
+      );
       return;
     }
     if (!open.length) {
       clearSlipPending(userId);
       await interaction.editReply(
         buildTextAndRowsV2Payload({
-          headline:
-            '✅ 表示されていた購入予定はすべて発売締切のため一覧から外しました。/boting から購入予定を追加し直せます。',
+          headline: t('bet_flow.slip_confirm.all_closed_removed', null, loc),
           actionRows: [],
           extraFlags,
           withBotingMenuBack: true,
+          locale: loc,
         }),
       );
       return;
     }
     replaceSlipPendingItems(userId, open);
-    await interaction.editReply(await buildSlipReviewV2Payload({ userId, extraFlags }));
+    await interaction.editReply(
+      await buildSlipReviewV2Payload({ userId, extraFlags, locale: loc }),
+    );
     return;
   }
 
@@ -567,21 +585,29 @@ export default async function betFlowButtons(interaction) {
     const pending = getSlipPendingReview(userId);
     if (!pending?.items?.length) {
       await interaction.reply(
-        buildEphemeralWithBotingBackPayload(MSG_SLIP_BATCH_REVIEW_SESSION_INVALID),
+        buildEphemeralWithBotingBackPayload(
+          msgSlipBatchReviewSessionInvalid(loc),
+          { locale: loc },
+        ),
       );
       return;
     }
     if (String(pending.anchorRaceId) !== String(anchor)) {
       await interaction.reply(
         buildEphemeralWithBotingBackPayload(
-          '❌ このメッセージは古いです。もう一度開き直してください。',
+          t('bet_flow.errors.slip_back_stale', null, loc),
+          { locale: loc },
         ),
       );
       return;
     }
     await interaction.deferUpdate();
     await interaction.editReply(
-      await buildSlipReviewV2Payload({ userId, extraFlags: slipReviewExtraFlags() }),
+      await buildSlipReviewV2Payload({
+        userId,
+        extraFlags: slipReviewExtraFlags(),
+        locale: loc,
+      }),
     );
     return;
   }
@@ -591,14 +617,18 @@ export default async function betFlowButtons(interaction) {
     const pending = getSlipPendingReview(userId);
     if (!pending?.items?.length) {
       await interaction.reply(
-        buildEphemeralWithBotingBackPayload(MSG_SLIP_BATCH_REVIEW_SESSION_INVALID),
+        buildEphemeralWithBotingBackPayload(
+          msgSlipBatchReviewSessionInvalid(loc),
+          { locale: loc },
+        ),
       );
       return;
     }
     if (String(pending.anchorRaceId) !== String(raceId)) {
       await interaction.reply(
         buildEphemeralWithBotingBackPayload(
-          '❌ このメッセージは古いです。もう一度開き直してください。',
+          t('bet_flow.errors.slip_back_stale', null, loc),
+          { locale: loc },
         ),
       );
       return;
@@ -611,18 +641,29 @@ export default async function betFlowButtons(interaction) {
       if (closed.length > 0) {
         const extraFlags = slipReviewExtraFlags();
         const lines = closed.map((it, i) => {
-          const title = String(it.raceTitle || it.raceId || 'レース').slice(0, 120);
-          const sel = String(it.selectionLine || '(内容不明)').slice(0, 240);
-          return `${i + 1}. **${title}**\n└ ${sel}`;
+          const title = String(
+            it.raceTitle ||
+              it.raceId ||
+              t('bet_flow.slip_confirm.race_fallback', null, loc),
+          ).slice(0, 120);
+          const sel = String(
+            it.selectionLine ||
+              t('bet_flow.slip_confirm.unknown_pick', null, loc),
+          ).slice(0, 240);
+          return t(
+            'bet_flow.slip_confirm.line_item',
+            { i: i + 1, title, sel },
+            loc,
+          );
         });
         const headline = [
-          '⚠️ **発売が締め切られている購入予定があるため、この内容では確定できません。**',
+          t('bet_flow.slip_confirm.closed_warn_intro', null, loc),
           '',
-          '次の行は、発売終了・発走済み、または結果確定と判定されています。',
+          t('bet_flow.slip_confirm.closed_warn_mid', null, loc),
           '',
           ...lines,
           '',
-          '**締切分のみ削除**でこれらだけを一覧から外します。残りがあれば、もう一度 **この内容で確定** を押してください。',
+          t('bet_flow.slip_confirm.closed_warn_footer', null, loc),
         ]
           .join('\n')
           .slice(0, 3900);
@@ -631,12 +672,12 @@ export default async function betFlowButtons(interaction) {
         const row = new ActionRowBuilder().addComponents(
           new ButtonBuilder()
             .setCustomId(`race_bet_slip_remove_closed|${anchor}`)
-            .setLabel('締切分のみ削除')
+            .setLabel(t('bet_flow.slip_confirm.btn_remove_closed', null, loc))
             .setEmoji(botingEmoji('delete'))
             .setStyle(ButtonStyle.Danger),
           new ButtonBuilder()
             .setCustomId(`race_bet_slip_dismiss_closed_warn|${anchor}`)
-            .setLabel('確認画面に戻る')
+            .setLabel(t('bet_flow.slip_confirm.btn_back_review', null, loc))
             .setEmoji(botingEmoji('kakunin'))
             .setStyle(ButtonStyle.Secondary),
         );
@@ -645,6 +686,7 @@ export default async function betFlowButtons(interaction) {
             headline,
             actionRows: [row],
             extraFlags,
+            locale: loc,
           }),
         );
         return;
@@ -653,16 +695,20 @@ export default async function betFlowButtons(interaction) {
 
     for (const it of pending.items) {
       const p = Math.round(Number(it.points) || 0);
-      const t = it.tickets;
-      if (!Array.isArray(t) || ticketCountForValidation(t) !== p || p <= 0) {
+      const slipTickets = it.tickets;
+      if (
+        !Array.isArray(slipTickets) ||
+        ticketCountForValidation(slipTickets) !== p ||
+        p <= 0
+      ) {
         const extraFlags = slipReviewExtraFlags();
         await interaction.editReply(
           buildTextAndRowsV2Payload({
-            headline:
-              '❌ 購入予定に **払戻用データ** がありません。出馬表から該当レースを開き直し、式別を選び直して **購入予定に追加** し直してください。',
+            headline: t('bet_flow.errors.no_tickets_data', null, loc),
             actionRows: [],
             extraFlags,
             withBotingMenuBack: true,
+            locale: loc,
           }),
         );
         return;
@@ -678,10 +724,15 @@ export default async function betFlowButtons(interaction) {
       const extraFlags = slipReviewExtraFlags();
       await interaction.editReply(
         buildTextAndRowsV2Payload({
-          headline: `❌ **bp が不足**しています（必要 **${formatBpAmount(totalBp)}** bp / 残高 **${formatBpAmount(bal)}** bp）。\n\`/boting\` の **Dailyをもらう** で受け取るか、購入予定を減らす・1点あたりの金額を下げてください。`,
+          headline: t(
+            'bet_flow.errors.bp_short_confirm',
+            { need: formatBpAmount(totalBp), bal: formatBpAmount(bal) },
+            loc,
+          ),
           actionRows: [],
           extraFlags,
           withBotingMenuBack: true,
+          locale: loc,
         }),
       );
       return;
@@ -696,29 +747,35 @@ export default async function betFlowButtons(interaction) {
       const detail = e?.message != null ? String(e.message).slice(0, 400) : String(e);
       await interaction.editReply(
         buildTextAndRowsV2Payload({
-          headline: `❌ **データベースへの保存に失敗しました**（bp の減算・購入記録は行われていません）。ホストのディスク空きやネットワークを確認し、しばらくしてから再度お試しください。\n\`${detail}\``,
+          headline: t('bet_flow.errors.db_save_failed', { detail }, loc),
           actionRows: [],
           extraFlags,
           withBotingMenuBack: true,
+          locale: loc,
         }),
       );
       return;
     }
     if (!purchase.ok) {
       const extraFlags = slipReviewExtraFlags();
-      let msg = '❌ 購入を完了できませんでした。';
+      let msg = t('bet_flow.errors.purchase_failed_generic', null, loc);
       if (purchase.reason === 'insufficient') {
-        msg = `❌ **bp が不足**しています（必要 **${formatBpAmount(purchase.need)}** bp / 残高 **${formatBpAmount(purchase.balance)}** bp）。`;
+        msg = t(
+          'bet_flow.errors.purchase_bp_short',
+          {
+            need: formatBpAmount(purchase.need),
+            bal: formatBpAmount(purchase.balance),
+          },
+          loc,
+        );
       } else if (purchase.reason === 'bad_tickets') {
-        msg =
-          '❌ 購入予定データが不正です。出馬表からやり直し、**購入予定に追加** し直してください。';
+        msg = t('bet_flow.errors.purchase_bad_tickets', null, loc);
       } else if (purchase.reason === 'bad_race') {
-        msg =
-          '❌ レースIDの形式が不正です。出馬表から開き直し、**購入予定に追加** し直してください。';
+        msg = t('bet_flow.errors.purchase_bad_race', null, loc);
       } else if (purchase.reason === 'bad_points') {
-        msg = '❌ 点数が不正です。出馬表からやり直してください。';
+        msg = t('bet_flow.errors.purchase_bad_points', null, loc);
       } else if (purchase.reason === 'empty') {
-        msg = '❌ 購入対象がありません。';
+        msg = t('bet_flow.errors.purchase_empty', null, loc);
       }
       await interaction.editReply(
         buildTextAndRowsV2Payload({
@@ -726,6 +783,7 @@ export default async function betFlowButtons(interaction) {
           actionRows: [],
           extraFlags,
           withBotingMenuBack: true,
+          locale: loc,
         }),
       );
       return;
@@ -734,8 +792,15 @@ export default async function betFlowButtons(interaction) {
     const headline = [
       buildBetSlipBatchV2Headline({ items: pending.items }),
       '',
-      `**購入完了** −**${formatBpAmount(purchase.spent)}** bp（残高 **${formatBpAmount(purchase.balance)}** bp）`,
-      'レース結果が出たら `/boting` の馬券購入メニューや開催メニューで結果を表示すると、netkeiba の払戻に基づき bp が自動加算されます。',
+      t(
+        'bet_flow.purchase_done.line1_suffix',
+        {
+          spent: formatBpAmount(purchase.spent),
+          balance: formatBpAmount(purchase.balance),
+        },
+        loc,
+      ),
+      t('bet_flow.purchase_done.line2', null, loc),
     ].join('\n');
     const anchor = pending.anchorRaceId || raceId;
     clearSlipPending(userId);
@@ -744,8 +809,9 @@ export default async function betFlowButtons(interaction) {
     await interaction.editReply(
       buildTextAndRowsV2Payload({
         headline,
-        actionRows: [buildBotingMenuBackRow()],
+        actionRows: [buildBotingMenuBackRow({ locale: loc })],
         extraFlags,
+        locale: loc,
       }),
     );
     return;
@@ -784,7 +850,8 @@ export default async function betFlowButtons(interaction) {
   if (!flow) {
     await interaction.reply(
       buildEphemeralWithBotingBackPayload(
-        MSG_RACE_BET_FLOW_SESSION_INVALID,
+        msgRaceBetFlowSessionInvalid(loc),
+        { locale: loc },
       ),
     );
     return;
@@ -793,7 +860,7 @@ export default async function betFlowButtons(interaction) {
   if (customId.startsWith('race_bet_add_to_cart|')) {
     if (!flow.purchase) {
       await interaction.reply({
-        content: '❌ 追加できません（選択が完了していません）。',
+        content: t('bet_flow.errors.add_incomplete', null, loc),
         flags: MessageFlags.Ephemeral,
       });
       return;
@@ -807,8 +874,7 @@ export default async function betFlowButtons(interaction) {
       pts <= 0
     ) {
       await interaction.reply({
-        content:
-          '❌ 購入予定データが古いか不完全です。出馬表から式別を選び直してから **購入予定に追加** してください。',
+        content: t('bet_flow.errors.add_stale_data', null, loc),
         flags: MessageFlags.Ephemeral,
       });
       return;
@@ -839,7 +905,7 @@ export default async function betFlowButtons(interaction) {
     });
     if (!added.ok && added.reason === 'full') {
       await interaction.reply({
-        content: msgSlipSavedMaxItemsExceeded(),
+        content: msgSlipSavedMaxItemsExceeded(loc),
         flags: MessageFlags.Ephemeral,
       });
       return;
@@ -849,9 +915,9 @@ export default async function betFlowButtons(interaction) {
     resetFlowAfterSlipAction(userId, raceId);
 
     const flowNext = getBetFlow(userId, raceId);
-    const components = [buildBetTypeMenuRow(raceId, flowNext)];
+    const components = [buildBetTypeMenuRow(raceId, flowNext, loc)];
     if (hasScheduleContext(flowNext)) {
-      components.push(scheduleRaceListBackRow(raceId));
+      components.push(scheduleRaceListBackRow(raceId, loc));
     }
 
     let extraFlags = 0;
@@ -863,7 +929,7 @@ export default async function betFlowButtons(interaction) {
       /* ignore */
     }
 
-    const head = `✅ 購入予定に追加しました（保存: **${added.count}**件）\n\n同じレースで別の式別を選ぶか、他レースから追加できます。**購入予定** ボタンで一覧・まとめて確認できます。`;
+    const head = t('bet_flow.add_to_cart_done', { count: added.count }, loc);
     await interaction.editReply(
       buildRaceCardV2Payload({
         result: flowNext.result,
@@ -890,7 +956,8 @@ export default async function betFlowButtons(interaction) {
     if (!flowFwd) {
       await interaction.reply(
         buildEphemeralWithBotingBackPayload(
-          MSG_RACE_BET_FLOW_SESSION_INVALID,
+          msgRaceBetFlowSessionInvalid(loc),
+          { locale: loc },
         ),
       );
       return;
@@ -899,7 +966,7 @@ export default async function betFlowButtons(interaction) {
     const vi = flowFwd.navViewMenuIndex;
     if (vi == null || !backMenuIds.length) {
       await interaction.reply({
-        content: '❌ ここからは進めません。',
+        content: t('bet_flow.errors.forward_blocked', null, loc),
         flags: MessageFlags.Ephemeral,
       });
       return;
@@ -922,7 +989,10 @@ export default async function betFlowButtons(interaction) {
         raceId,
         flow: flowFwd,
         viewIndex: newVi,
-        headline: lastLine ? `購入前（戻り）\n${lastLine}` : '購入前（戻り）',
+        headline: lastLine
+          ? t('bet_flow.resume_with_pick', { line: lastLine }, loc)
+          : t('bet_flow.resume_headline', null, loc),
+        locale: loc,
       });
       return;
     }
@@ -945,7 +1015,10 @@ export default async function betFlowButtons(interaction) {
       raceId,
       flow: flowFwd,
       viewIndex: vi,
-      headline: lastLine ? `購入前（戻り）\n${lastLine}` : '購入前（戻り）',
+      headline: lastLine
+        ? t('bet_flow.resume_with_pick', { line: lastLine }, loc)
+        : t('bet_flow.resume_headline', null, loc),
+      locale: loc,
     });
     return;
   }
@@ -973,9 +1046,9 @@ export default async function betFlowButtons(interaction) {
         navViewMenuIndex: null,
       });
       const flowRoot = getBetFlow(userId, raceId);
-      const components = [buildBetTypeMenuRow(raceId, flowRoot)];
+      const components = [buildBetTypeMenuRow(raceId, flowRoot, loc)];
       if (hasScheduleContext(flowRoot)) {
-        components.push(scheduleRaceListBackRow(raceId));
+        components.push(scheduleRaceListBackRow(raceId, loc));
       }
       let extraRoot = 0;
       try {
@@ -988,7 +1061,9 @@ export default async function betFlowButtons(interaction) {
       await interaction.editReply(
         buildRaceCardV2Payload({
           result: flowRoot.result,
-          headline: lastLine ? `購入前（戻り）\n${lastLine}` : '購入前（戻り）',
+          headline: lastLine
+            ? t('bet_flow.resume_with_pick', { line: lastLine }, loc)
+            : t('bet_flow.resume_headline', null, loc),
           actionRows: components.filter(Boolean),
           extraFlags: extraRoot,
           utilityContext: { userId, flow: flowRoot },
@@ -1043,7 +1118,10 @@ export default async function betFlowButtons(interaction) {
       raceId,
       flow: flowAfter,
       viewIndex: displayIndex,
-      headline: lastLine ? `購入前（戻り）\n${lastLine}` : '購入前（戻り）',
+      headline: lastLine
+        ? t('bet_flow.resume_with_pick', { line: lastLine }, loc)
+        : t('bet_flow.resume_headline', null, loc),
+      locale: loc,
     });
     return;
   }
@@ -1052,7 +1130,7 @@ export default async function betFlowButtons(interaction) {
   if (customId.startsWith('race_bet_unit_edit|')) {
     if (!flow.purchase) {
       await interaction.reply({
-        content: '❌ いまは金額を変えられません。式別と馬番の選択を完了してください。',
+        content: t('bet_flow.errors.unit_edit_blocked', null, loc),
         flags: MessageFlags.Ephemeral,
       });
       return;
@@ -1098,40 +1176,40 @@ function defaultBetTypeIdFromFlow(raceId, flow) {
   return null;
 }
 
-export function buildBetTypeMenuRow(raceId, flow = null) {
+export function buildBetTypeMenuRow(raceId, flow = null, locale = null) {
   const selRaw = defaultBetTypeIdFromFlow(raceId, flow);
-  const types = filterBetTypesForJraSale(BET_TYPES, {
+  const types = filterBetTypesForJraSale(betTypesLabeled(locale), {
     source: flow?.source,
     result: flow?.result,
   });
   const sel =
-    selRaw != null && types.some((t) => t.id === String(selRaw))
+    selRaw != null && types.some((row) => row.id === String(selRaw))
       ? String(selRaw)
       : null;
   return new ActionRowBuilder().addComponents(
     new StringSelectMenuBuilder()
       .setCustomId(`race_bet_type|${raceId}`)
-      .setPlaceholder('賭ける方式を選択')
+      .setPlaceholder(t('bet_flow.placeholders.choose_bet_style', null, locale))
       .addOptions(
-        types.map((t) => {
+        types.map((row) => {
           const o = new StringSelectMenuOptionBuilder()
-            .setLabel(t.label)
-            .setValue(t.id)
-            .setDescription('選択後に馬番/枠番を指定します');
-          if (sel && t.id === sel) o.setDefault(true);
+            .setLabel(row.label)
+            .setValue(row.id)
+            .setDescription(t('bet_flow.descriptions.after_bet_type', null, locale));
+          if (sel && row.id === sel) o.setDefault(true);
           return o;
         }),
       ),
   );
 }
 
-function modeOptionsList(modeDefs, selectedId) {
+function modeOptionsList(modeDefs, selectedId, locale) {
   const sel = selectedId != null && selectedId !== '' ? String(selectedId) : null;
   return modeDefs.map((m) => {
     const o = new StringSelectMenuOptionBuilder()
       .setLabel(m.label)
       .setValue(m.id)
-      .setDescription('次で馬番/枠番を選びます');
+      .setDescription(t('bet_flow.descriptions.next_pick_horses', null, locale));
     if (sel && m.id === sel) o.setDefault(true);
     return o;
   });
@@ -1160,7 +1238,13 @@ function horseOptionsFromResult(result, selectedValues = [], cap = 25) {
   });
 }
 
-function frameOptionsFromResult(result, selectedValues = [], cap = 25, opts = {}) {
+function frameOptionsFromResult(
+  result,
+  selectedValues = [],
+  cap = 25,
+  opts = {},
+  locale = null,
+) {
   const selectedSet = new Set((selectedValues || []).map((v) => String(v)));
   const omit = new Set((opts.omitFrames || []).map((x) => String(x)));
   const counts = new Map();
@@ -1180,10 +1264,13 @@ function frameOptionsFromResult(result, selectedValues = [], cap = 25, opts = {}
   return arr.map(({ frame, count, horses }) => {
     const ex = horses?.[0]?.name || '';
     const f = parseInt(String(frame).replace(/\D/g, ''), 10);
+    const descRaw = ex
+      ? t('bet_flow.frame_option.with_example', { count, name: ex }, locale)
+      : t('bet_flow.frame_option.count_only', { count }, locale);
     const opt = new StringSelectMenuOptionBuilder()
       .setLabel(selectFrameLabel(frame, ''))
       .setValue(String(frame))
-      .setDescription(`${count}頭${ex ? `（例: ${ex}）` : ''}`.slice(0, 70));
+      .setDescription(descRaw.slice(0, 70));
     const em = Number.isFinite(f) ? wakuUmaEmojiResolvable(f, f) : null;
     if (em) opt.setEmoji({ id: em.id, name: em.name });
     if (selectedSet.has(String(frame))) opt.setDefault(true);
@@ -1191,7 +1278,9 @@ function frameOptionsFromResult(result, selectedValues = [], cap = 25, opts = {}
   });
 }
 
-export function buildMenuRowFromCustomId({ menuCustomId, flow, result }) {
+export function buildMenuRowFromCustomId({ menuCustomId, flow, result, locale = null }) {
+  const loc = locale;
+  const ph = (key) => t(`bet_flow.placeholders.${key}`, null, loc);
   const parts = menuCustomId.split('|');
   const kind = parts[0];
   const raceId = parts[1];
@@ -1223,10 +1312,10 @@ export function buildMenuRowFromCustomId({ menuCustomId, flow, result }) {
         frameOpts = { omitFrames: [first] };
       }
     }
-    const options = frameOptionsFromResult(result, selectedValues, 25, frameOpts);
+    const options = frameOptionsFromResult(result, selectedValues, 25, frameOpts, loc);
     const placeholder = kind.endsWith('first')
-      ? '第1枠を選択'
-      : '第2枠を選択';
+      ? ph('first_frame')
+      : ph('second_frame');
     return new ActionRowBuilder().addComponents(
       new StringSelectMenuBuilder()
         .setCustomId(menuCustomId)
@@ -1241,7 +1330,7 @@ export function buildMenuRowFromCustomId({ menuCustomId, flow, result }) {
     return new ActionRowBuilder().addComponents(
       new StringSelectMenuBuilder()
         .setCustomId(menuCustomId)
-        .setPlaceholder('馬番を1頭選択')
+        .setPlaceholder(ph('pick_one_horse'))
         .setMinValues(1)
         .setMaxValues(1)
         .addOptions(horseOptionsFromResult(result, selectedValues)),
@@ -1253,19 +1342,21 @@ export function buildMenuRowFromCustomId({ menuCustomId, flow, result }) {
     return new ActionRowBuilder().addComponents(
       new StringSelectMenuBuilder()
         .setCustomId(menuCustomId)
-        .setPlaceholder('投票形式を選択')
+        .setPlaceholder(ph('vote_mode'))
         .setMinValues(1)
         .setMaxValues(1)
-        .addOptions(modeOptionsList(PAIR_MODE_OPTIONS, modeSel)),
+        .addOptions(
+          modeOptionsList(labeledModes(PAIR_MODE_IDS, 'pair_modes', loc), modeSel, loc),
+        ),
     );
   }
 
   if (kind === 'race_bet_pair_normal') {
-    const options = isFrame ? frameOptionsFromResult(result, selectedValues) : horseOptionsFromResult(result, selectedValues);
+    const options = isFrame ? frameOptionsFromResult(result, selectedValues, 25, {}, loc) : horseOptionsFromResult(result, selectedValues);
     return new ActionRowBuilder().addComponents(
       new StringSelectMenuBuilder()
         .setCustomId(menuCustomId)
-        .setPlaceholder(isFrame ? '枠を選択（最大2）' : '馬番を選択（最大2）')
+        .setPlaceholder(isFrame ? ph('frame_pick_two') : ph('horse_pick_two'))
         .setMinValues(1)
         .setMaxValues(2)
         .addOptions(options),
@@ -1273,11 +1364,11 @@ export function buildMenuRowFromCustomId({ menuCustomId, flow, result }) {
   }
 
   if (kind === 'race_bet_pair_nagashi_axis') {
-    const options = isFrame ? frameOptionsFromResult(result, selectedValues) : horseOptionsFromResult(result, selectedValues);
+    const options = isFrame ? frameOptionsFromResult(result, selectedValues, 25, {}, loc) : horseOptionsFromResult(result, selectedValues);
     return new ActionRowBuilder().addComponents(
       new StringSelectMenuBuilder()
         .setCustomId(menuCustomId)
-        .setPlaceholder(isFrame ? '軸の枠を選択' : '軸の馬番を選択')
+        .setPlaceholder(isFrame ? ph('axis_frame') : ph('axis_horse'))
         .setMinValues(1)
         .setMaxValues(1)
         .addOptions(options),
@@ -1285,11 +1376,11 @@ export function buildMenuRowFromCustomId({ menuCustomId, flow, result }) {
   }
 
   if (kind === 'race_bet_pair_nagashi_opponent') {
-    const options = isFrame ? frameOptionsFromResult(result, selectedValues) : horseOptionsFromResult(result, selectedValues);
+    const options = isFrame ? frameOptionsFromResult(result, selectedValues, 25, {}, loc) : horseOptionsFromResult(result, selectedValues);
     return new ActionRowBuilder().addComponents(
       new StringSelectMenuBuilder()
         .setCustomId(menuCustomId)
-        .setPlaceholder('相手を選択（複数可）')
+        .setPlaceholder(ph('opponents_multi'))
         .setMinValues(1)
         .setMaxValues(Math.min(options.length, 25))
         .addOptions(options),
@@ -1297,11 +1388,11 @@ export function buildMenuRowFromCustomId({ menuCustomId, flow, result }) {
   }
 
   if (kind === 'race_bet_pair_box') {
-    const options = isFrame ? frameOptionsFromResult(result, selectedValues) : horseOptionsFromResult(result, selectedValues);
+    const options = isFrame ? frameOptionsFromResult(result, selectedValues, 25, {}, loc) : horseOptionsFromResult(result, selectedValues);
     return new ActionRowBuilder().addComponents(
       new StringSelectMenuBuilder()
         .setCustomId(menuCustomId)
-        .setPlaceholder(isFrame ? '枠を選択' : '馬番を選択')
+        .setPlaceholder(isFrame ? ph('frame_pick') : ph('horse_pick'))
         .setMinValues(2)
         .setMaxValues(Math.min(options.length, 25))
         .addOptions(options),
@@ -1309,11 +1400,11 @@ export function buildMenuRowFromCustomId({ menuCustomId, flow, result }) {
   }
 
   if (kind === 'race_bet_pair_formA') {
-    const options = isFrame ? frameOptionsFromResult(result, selectedValues) : horseOptionsFromResult(result, selectedValues);
+    const options = isFrame ? frameOptionsFromResult(result, selectedValues, 25, {}, loc) : horseOptionsFromResult(result, selectedValues);
     return new ActionRowBuilder().addComponents(
       new StringSelectMenuBuilder()
         .setCustomId(menuCustomId)
-        .setPlaceholder(isFrame ? '第1群枠を選択' : '第1群馬番を選択')
+        .setPlaceholder(isFrame ? ph('form_a_frame') : ph('form_a_horse'))
         .setMinValues(1)
         .setMaxValues(Math.min(options.length, 25))
         .addOptions(options),
@@ -1321,11 +1412,11 @@ export function buildMenuRowFromCustomId({ menuCustomId, flow, result }) {
   }
 
   if (kind === 'race_bet_pair_formB') {
-    const options = isFrame ? frameOptionsFromResult(result, selectedValues) : horseOptionsFromResult(result, selectedValues);
+    const options = isFrame ? frameOptionsFromResult(result, selectedValues, 25, {}, loc) : horseOptionsFromResult(result, selectedValues);
     return new ActionRowBuilder().addComponents(
       new StringSelectMenuBuilder()
         .setCustomId(menuCustomId)
-        .setPlaceholder(isFrame ? '第2群枠を選択' : '第2群馬番を選択')
+        .setPlaceholder(isFrame ? ph('form_b_frame') : ph('form_b_horse'))
         .setMinValues(1)
         .setMaxValues(Math.min(options.length, 25))
         .addOptions(options),
@@ -1337,10 +1428,12 @@ export function buildMenuRowFromCustomId({ menuCustomId, flow, result }) {
     return new ActionRowBuilder().addComponents(
       new StringSelectMenuBuilder()
         .setCustomId(menuCustomId)
-        .setPlaceholder('投票形式を選択')
+        .setPlaceholder(ph('vote_mode'))
         .setMinValues(1)
         .setMaxValues(1)
-        .addOptions(modeOptionsList(UMATAN_MODE_OPTIONS, modeSel)),
+        .addOptions(
+          modeOptionsList(labeledModes(UMATAN_MODE_IDS, 'umatan_modes', loc), modeSel, loc),
+        ),
     );
   }
 
@@ -1350,7 +1443,7 @@ export function buildMenuRowFromCustomId({ menuCustomId, flow, result }) {
     return new ActionRowBuilder().addComponents(
       new StringSelectMenuBuilder()
         .setCustomId(menuCustomId)
-        .setPlaceholder(kind.endsWith('_1') ? '1着（1頭）' : '2着（1頭）')
+        .setPlaceholder(kind.endsWith('_1') ? ph('umatan_place_1') : ph('umatan_place_2'))
         .setMinValues(1)
         .setMaxValues(1)
         .addOptions(options),
@@ -1362,7 +1455,7 @@ export function buildMenuRowFromCustomId({ menuCustomId, flow, result }) {
     return new ActionRowBuilder().addComponents(
       new StringSelectMenuBuilder()
         .setCustomId(menuCustomId)
-        .setPlaceholder('軸（1頭）')
+        .setPlaceholder(ph('axis_one'))
         .setMinValues(1)
         .setMaxValues(1)
         .addOptions(options),
@@ -1374,7 +1467,7 @@ export function buildMenuRowFromCustomId({ menuCustomId, flow, result }) {
     return new ActionRowBuilder().addComponents(
       new StringSelectMenuBuilder()
         .setCustomId(menuCustomId)
-        .setPlaceholder('相手（複数可）')
+        .setPlaceholder(ph('opponents_multi_short'))
         .setMinValues(1)
         .setMaxValues(Math.min(options.length, 25))
         .addOptions(options),
@@ -1386,7 +1479,7 @@ export function buildMenuRowFromCustomId({ menuCustomId, flow, result }) {
     return new ActionRowBuilder().addComponents(
       new StringSelectMenuBuilder()
         .setCustomId(menuCustomId)
-        .setPlaceholder('馬番を選択（複数可）')
+        .setPlaceholder(ph('horses_multi'))
         .setMinValues(2)
         .setMaxValues(Math.min(options.length, 25))
         .addOptions(options),
@@ -1399,7 +1492,7 @@ export function buildMenuRowFromCustomId({ menuCustomId, flow, result }) {
     return new ActionRowBuilder().addComponents(
       new StringSelectMenuBuilder()
         .setCustomId(menuCustomId)
-        .setPlaceholder(isA ? '第1群（1着）' : '第2群（2着）')
+        .setPlaceholder(isA ? ph('group_a_umatan') : ph('group_b_umatan'))
         .setMinValues(1)
         .setMaxValues(Math.min(options.length, 25))
         .addOptions(options),
@@ -1412,10 +1505,12 @@ export function buildMenuRowFromCustomId({ menuCustomId, flow, result }) {
     return new ActionRowBuilder().addComponents(
       new StringSelectMenuBuilder()
         .setCustomId(menuCustomId)
-        .setPlaceholder('投票形式を選択')
+        .setPlaceholder(ph('vote_mode'))
         .setMinValues(1)
         .setMaxValues(1)
-        .addOptions(modeOptionsList(TRIFUKU_MODE_OPTIONS, modeSel)),
+        .addOptions(
+          modeOptionsList(labeledModes(TRIFUKU_MODE_IDS, 'trifuku_modes', loc), modeSel, loc),
+        ),
     );
   }
 
@@ -1424,7 +1519,7 @@ export function buildMenuRowFromCustomId({ menuCustomId, flow, result }) {
     return new ActionRowBuilder().addComponents(
       new StringSelectMenuBuilder()
         .setCustomId(menuCustomId)
-        .setPlaceholder('3頭を選択')
+        .setPlaceholder(ph('pick_three'))
         .setMinValues(3)
         .setMaxValues(3)
         .addOptions(options),
@@ -1436,7 +1531,7 @@ export function buildMenuRowFromCustomId({ menuCustomId, flow, result }) {
     return new ActionRowBuilder().addComponents(
       new StringSelectMenuBuilder()
         .setCustomId(menuCustomId)
-        .setPlaceholder('軸（1頭）')
+        .setPlaceholder(ph('axis_one'))
         .setMinValues(1)
         .setMaxValues(1)
         .addOptions(options),
@@ -1448,7 +1543,7 @@ export function buildMenuRowFromCustomId({ menuCustomId, flow, result }) {
     return new ActionRowBuilder().addComponents(
       new StringSelectMenuBuilder()
         .setCustomId(menuCustomId)
-        .setPlaceholder('相手（複数可）')
+        .setPlaceholder(ph('opponents_multi_short'))
         .setMinValues(1)
         .setMaxValues(Math.min(options.length, 25))
         .addOptions(options),
@@ -1460,7 +1555,7 @@ export function buildMenuRowFromCustomId({ menuCustomId, flow, result }) {
     return new ActionRowBuilder().addComponents(
       new StringSelectMenuBuilder()
         .setCustomId(menuCustomId)
-        .setPlaceholder('軸（2頭）')
+        .setPlaceholder(ph('axis_two'))
         .setMinValues(2)
         .setMaxValues(2)
         .addOptions(options),
@@ -1472,7 +1567,7 @@ export function buildMenuRowFromCustomId({ menuCustomId, flow, result }) {
     return new ActionRowBuilder().addComponents(
       new StringSelectMenuBuilder()
         .setCustomId(menuCustomId)
-        .setPlaceholder('相手（複数可）')
+        .setPlaceholder(ph('opponents_multi_short'))
         .setMinValues(1)
         .setMaxValues(Math.min(options.length, 25))
         .addOptions(options),
@@ -1484,7 +1579,7 @@ export function buildMenuRowFromCustomId({ menuCustomId, flow, result }) {
     return new ActionRowBuilder().addComponents(
       new StringSelectMenuBuilder()
         .setCustomId(menuCustomId)
-        .setPlaceholder('馬番（複数可）')
+        .setPlaceholder(ph('horses_multi_short'))
         .setMinValues(3)
         .setMaxValues(Math.min(options.length, 25))
         .addOptions(options),
@@ -1493,7 +1588,11 @@ export function buildMenuRowFromCustomId({ menuCustomId, flow, result }) {
 
   if (kind === 'race_bet_trifuku_formA' || kind === 'race_bet_trifuku_formB' || kind === 'race_bet_trifuku_formC') {
     const options = horseOptionsFromResult(result, selectedValues);
-    const idx = kind.endsWith('formA') ? '第1群' : kind.endsWith('formB') ? '第2群' : '第3群';
+    const idx = kind.endsWith('formA')
+      ? ph('form_group_1')
+      : kind.endsWith('formB')
+        ? ph('form_group_2')
+        : ph('form_group_3');
     return new ActionRowBuilder().addComponents(
       new StringSelectMenuBuilder()
         .setCustomId(menuCustomId)
@@ -1510,10 +1609,12 @@ export function buildMenuRowFromCustomId({ menuCustomId, flow, result }) {
     return new ActionRowBuilder().addComponents(
       new StringSelectMenuBuilder()
         .setCustomId(menuCustomId)
-        .setPlaceholder('投票形式を選択')
+        .setPlaceholder(ph('vote_mode'))
         .setMinValues(1)
         .setMaxValues(1)
-        .addOptions(modeOptionsList(TRITAN_MODE_OPTIONS, modeSel)),
+        .addOptions(
+          modeOptionsList(labeledModes(TRITAN_MODE_IDS, 'tritan_modes', loc), modeSel, loc),
+        ),
     );
   }
 
@@ -1534,16 +1635,16 @@ export function buildMenuRowFromCustomId({ menuCustomId, flow, result }) {
   ];
   if (tritanSingleKinds.includes(kind)) {
     const options = horseOptionsFromResult(result, selectedValues);
-    let placeholder = '軸（1頭）';
-    if (kind === 'race_bet_tritan_normal_1') placeholder = '1着（1頭）';
-    else if (kind === 'race_bet_tritan_normal_2') placeholder = '2着（1頭）';
-    else if (kind === 'race_bet_tritan_normal_3') placeholder = '3着（1頭）';
-    else if (kind === 'race_bet_tritan_n12_a1') placeholder = '1着（1頭）';
-    else if (kind === 'race_bet_tritan_n12_a2') placeholder = '2着（1頭）';
-    else if (kind === 'race_bet_tritan_n13_a1') placeholder = '1着（1頭）';
-    else if (kind === 'race_bet_tritan_n13_a3') placeholder = '3着（1頭）';
-    else if (kind === 'race_bet_tritan_n23_a2') placeholder = '2着（1頭）';
-    else if (kind === 'race_bet_tritan_n23_a3') placeholder = '3着（1頭）';
+    let placeholder = ph('axis_one');
+    if (kind === 'race_bet_tritan_normal_1') placeholder = ph('tritan_place_1');
+    else if (kind === 'race_bet_tritan_normal_2') placeholder = ph('tritan_place_2');
+    else if (kind === 'race_bet_tritan_normal_3') placeholder = ph('tritan_place_3');
+    else if (kind === 'race_bet_tritan_n12_a1') placeholder = ph('tritan_place_1');
+    else if (kind === 'race_bet_tritan_n12_a2') placeholder = ph('tritan_place_2');
+    else if (kind === 'race_bet_tritan_n13_a1') placeholder = ph('tritan_place_1');
+    else if (kind === 'race_bet_tritan_n13_a3') placeholder = ph('tritan_place_3');
+    else if (kind === 'race_bet_tritan_n23_a2') placeholder = ph('tritan_place_2');
+    else if (kind === 'race_bet_tritan_n23_a3') placeholder = ph('tritan_place_3');
     return new ActionRowBuilder().addComponents(
       new StringSelectMenuBuilder()
         .setCustomId(menuCustomId)
@@ -1569,7 +1670,7 @@ export function buildMenuRowFromCustomId({ menuCustomId, flow, result }) {
     return new ActionRowBuilder().addComponents(
       new StringSelectMenuBuilder()
         .setCustomId(menuCustomId)
-        .setPlaceholder(isBox ? '馬番（複数可）' : '相手（複数可）')
+        .setPlaceholder(isBox ? ph('horses_multi_short') : ph('opponents_multi_short'))
         .setMinValues(isBox ? 3 : 1)
         .setMaxValues(Math.min(options.length, 25))
         .addOptions(options),
@@ -1578,7 +1679,11 @@ export function buildMenuRowFromCustomId({ menuCustomId, flow, result }) {
 
   if (kind === 'race_bet_tritan_formA' || kind === 'race_bet_tritan_formB' || kind === 'race_bet_tritan_formC') {
     const options = horseOptionsFromResult(result, selectedValues);
-    const idx = kind.endsWith('formA') ? '第1群（1着候補）' : kind.endsWith('formB') ? '第2群（2着候補）' : '第3群（3着候補）';
+    const idx = kind.endsWith('formA')
+      ? ph('form_group_1_tritan')
+      : kind.endsWith('formB')
+        ? ph('form_group_2_tritan')
+        : ph('form_group_3_tritan');
     return new ActionRowBuilder().addComponents(
       new StringSelectMenuBuilder()
         .setCustomId(menuCustomId)

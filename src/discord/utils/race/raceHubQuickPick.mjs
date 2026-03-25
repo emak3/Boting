@@ -8,12 +8,14 @@ import {
   getRaceBettingCloseDeadlineMs,
 } from '../../../scrapers/netkeiba/netkeibaSchedule.mjs';
 import { normalizeScheduleVenueDisplayName } from '../netkeiba/netkeibaJraVenueCode.mjs';
+import { t } from '../../../i18n/index.mjs';
 
 export const RACE_MENU_HUB_QUICK_ID = 'race_menu_hub_quick';
 
 /** 開催場選択 Container に付ける案内（クイックメニューがあるときだけ） */
-export const VENUE_QUICK_PICK_BODY_SUFFIX =
-  '\n\n**発売中で締切が近いレース**を選ぶと、そのまま出馬表へ進めます。';
+export function venueQuickPickBodySuffix(locale = null) {
+  return `\n\n${t('race_schedule.lines.venue_quick_pick_hint', null, locale)}`;
+}
 
 const QUICK_PICK_LIMIT = 6;
 

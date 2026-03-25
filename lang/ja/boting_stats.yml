@@ -1,0 +1,49 @@
+# 年間統計・週間チャレンジ（/boting から）
+annual:
+  target: "対象: {{mention}}"
+  title: "**年間スタッツ（JST {{year}}年・購入時刻ベース）**"
+  purchase_count: "・購入件数: **{{count}}** 件"
+  total_cost: "・購入総額: **{{amount}}** bp"
+  total_refund: "・払戻総額（精算済）: **{{amount}}** bp"
+  recovery: "・回収率（精算済）: **{{pct}}**"
+  hit_rate: "・的中率（精算済）: **{{pct}}**（的中 {{hits}} / 精算 {{settled}}）"
+  top_bet_types_heading: "**最多購入券種（上位3）**"
+  top_bet_type_line: "{{i}}. {{label}}（{{count}}件）"
+  top_bet_types_empty: "—（購入なし）"
+  max_miss_streak: "**連続不的中（精算済の連続で払戻0）最大**: **{{n}}** 回"
+
+weekly:
+  week_range: "{{start}}（月）〜{{end}}（日）"
+  challenge_labels:
+    hits: 的中回数
+    recovery: 回収率
+    hitRate: 的中率
+    purchases: 購入件数
+  claim_none: "**今回受け取れる報酬はありませんでした。**\n\n"
+  claim_heading: "**今回受け取った報酬**"
+  claim_line: "・{{label}}（週始 {{week}}）: **+{{bp}}** bp"
+  claim_total: "**合計 +{{bp}}** bp"
+  prev_week_heading: "**前週の達成状況**"
+  prev_week_empty: "（まだ締まった週がありません）"
+  status_off: "・{{label}}: —（設定で報酬0のため対象外）"
+  status_not_met: "・{{label}}: 未達成"
+  status_claimed: "・{{label}}: 達成（**+{{bp}}** bp 受取済み）"
+  status_blocked: "・{{label}}: 達成（**+{{bp}}** bp・週間CH停止中）"
+  status_pending: "・{{label}}: 達成（**+{{bp}}** bp 未受取）"
+  cfg_heading: "**今週の週間チャレンジ（月曜0:00〜日曜24:00 JST）**"
+  cfg_off_warning: "⚠️ **現在 OFF**"
+  cfg_targets_heading: "**目標と報酬**"
+  cfg_on: "ON"
+  cfg_off: "OFF"
+  cfg_enabled: "有効: **{{on}}**"
+  cfg_row_hits: "> 的中回数 ≥ **{{min}}** → **+{{bp}}** bp"
+  cfg_row_recovery: "> 回収率 ≥ **{{min}}%** → **+{{bp}}** bp"
+  cfg_row_hit_rate: "> 的中率 ≥ **{{min}}%** → **+{{bp}}** bp"
+  cfg_row_purchases: "> 購入件数 ≥ **{{min}}** → **+{{bp}}** bp"
+  prog_heading: "**今週の進捗**"
+  prog_hits: "・的中回数（精算済）: **{{cur}}** / 条件 ≥ {{min}}"
+  prog_recovery: "・回収率（精算済）: **{{cur}}** / 条件 ≥ {{min}}%"
+  prog_hit_rate: "・的中率（精算済）: **{{cur}}** / 条件 ≥ {{min}}%"
+  prog_purchases: "・購入件数: **{{cur}}** / 条件 ≥ {{min}}"
+  prog_footnote: "※ 過去週の未受取がある場合も、下のボタンでまとめて反映されます（種類ごとに一度だけ）。"
+  claim_button: チャレンジ報酬を受け取る

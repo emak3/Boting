@@ -3,18 +3,11 @@ import { canUseDebugCommands } from '../../utils/debug/raceDebugBypass.mjs';
 import { setDebugAclDraft } from '../../utils/debug/debugAclFlowStore.mjs';
 import { buildDebugAclConfirmPayload } from '../../utils/debug/debugHubPanel.mjs';
 import { DEBUG_HUB_MODAL_PREFIX } from '../../utils/debug/debugHubConstants.mjs';
-
-function v2ExtraFlags(interaction) {
-  let extraFlags = MessageFlags.Ephemeral;
-  try {
-    if (interaction.message?.flags?.has(MessageFlags.Ephemeral)) {
-      extraFlags |= MessageFlags.Ephemeral;
-    }
-  } catch (_) {
-    /* ignore */
-  }
-  return extraFlags;
-}
+import {
+  deferEphemeralThenEditReply,
+  v2ExtraFlags,
+} from '../../utils/shared/interactionResponse.mjs';
+import { resolveLocaleFromInteraction, t } from '../../../i18n/index.mjs';
 
 function targetMention(userId) {
   return `<@${userId}>`;
@@ -29,9 +22,11 @@ export default async function debugHubAclModal(interaction) {
   const parts = customId.split('|');
   if (parts[0] !== DEBUG_HUB_MODAL_PREFIX || parts[1] !== 'acl') return;
 
+  const loc = resolveLocaleFromInteraction(interaction);
+
   if (!canUseDebugCommands(interaction.user.id)) {
     await interaction.reply({
-      content: '❌ この操作は使用できません。',
+      content: t('debug_hub.errors.forbidden', null, loc),
       flags: MessageFlags.Ephemeral,
     });
     return;
@@ -42,7 +37,7 @@ export default async function debugHubAclModal(interaction) {
   const id = raw.trim();
   if (!/^\d{17,20}$/.test(id)) {
     await interaction.reply({
-      content: '❌ ユーザーIDの形式が不正です（17〜20桁の数字）。',
+      content: t('debug_hub.errors.invalid_user_id', null, loc),
       flags: MessageFlags.Ephemeral,
     });
     return;
@@ -51,24 +46,24 @@ export default async function debugHubAclModal(interaction) {
   const targetUser = await interaction.client.users.fetch(id).catch(() => null);
   if (!targetUser) {
     await interaction.reply({
-      content: '❌ その ID のユーザーを取得できませんでした。',
+      content: t('debug_hub.errors.user_fetch_failed', null, loc),
       flags: MessageFlags.Ephemeral,
     });
     return;
   }
   if (targetUser.bot) {
     await interaction.reply({
-      content: '❌ BOT ではなくユーザーを指定してください。',
+      content: t('debug_hub.errors.bot_not_allowed', null, loc),
       flags: MessageFlags.Ephemeral,
     });
     return;
   }
 
-  const extraFlags = v2ExtraFlags(interaction);
+  const extraFlags = v2ExtraFlags(interaction, { assumeEphemeral: true });
   setDebugAclDraft(interaction.user.id, { mode, targetUserId: id });
 
-  await interaction.deferReply({ flags: MessageFlags.Ephemeral });
-  await interaction.editReply(
+  await deferEphemeralThenEditReply(
+    interaction,
     buildDebugAclConfirmPayload({
       mode,
       targetLabel: `${targetMention(id)}（\`${id}\`）`,

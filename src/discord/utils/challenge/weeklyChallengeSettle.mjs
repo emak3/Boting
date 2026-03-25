@@ -12,6 +12,7 @@ import {
   weekBoundsUtcFromMondayYmd,
 } from './jstCalendar.mjs';
 import { getWeeklyChallengeConfig } from './weeklyChallengeConfig.mjs';
+import { normalizeLocale, t as tr } from '../../../i18n/index.mjs';
 
 /** @type {Record<string, string>} */
 export const WEEKLY_CHALLENGE_LABEL_JA = {
@@ -20,6 +21,34 @@ export const WEEKLY_CHALLENGE_LABEL_JA = {
   hitRate: '的中率',
   purchases: '購入件数',
 };
+
+function fmtYmdForWeeklyRange(ymd8, locale) {
+  const y = ymd8.slice(0, 4);
+  const mo = ymd8.slice(4, 6);
+  const da = ymd8.slice(6, 8);
+  if (normalizeLocale(locale) === 'en') {
+    return `${y}-${mo}-${da}`;
+  }
+  const mi = parseInt(mo, 10);
+  const di = parseInt(da, 10);
+  return `${y}年${mi}月${di}日`;
+}
+
+/**
+ * @param {string} key
+ * @param {string | null} [locale]
+ */
+export function weeklyChallengeKeyLabel(key, locale = null) {
+  const k = String(key || '');
+  const localized = tr(`boting_stats.weekly.challenge_labels.${k}`, null, locale);
+  if (
+    localized &&
+    localized !== `boting_stats.weekly.challenge_labels.${k}`
+  ) {
+    return localized;
+  }
+  return WEEKLY_CHALLENGE_LABEL_JA[k] ?? k;
+}
 
 /**
  * 週次統計と設定から各チャレンジの達成可否（付与はしない）
@@ -61,19 +90,17 @@ export function evaluateWeeklyTries(st, config) {
   ];
 }
 
-function fmtYmdJa(ymd8) {
-  const y = ymd8.slice(0, 4);
-  const mo = parseInt(ymd8.slice(4, 6), 10);
-  const da = parseInt(ymd8.slice(6, 8), 10);
-  return `${y}年${mo}月${da}日`;
-}
-
 /**
  * 直前に終了した週（月〜日 JST）の達成状況（受取済み含む）
  * @param {string} userId
  * @param {Date} [now]
+ * @param {string | null} [locale]
  */
-export async function getPreviousWeekChallengeSnapshot(userId, now = new Date()) {
+export async function getPreviousWeekChallengeSnapshot(
+  userId,
+  now = new Date(),
+  locale = null,
+) {
   const uid = String(userId || '');
   const config = await getWeeklyChallengeConfig();
   const weeks = enumerateCompletedWeekMondaysDescending(now, 1);
@@ -87,7 +114,14 @@ export async function getPreviousWeekChallengeSnapshot(userId, now = new Date())
     };
   }
   const sunYmd = addJstCalendarDays(prevMon, 6);
-  const rangeLabel = `${fmtYmdJa(prevMon)}（月）〜${fmtYmdJa(sunYmd)}（日）`;
+  const rangeLabel = tr(
+    'boting_stats.weekly.week_range',
+    {
+      start: fmtYmdForWeeklyRange(prevMon, locale),
+      end: fmtYmdForWeeklyRange(sunYmd, locale),
+    },
+    locale,
+  );
   const { start, end } = weekBoundsUtcFromMondayYmd(prevMon);
   const rows = await fetchUserRaceBetsPurchasedBetween(uid, start, end);
   const st = computeRaceBetRangeStats(rows.map((r) => r.get({ plain: true })));
@@ -101,40 +135,40 @@ export async function getPreviousWeekChallengeSnapshot(userId, now = new Date())
   );
 
   /** @type {Array<{ key: string, label: string, met: boolean, bp: number, status: 'pending' | 'claimed' | 'not_met' | 'off' }>} */
-  const items = tries.map((t) => {
-    const label = WEEKLY_CHALLENGE_LABEL_JA[t.key] ?? t.key;
-    if (t.bp <= 0) {
+  const items = tries.map((row) => {
+    const label = weeklyChallengeKeyLabel(row.key, locale);
+    if (row.bp <= 0) {
       return {
-        key: t.key,
+        key: row.key,
         label,
         met: false,
         bp: 0,
         status: /** @type {const} */ ('off'),
       };
     }
-    if (!t.ok) {
+    if (!row.ok) {
       return {
-        key: t.key,
+        key: row.key,
         label,
         met: false,
-        bp: t.bp,
+        bp: row.bp,
         status: /** @type {const} */ ('not_met'),
       };
     }
-    if (claimedSet.has(t.key)) {
+    if (claimedSet.has(row.key)) {
       return {
-        key: t.key,
+        key: row.key,
         label,
         met: true,
-        bp: t.bp,
+        bp: row.bp,
         status: /** @type {const} */ ('claimed'),
       };
     }
     return {
-      key: t.key,
+      key: row.key,
       label,
       met: true,
-      bp: t.bp,
+      bp: row.bp,
       status: /** @type {const} */ ('pending'),
     };
   });

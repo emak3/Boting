@@ -1,0 +1,59 @@
+errors:
+  slice_invalid: ❌ Invalid pick. Refresh the ranking and try again.
+  bot_stats_forbidden: ❌ Bot stats are not available.
+  annual_stats_failed: "❌ Failed to show yearly stats: {{message}}"
+  leaderboard_update_failed: "❌ Failed to refresh ranking: {{message}}"
+  leaderboard_restore_failed: "❌ Could not restore ranking: {{message}}"
+  back_to_ranking_failed: "❌ Could not return to ranking: {{message}}"
+  profile_display_failed: "❌ Failed to refresh the view: {{message}}"
+  hub_display_failed: "❌ Failed to refresh the view: {{message}}"
+  ledger_display_failed: "❌ Failed to show ledger: {{message}}"
+  keypad_invalid: ❌ Invalid key. Re-open the list size keypad.
+  keypad_session_expired: ❌ Session expired. Open the ranking again.
+  user_fetch_failed: ❌ Could not load that user.
+  profile_slip_failed: "❌ Failed to show saved picks: {{message}}"
+  profile_history_failed: "❌ Failed to show purchase history: {{message}}"
+leaderboard:
+  heading: "## {{mode}} ranking (top {{shown}} / {{total}} users)"
+  empty: No BP data yet.
+mode_titles:
+  balance: BP balance
+  recovery: Recovery rate
+  hit_rate: Hit rate
+  purchase: Ticket purchases
+  default: Ranking
+footer_note:
+  recovery: Recovery = total settled refunds ÷ total purchase bp
+  hit_rate: Hit rate = (hits ÷ purchases) × 100
+  purchase: Purchases = number of ticket purchases
+line:
+  no_settlement: Not settled
+  em_dash: —
+  metric_sep: " · "
+  purchases: "Purchases **{{n}}**"
+  count_only: "**{{n}}**"
+select:
+  placeholder: Choose ranking type
+  opt_balance_label: BP balance
+  opt_balance_desc: Highest balance first
+  opt_recovery_label: Recovery rate
+  opt_recovery_desc: Highest recovery first
+  opt_hit_rate_label: Hit rate
+  opt_hit_rate_desc: Highest hit rate first
+  opt_purchase_label: Purchase count
+  opt_purchase_desc: Most purchases first
+slice_pick:
+  placeholder: Pick from the list above
+pick_label:
+  sep: " · "
+  purchases_short: "{{n}}"
+buttons:
+  change_limit: Change list size
+keypad:
+  headline: "**Ranking list size (1–{{max}})**"
+  value_line: "# `{{part}}` rows"
+  cancel: Cancel
+ui:
+  back_profile: Back to profile
+  view_saved_slip: View saved picks
+  back_to_ranking: Back to ranking

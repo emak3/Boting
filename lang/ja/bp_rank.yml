@@ -1,0 +1,60 @@
+# BP ランキング（セレクト・スライス・本文）
+errors:
+  slice_invalid: ❌ この選択は無効です。ランキングを更新してからもう一度選んでください。
+  bot_stats_forbidden: ❌ BOT の履歴は表示できません。
+  annual_stats_failed: "❌ 年間統計の表示に失敗しました: {{message}}"
+  leaderboard_update_failed: "❌ ランキングの更新に失敗しました: {{message}}"
+  leaderboard_restore_failed: "❌ ランキングの復元に失敗しました: {{message}}"
+  back_to_ranking_failed: "❌ ランキングに戻れませんでした: {{message}}"
+  profile_display_failed: "❌ 表示の更新に失敗しました: {{message}}"
+  hub_display_failed: "❌ 表示の更新に失敗しました: {{message}}"
+  ledger_display_failed: "❌ 収支の表示に失敗しました: {{message}}"
+  keypad_invalid: ❌ このキーは無効です。表示数変更を開き直してください。
+  keypad_session_expired: ❌ セッションが無効です。ランキングを開き直してください。
+  user_fetch_failed: ❌ ユーザーの取得に失敗しました。
+  profile_slip_failed: "❌ 購入予定の表示に失敗しました: {{message}}"
+  profile_history_failed: "❌ 購入履歴の表示に失敗しました: {{message}}"
+leaderboard:
+  heading: "## {{mode}}ランキング（上位 {{shown}} / 全 {{total}} 名）"
+  empty: まだ誰も BP データがありません。
+mode_titles:
+  balance: BP 残高
+  recovery: 回収率
+  hit_rate: 的中率
+  purchase: 馬券購入件数
+  default: ランキング
+footer_note:
+  recovery: 回収率 = 精算済みの払戻 bp 合計 ÷ 購入bpの合計
+  hit_rate: 的中率 = (的中件数 ÷ 購入件数) × 100
+  purchase: 購入件数 = 馬券購入件数
+line:
+  no_settlement: 精算なし
+  em_dash: —
+  metric_sep: " ・"
+  purchases: "購入 **{{n}}** 件"
+  count_only: "**{{n}}** 件"
+select:
+  placeholder: ランキングの種類を選ぶ
+  opt_balance_label: BP 残高
+  opt_balance_desc: 現在の BP が多い順
+  opt_recovery_label: 回収率
+  opt_recovery_desc: 現在の回収率が高い順
+  opt_hit_rate_label: 的中率
+  opt_hit_rate_desc: 現在の的中率が高い順
+  opt_purchase_label: 購入件数
+  opt_purchase_desc: 現在の購入件数が多い順
+slice_pick:
+  placeholder: 表示中ランキングから選ぶ
+pick_label:
+  sep: " ・"
+  purchases_short: "{{n}}件"
+buttons:
+  change_limit: 表示数を変える
+keypad:
+  headline: "**ランキング表示件数（1〜{{max}}）**"
+  value_line: "# `{{part}}` 件"
+  cancel: キャンセル
+ui:
+  back_profile: プロフィールに戻る
+  view_saved_slip: 購入予定を見る
+  back_to_ranking: ランキングに戻る

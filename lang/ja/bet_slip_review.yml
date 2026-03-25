@@ -1,0 +1,16 @@
+summary_title: "**まとめて購入（仮）**"
+payment_header: "**お支払い**"
+line_total_at_confirm: "・合計（確定時）　**{{amount}} bp**"
+line_balance: "・bp残高　　　　　**{{amount}} bp**"
+line_balance_after: "・確定後の残高　　**{{amount}} bp**"
+bp_short_warn: |-
+  ⚠️ **bp が不足**しています（不足 **{{short}}** bp）。`/boting` の **Dailyをもらう** で受け取るか、金額・購入予定を調整してください。
+total_points: "**合計点数**　**{{n}}** 点"
+page: "**ページ**　{{cur}} / {{total}}"
+text_truncated: "*…文字数上限のため省略*"
+btn_back: 戻る
+btn_confirm: この内容で確定
+page_prev: 前のページ
+page_next: 次のページ
+ph_unit_pick: 金額を変える購入予定を選択
+ph_remove: 番号を選んで削除

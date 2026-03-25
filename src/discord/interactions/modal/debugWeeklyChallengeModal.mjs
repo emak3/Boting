@@ -10,24 +10,14 @@ import {
   setWeeklyChallengeConfig,
 } from '../../utils/challenge/weeklyChallengeConfig.mjs';
 import { buildDebugPanelPayload } from '../../utils/debug/debugHubPanel.mjs';
+import { v2ExtraFlags } from '../../utils/shared/interactionResponse.mjs';
+import { resolveLocaleFromInteraction, t } from '../../../i18n/index.mjs';
 
 function parseNonNegInt(s, fallback) {
-  const t = String(s ?? '').trim();
-  const n = Math.trunc(Number(t));
+  const rawStr = String(s ?? '').trim();
+  const n = Math.trunc(Number(rawStr));
   if (!Number.isFinite(n) || n < 0) return fallback;
   return n;
-}
-
-function v2ExtraFlags(interaction) {
-  let extraFlags = MessageFlags.Ephemeral;
-  try {
-    if (interaction.message?.flags?.has(MessageFlags.Ephemeral)) {
-      extraFlags |= MessageFlags.Ephemeral;
-    }
-  } catch (_) {
-    /* ignore */
-  }
-  return extraFlags;
 }
 
 /**
@@ -41,9 +31,11 @@ export default async function debugWeeklyChallengeModal(interaction) {
   const customId = interaction.customId;
   if (!customId.startsWith(`${DEBUG_WEEKLY_CFG_MODAL_PREFIX}|`)) return;
 
+  const loc = resolveLocaleFromInteraction(interaction);
+
   if (!canUseDebugCommands(interaction.user.id)) {
     await interaction.reply({
-      content: '❌ この操作は使用できません。',
+      content: t('debug_hub.errors.forbidden', null, loc),
       flags: MessageFlags.Ephemeral,
     });
     return;
@@ -104,7 +96,7 @@ export default async function debugWeeklyChallengeModal(interaction) {
       return;
     }
 
-    const extraFlags = v2ExtraFlags(interaction);
+    const extraFlags = v2ExtraFlags(interaction, { assumeEphemeral: true });
     const payload = await buildDebugPanelPayload({
       extraFlags,
       topBanner: '✅ 週間チャレンジの設定を保存しました。',
@@ -124,14 +116,17 @@ export default async function debugWeeklyChallengeModal(interaction) {
     }
 
     await interaction.editReply({
-      content:
-        '✅ 保存しました。`/debug` でパネルを開き直すと反映されます（編集用の記録がないか期限切れです）。',
+      content: t('debug_hub.weekly.saved_no_panel', null, loc),
     });
   } catch (e) {
     console.error('debugWeeklyChallengeModal:', e);
     await interaction
       .editReply({
-        content: `❌ 保存またはパネル更新に失敗しました: ${e?.message ?? e}`,
+        content: t(
+          'debug_hub.weekly.save_failed',
+          { message: e?.message ?? e },
+          loc,
+        ),
       })
       .catch(() => {});
   }

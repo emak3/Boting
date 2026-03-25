@@ -1,0 +1,33 @@
+title: "## ヘルプ"
+overview_intro: |-
+  実馬券の種類・ルールは JRA の公式ページから。**券種の発売可否（出走頭数）**はその公式表に合わせ、中央(JRA)・地方(NAR)のどちらでも同じルールで絞り込みます（実際の地方の発売と異なる場合があります）。ライブ配信は下の**地域タブ**で場所を選ぶと YouTube の公式チャンネルへ飛べます。
+link_types_heading: 馬券の種類（はじめての方へ）
+link_types_sub: 単勝・複勝など10種類の概要
+link_types_btn: "JRA：馬券の種類"
+link_rules_heading: 馬券のルール
+link_rules_sub: 発売・払戻・成立など
+link_rules_btn: "JRA：馬券のルール"
+youtube_section: "### YouTube（ライブ）\n南関東・北海道など、**地域タブ**から選んでください。"
+region_intro: "右のボタンから各公式チャンネル（YouTube）を開けます。"
+region_footer: 別の地域は下の**地域タブ**から選び直せます。
+select_placeholder: 地域タブを選択
+select_placeholder_active: "地域タブ（表示中: {{label}}）"
+tabs:
+  overview:
+    label: 概要
+    description: "馬券の種類・ルール（参考: JRA 公式）"
+  central:
+    label: 中央(JRA)
+    description: JRA公式YouTube
+  hokkaido_tohoku:
+    label: 北海道・東北
+    description: 帯広・門別札幌・岩手
+  nan_kanto:
+    label: 南関東
+    description: 浦和・船橋・大井・川崎
+  chubu_hokuriku:
+    label: 中部・北陸
+    description: 金沢・笠松・名古屋
+  kinki_shikoku_kyushu:
+    label: 近畿・四国・九州
+    description: 園田・姫路・高知・佐賀

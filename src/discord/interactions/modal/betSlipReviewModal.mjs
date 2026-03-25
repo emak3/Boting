@@ -1,15 +1,20 @@
 import { MessageFlags } from 'discord.js';
 import {
-  MSG_SLIP_BATCH_REVIEW_SESSION_INVALID,
-  MSG_SLIP_BATCH_REVIEW_SESSION_MISMATCH,
-  MSG_SLIP_MODAL_CUSTOM_ID_INVALID,
+  msgSlipBatchReviewSessionInvalid,
+  msgSlipBatchReviewSessionMismatch,
+  msgSlipModalCustomIdInvalid,
 } from '../../utils/bet/betSlipCopy.mjs';
+import { resolveLocaleFromInteraction, t } from '../../../i18n/index.mjs';
 import {
   getSlipPendingReview,
   replaceSlipPendingItems,
 } from '../../utils/bet/betSlipStore.mjs';
 import { buildSlipReviewV2Payload } from '../../utils/bet/betSlipReview.mjs';
 import { normalizeUnitYen100 } from '../../utils/unit/unitYenKeypad.mjs';
+import {
+  updateComponent,
+  v2ExtraFlags,
+} from '../../utils/shared/interactionResponse.mjs';
 
 /** race_bet_slip_unit_modal|{raceId}|{index} */
 function parseModalCustomId(customId) {
@@ -26,10 +31,11 @@ export default async function betSlipReviewModal(interaction) {
   const customId = interaction.customId;
   if (!customId.startsWith('race_bet_slip_unit_modal|')) return;
 
+  const loc = resolveLocaleFromInteraction(interaction);
   const parsed = parseModalCustomId(customId);
   if (!parsed) {
     await interaction.reply({
-      content: MSG_SLIP_MODAL_CUSTOM_ID_INVALID,
+      content: msgSlipModalCustomIdInvalid(loc),
       flags: MessageFlags.Ephemeral,
     });
     return;
@@ -39,7 +45,7 @@ export default async function betSlipReviewModal(interaction) {
   const pending = getSlipPendingReview(userId);
   if (!pending?.items?.length) {
     await interaction.reply({
-      content: MSG_SLIP_BATCH_REVIEW_SESSION_INVALID,
+      content: msgSlipBatchReviewSessionInvalid(loc),
       flags: MessageFlags.Ephemeral,
     });
     return;
@@ -48,14 +54,14 @@ export default async function betSlipReviewModal(interaction) {
   const { raceId, idx } = parsed;
   if (pending.anchorRaceId && pending.anchorRaceId !== raceId) {
     await interaction.reply({
-      content: MSG_SLIP_BATCH_REVIEW_SESSION_MISMATCH,
+      content: msgSlipBatchReviewSessionMismatch(loc),
       flags: MessageFlags.Ephemeral,
     });
     return;
   }
   if (idx < 0 || idx >= pending.items.length) {
     await interaction.reply({
-      content: '❌ 対象の購入予定が見つかりません。',
+      content: t('bet_slip.modal_item_not_found', null, loc),
       flags: MessageFlags.Ephemeral,
     });
     return;
@@ -65,7 +71,7 @@ export default async function betSlipReviewModal(interaction) {
   const parsedYen = parseInt(rawYen.trim(), 10);
   if (!Number.isFinite(parsedYen) || parsedYen <= 0) {
     await interaction.reply({
-      content: '❌ bp は正の整数で入力してください。',
+      content: t('bet_slip.modal_invalid_bp', null, loc),
       flags: MessageFlags.Ephemeral,
     });
     return;
@@ -77,16 +83,10 @@ export default async function betSlipReviewModal(interaction) {
   );
   replaceSlipPendingItems(userId, next);
 
-  let extraFlags = 0;
-  try {
-    if (interaction.message?.flags?.has(MessageFlags.Ephemeral)) {
-      extraFlags |= MessageFlags.Ephemeral;
-    }
-  } catch (_) {
-    /* ignore */
-  }
+  const extraFlags = v2ExtraFlags(interaction);
 
-  await interaction.update(
-    await buildSlipReviewV2Payload({ userId, extraFlags }),
+  await updateComponent(
+    interaction,
+    await buildSlipReviewV2Payload({ userId, extraFlags, locale: loc }),
   );
 }

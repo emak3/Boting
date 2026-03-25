@@ -1,7 +1,5 @@
 import {
   ActionRowBuilder,
-  ButtonBuilder,
-  ButtonStyle,
   ContainerBuilder,
   MessageFlags,
   StringSelectMenuBuilder,
@@ -29,107 +27,31 @@ import {
   DISCORD_SELECT_OPTION_DESCRIPTION_MAX,
   DISCORD_SELECT_OPTION_LABEL_MAX,
 } from './raceNumberEmoji.mjs';
-import { V2_SINGLE_CHUNK, V2_TEXT_TOTAL_MAX } from './raceCardDisplay.mjs';
+import { V2_SINGLE_CHUNK } from './raceCardDisplay.mjs';
 import { buildBotingMenuBackRow } from './raceCommandHub.mjs';
 import {
   buildBpRankProfileBackButtonRow,
   buildBpRankLbHistoryFooterRow,
 } from '../bp/bpRankUiButtons.mjs';
-import { BP_RANK_DISPLAY_MAX } from '../bp/bpRankLeaderboardEmbed.mjs';
 import { botingEmoji, botingEmojiMarkdown } from '../boting/botingEmojis.mjs';
 import { formatBpAmount, formatBpWithUnit } from '../bp/bpFormat.mjs';
+import { t } from '../../../i18n/index.mjs';
+import { buildRaceHistoryResultPickCustomId } from '../../components/racePurchaseHistory/ids.mjs';
+import {
+  historyDayAndPageNavRow,
+  historyMeetingFilterRow,
+  historyMeetingSelectMaxVenues,
+} from '../../components/racePurchaseHistory/nav.mjs';
 
-/** `|bpctx|{discordUserId}`（任意で `|rklb|{limit}|{mode}`）— 他人の履歴ナビ・ランキング戻り用 */
-export function stripRaceHistoryBpCtx(customId) {
-  const s = String(customId || '');
-  const idx = s.indexOf('|bpctx|');
-  if (idx < 0) {
-    return {
-      withoutCtx: s,
-      bpctxUserId: null,
-      rankLeaderboardReturn: null,
-    };
-  }
-  const withoutCtx = s.slice(0, idx);
-  const rest = s.slice(idx + '|bpctx|'.length);
-  const parts = rest.split('|');
-  const bpctxUserId = /^\d{17,20}$/.test(parts[0] || '') ? parts[0] : null;
-  let rankLeaderboardReturn = null;
-  const rklb = parts.indexOf('rklb');
-  if (rklb >= 0 && parts[rklb + 1] != null && parts[rklb + 2] != null) {
-    const lim = Math.min(
-      BP_RANK_DISPLAY_MAX,
-      Math.max(1, parseInt(String(parts[rklb + 1]), 10) || 20),
-    );
-    const modeRaw = String(parts[rklb + 2] || '');
-    if (
-      modeRaw === 'balance' ||
-      modeRaw === 'recovery' ||
-      modeRaw === 'hit_rate' ||
-      modeRaw === 'purchase'
-    ) {
-      rankLeaderboardReturn = { limit: lim, mode: modeRaw };
-    }
-  }
-  return { withoutCtx, bpctxUserId, rankLeaderboardReturn };
-}
-
-/**
- * @param {string | null | undefined} bpRankProfileUserId
- * @param {{ limit: number, mode: string } | null | undefined} rankLeaderboardReturn
- */
-function historyCtxSuffix(bpRankProfileUserId, rankLeaderboardReturn) {
-  if (!bpRankProfileUserId || !/^\d{17,20}$/.test(String(bpRankProfileUserId))) {
-    return '';
-  }
-  let s = `|bpctx|${bpRankProfileUserId}`;
-  if (rankLeaderboardReturn?.limit != null && rankLeaderboardReturn.mode) {
-    const lim = Math.min(
-      BP_RANK_DISPLAY_MAX,
-      Math.max(1, Math.round(Number(rankLeaderboardReturn.limit) || 20)),
-    );
-    const m = String(rankLeaderboardReturn.mode);
-    if (
-      m === 'balance' ||
-      m === 'recovery' ||
-      m === 'hit_rate' ||
-      m === 'purchase'
-    ) {
-      s += `|rklb|${lim}|${m}`;
-    }
-  }
-  return s;
-}
-
-export const RACE_HISTORY_PAGE_PREFIX = 'race_bet_history_pg';
-/** 開催日を前後にずらす（customId: day|対象YYYYMMDD|page|meetingFilter） */
-export const RACE_HISTORY_DAY_PREFIX = 'race_bet_history_day';
-/** 購入履歴ページからレース結果へ（String Select の customId） */
-export const RACE_HISTORY_RESULT_PICK_PREFIX = 'race_hist_result';
-
-/**
- * 購入履歴のページング・開催フィルタと同じ customId（戻るボタン兼用）
- * @param {{ periodKey: string, page: number, meetingFilter?: string, bpRankProfileUserId?: string | null, rankLeaderboardReturn?: { limit: number, mode: string } | null }} opts
- */
-export function buildRaceHistoryNavCustomId(opts) {
-  const mf = String(opts.meetingFilter || 'all').trim() || 'all';
-  const pg = Math.max(0, Math.floor(Number(opts.page) || 0));
-  const sfx = historyCtxSuffix(opts.bpRankProfileUserId, opts.rankLeaderboardReturn);
-  return `${RACE_HISTORY_PAGE_PREFIX}|${opts.periodKey}|${pg}|${mf}${sfx}`;
-}
-
-/**
- * @param {{ periodKey: string, page: number, meetingFilter?: string, bpRankProfileUserId?: string | null, rankLeaderboardReturn?: { limit: number, mode: string } | null }} opts
- */
-export function buildRaceHistoryResultPickCustomId(opts) {
-  const mf = String(opts.meetingFilter || 'all').trim() || 'all';
-  const pg = Math.max(0, Math.floor(Number(opts.page) || 0));
-  const sfx = historyCtxSuffix(opts.bpRankProfileUserId, opts.rankLeaderboardReturn);
-  return `${RACE_HISTORY_RESULT_PICK_PREFIX}|${opts.periodKey}|${pg}|${mf}${sfx}`;
-}
-
-/** 1ページあたりの買い目件数（レース見出しはカウントに含めない） */
-export const HISTORY_BETS_PER_PAGE = 10;
+export {
+  stripRaceHistoryBpCtx,
+  RACE_HISTORY_PAGE_PREFIX,
+  RACE_HISTORY_DAY_PREFIX,
+  RACE_HISTORY_RESULT_PICK_PREFIX,
+  RACE_HISTORY_MEETING_PREFIX,
+  buildRaceHistoryNavCustomId,
+  buildRaceHistoryResultPickCustomId,
+} from '../../components/racePurchaseHistory/ids.mjs';
 
 /**
  * 前後日ナビ用フィルタ（findAdjacent と同じ扱い）。無効な customId は all として探索する。
@@ -143,7 +65,18 @@ function adjacentMeetingFilterForHistory(meetingFilter) {
 }
 
 const HISTORY_ACCENT = 0x9b59b6;
-const HISTORY_BTN_LABEL_MAX = 80;
+/**
+ * Components V2: メッセージ内の Text Display 本文の合計が 4000 を超えると API エラーになる。
+ * プレースホルダ・ボタンラベル等の余裕を残す。
+ */
+const HISTORY_V2_DISPLAY_TEXT_MAX = 3780;
+/**
+ * シミュレーションと実描画の差・絵文字長のブレを吸収して本文パック時に残す余白。
+ * 超えた場合は exclusiveEnd を縮める検証ループでさらに抑える。
+ */
+const HISTORY_V2_BODY_PACK_SLACK = 320;
+/** 1ページに並べるレース（race_id）の上限。これでも文字が溢れるときは買い目件数を減らす */
+export const HISTORY_PURCHASE_MAX_RACES_PER_PAGE = 7;
 
 /** 式別のフル表記（例: 馬連（通常）、馬単（1着ながし）、末尾に ` マルチ` が付く場合もそのまま） */
 function fullKindLabel(bet) {
@@ -271,11 +204,13 @@ function betPurchasedAtMs(bet) {
   return 0;
 }
 
-function splitForTextDisplays(fullText) {
-  const capped = fullText.slice(0, V2_TEXT_TOTAL_MAX);
-  if (capped.length <= V2_SINGLE_CHUNK) return [capped];
+/** 1 つの Text Display に収めやすい長さに分割（本文合計上限とは別） */
+function splitLongTextForDisplays(fullText) {
+  const s = String(fullText || '').trimEnd();
+  if (!s) return [];
+  if (s.length <= V2_SINGLE_CHUNK) return [s];
   const out = [];
-  let rest = capped;
+  let rest = s;
   while (rest.length > 0) {
     if (rest.length <= V2_SINGLE_CHUNK) {
       out.push(rest);
@@ -289,11 +224,226 @@ function splitForTextDisplays(fullText) {
   return out;
 }
 
-function appendChunkedText(container, text) {
-  const chunks = splitForTextDisplays(String(text || '').trimEnd()).filter((c) => String(c).trim());
+const HISTORY_TRUNCATION_TAIL = '\n\n*（表示の長さ上限により省略）*';
+
+/**
+ * @param {{ remaining: number }} budget
+ * @returns {boolean} 文字数上限で途中までしか出せなかった
+ */
+function appendChunkedTextWithinBudget(container, text, budget) {
+  const chunks = splitLongTextForDisplays(String(text || '').trimEnd()).filter((c) => String(c).trim());
   for (const ch of chunks) {
-    container.addTextDisplayComponents((td) => td.setContent(ch));
+    if (budget.remaining <= 0) return true;
+    if (ch.length <= budget.remaining) {
+      container.addTextDisplayComponents((td) => td.setContent(ch));
+      budget.remaining -= ch.length;
+      continue;
+    }
+    const room = Math.max(0, budget.remaining - HISTORY_TRUNCATION_TAIL.length);
+    let body = room > 0 ? ch.slice(0, room).trimEnd() : '';
+    const lastPara = body.lastIndexOf('\n\n');
+    if (lastPara > room * 0.3) body = body.slice(0, lastPara).trimEnd();
+    container.addTextDisplayComponents((td) =>
+      td.setContent(body ? body + HISTORY_TRUNCATION_TAIL : HISTORY_TRUNCATION_TAIL.trim()),
+    );
+    budget.remaining = 0;
+    return true;
   }
+  return false;
+}
+
+/**
+ * appendChunkedTextWithinBudget と同じ split 規則で、本文に割り当て可能な残り文字数を求める。
+ * @returns {{ remaining: number, truncated: boolean }}
+ */
+function simulateTextChunksBudget(text, initialRemaining) {
+  let remaining = initialRemaining;
+  const chunks = splitLongTextForDisplays(String(text || '').trimEnd()).filter((c) =>
+    String(c).trim(),
+  );
+  for (const ch of chunks) {
+    if (remaining <= 0) return { remaining: 0, truncated: true };
+    if (ch.length <= remaining) {
+      remaining -= ch.length;
+      continue;
+    }
+    return { remaining: 0, truncated: true };
+  }
+  return { remaining, truncated: false };
+}
+
+/**
+ * @param {string[]} raceChunks buildHistoryRaceTextChunks の戻り値
+ */
+function simulateRaceChunksWithinBudget(raceChunks, initialRemaining) {
+  let remaining = initialRemaining;
+  for (const chunk of raceChunks) {
+    const r = simulateTextChunksBudget(chunk, remaining);
+    if (r.truncated) return { ok: false, remaining: r.remaining };
+    remaining = r.remaining;
+  }
+  return { ok: true, remaining };
+}
+
+/**
+ * @param {{ rid: string, bet: object }[]} slice
+ * @param {Map<string, string>} timeByRaceId
+ */
+function historyRaceBodyFitsBudget(slice, timeByRaceId, budget, locale) {
+  const raceChunks = buildHistoryRaceTextChunks(slice, timeByRaceId, locale);
+  return simulateRaceChunksWithinBudget(raceChunks, budget).ok;
+}
+
+/**
+ * ページネーション行の最長想定（桁数は totalBets に合わせて上振れ）
+ * @param {number} totalBets
+ */
+function worstHistoryPaginationLine(totalBets, locale) {
+  const d = String(Math.max(1, totalBets)).length;
+  const x = '9'.repeat(d);
+  return t('race_purchase_history.pagination_line', { a: x, b: x, c: x }, locale);
+}
+
+function formatHistoryPaginationLine(pageIndex0, totalPages, countOnPage, locale) {
+  return t(
+    'race_purchase_history.pagination_line',
+    { a: pageIndex0 + 1, b: totalPages, c: countOnPage },
+    locale,
+  );
+}
+
+/**
+ * 先頭から最大 maxRaces 種類の race_id に属する買い目だけを含む排他的 end（9レース目の先頭で切る）
+ * @param {{ rid: string, bet: object }[]} flat
+ * @param {number} startIdx
+ * @param {number} maxRaces
+ */
+function maxExclusiveEndForRaceLimit(flat, startIdx, maxRaces) {
+  const seen = new Set();
+  let i = startIdx;
+  const n = flat.length;
+  while (i < n) {
+    const rid = String(flat[i].rid || '');
+    if (!seen.has(rid)) {
+      if (seen.size >= maxRaces) break;
+      seen.add(rid);
+    }
+    i += 1;
+  }
+  return i;
+}
+
+/**
+ * 二分探索後、本文が budget に収まるまで end を詰める（API 4000 字超えの最終防波堤）
+ * @param {{ rid: string, bet: object }[]} flat
+ * @param {number} startIdx
+ * @param {number} endExclusive
+ * @param {number} bodyBudget
+ */
+function shrinkHistoryPageEndUntilFits(flat, startIdx, endExclusive, bodyBudget, locale) {
+  let end = endExclusive;
+  while (end > startIdx + 1) {
+    const slice = flat.slice(startIdx, end);
+    const tm = oddsOfficialTimeMapFromSlice(slice);
+    if (historyRaceBodyFitsBudget(slice, tm, bodyBudget, locale)) return end;
+    end -= 1;
+  }
+  return startIdx + 1;
+}
+
+/**
+ * @param {{ rid: string, bet: object }[]} flat
+ * @param {number} startIdx
+ * @param {number} verifyBudget サマリー後に本文へ使える残り（最悪長のページ行を含む想定）。収まり検証に使う
+ * @returns {number} 排他的 end（flat.slice(startIdx, end) が 1 ページ分）
+ */
+function exclusiveEndForHistoryPage(flat, startIdx, verifyBudget, locale) {
+  const n = flat.length;
+  if (startIdx >= n) return startIdx;
+  const packBudget = Math.max(0, verifyBudget - HISTORY_V2_BODY_PACK_SLACK);
+  const raceCapEnd = maxExclusiveEndForRaceLimit(
+    flat,
+    startIdx,
+    HISTORY_PURCHASE_MAX_RACES_PER_PAGE,
+  );
+  const hiBound = Math.min(n, raceCapEnd);
+  const one = flat.slice(startIdx, startIdx + 1);
+  const tm1 = oddsOfficialTimeMapFromSlice(one);
+  if (!historyRaceBodyFitsBudget(one, tm1, packBudget, locale)) {
+    return shrinkHistoryPageEndUntilFits(flat, startIdx, startIdx + 1, verifyBudget, locale);
+  }
+  let lo = startIdx + 1;
+  let hi = hiBound;
+  if (hi <= startIdx) return startIdx + 1;
+  while (lo < hi) {
+    const mid = Math.floor((lo + hi + 1) / 2);
+    const slice = flat.slice(startIdx, mid);
+    const tm = oddsOfficialTimeMapFromSlice(slice);
+    if (historyRaceBodyFitsBudget(slice, tm, packBudget, locale)) lo = mid;
+    else hi = mid - 1;
+  }
+  return shrinkHistoryPageEndUntilFits(flat, startIdx, lo, verifyBudget, locale);
+}
+
+/**
+ * @param {{ rid: string, bet: object }[]} flat
+ * @param {number} bodyBudget
+ * @returns {number[]} 各ページの排他的 end インデックス（連続区間で flat を覆う）
+ */
+function computeHistoryPageExclusiveEnds(flat, summaryRemainingAfterChunks, locale) {
+  const ends = [];
+  let i = 0;
+  while (i < flat.length) {
+    const end = exclusiveEndForHistoryPage(flat, i, summaryRemainingAfterChunks, locale);
+    ends.push(end);
+    i = end;
+  }
+  return ends;
+}
+
+/**
+ * サマリー（ページ行除く）＋ V2 上限から買い目本文に使えるバジェットを決め、ページ区切りを付ける。
+ * 複数ページになる場合は最長のページ行をサマリーに仮置きしてバジェットを確保し、区切りが安定するまで反復する。
+ *
+ * @param {{ rid: string, bet: object }[]} flat
+ * @param {string[]} summaryLinesWithoutPagination title〜注記まで（ページ行は含めない）
+ * @param {string | null} [locale]
+ * @returns {{ exclusiveEnds: number[], showPaginationLine: boolean }}
+ */
+function computeHistoryPagePlan(flat, summaryLinesWithoutPagination, locale) {
+  if (!flat.length) {
+    return { exclusiveEnds: [0], showPaginationLine: false };
+  }
+  const summaryText = summaryLinesWithoutPagination.join('\n');
+  let usePagLine = false;
+  let prevSig = '';
+  for (let iter = 0; iter < 24; iter += 1) {
+    const fullSummary =
+      summaryText + (usePagLine ? `\n\n${worstHistoryPaginationLine(flat.length, locale)}` : '');
+    const sim = simulateTextChunksBudget(fullSummary, HISTORY_V2_DISPLAY_TEXT_MAX);
+    const ends = computeHistoryPageExclusiveEnds(flat, sim.remaining, locale);
+    if (ends.length <= 1) {
+      return { exclusiveEnds: [flat.length], showPaginationLine: false };
+    }
+    const sig = ends.join(',');
+    if (!usePagLine) {
+      usePagLine = true;
+      prevSig = sig;
+      continue;
+    }
+    if (sig === prevSig) {
+      return { exclusiveEnds: ends, showPaginationLine: true };
+    }
+    prevSig = sig;
+  }
+  const sim = simulateTextChunksBudget(
+    summaryText + `\n\n${worstHistoryPaginationLine(flat.length, locale)}`,
+    HISTORY_V2_DISPLAY_TEXT_MAX,
+  );
+  return {
+    exclusiveEnds: computeHistoryPageExclusiveEnds(flat, sim.remaining, locale),
+    showPaginationLine: true,
+  };
 }
 
 /**
@@ -372,10 +522,11 @@ function orderedUniqueRidsFromSlice(slice) {
  * @param {{ rid: string, bet: object }[]} slice
  * @param {Map<string, string>} timeByRaceId
  */
-function buildHistoryResultPickRow(slice, pickCustomId, timeByRaceId) {
+function buildHistoryResultPickRow(slice, pickCustomId, timeByRaceId, locale) {
   const rids = orderedUniqueRidsFromSlice(slice);
   if (!rids.length) return null;
 
+  const postLbl = t('race_purchase_history.post_time_label', null, locale);
   const opts = [];
   for (const rid of rids) {
     const row = slice.find((s) => s.rid === rid);
@@ -385,7 +536,7 @@ function buildHistoryResultPickRow(slice, pickCustomId, timeByRaceId) {
     const settled = String(bet.status || 'open') === 'settled';
     const hm = historyPostTimeCompactHm(bet, timeByRaceId);
     const desc = hm
-      ? `${hm} 発走`.slice(0, DISCORD_SELECT_OPTION_DESCRIPTION_MAX)
+      ? `${hm}${postLbl}`.slice(0, DISCORD_SELECT_OPTION_DESCRIPTION_MAX)
       : null;
     const b = new StringSelectMenuOptionBuilder()
       .setLabel(label || rid)
@@ -398,13 +549,13 @@ function buildHistoryResultPickRow(slice, pickCustomId, timeByRaceId) {
 
   const menu = new StringSelectMenuBuilder()
     .setCustomId(pickCustomId)
-    .setPlaceholder('このページのレース結果を表示')
+    .setPlaceholder(t('race_purchase_history.select.result_placeholder', null, locale))
     .addOptions(opts);
   return new ActionRowBuilder().addComponents(menu);
 }
 
 /** レース単位のテキストチャンク（チャンクの間に Separator を挟む） */
-function buildHistoryRaceTextChunks(slice, timeByRaceId) {
+function buildHistoryRaceTextChunks(slice, timeByRaceId, locale) {
   let currentRid = null;
   const chunks = [];
   let raceHead = null;
@@ -426,10 +577,11 @@ function buildHistoryRaceTextChunks(slice, timeByRaceId) {
       const base = historyRaceHeadingLine(bet);
       const settled = String(bet.status || 'open') === 'settled';
       const hm = historyPostTimeCompactHm(bet, timeByRaceId);
+      const postSuffix = t('race_purchase_history.post_time_label', null, locale);
       raceHead = settled
         ? `${botingEmojiMarkdown('kaku')}${botingEmojiMarkdown('tei')} **${base}**`
         : hm
-          ? `**${base}**  \`${hm} 発走\``
+          ? `**${base}**  \`${hm}${postSuffix}\``
           : `**${base}**`;
     }
     entries.push(formatBetEntryForHistory(bet));
@@ -466,149 +618,43 @@ function meetingFilterOptionsFromBets(bets) {
     let label = o.label;
     if (labelCount.get(o.label) > 1) {
       const suffix = `·${o.key.slice(-2)}`;
-      label = `${o.label.slice(0, Math.max(1, HISTORY_BTN_LABEL_MAX - suffix.length))}${suffix}`;
+      label = `${o.label.slice(0, Math.max(1, DISCORD_SELECT_OPTION_LABEL_MAX - suffix.length))}${suffix}`;
     }
-    return { key: o.key, label: label.slice(0, HISTORY_BTN_LABEL_MAX) };
+    return { key: o.key, label: label.slice(0, DISCORD_SELECT_OPTION_LABEL_MAX) };
   });
 }
 
 /**
  * 開催日キーに応じた見出し（今日 / 明日 / 日付）
  * @param {string} holdYmd YYYYMMDD
+ * @param {string | null} [locale]
  */
-function historyTitleLineForHoldYmd(holdYmd) {
+function historyTitleLineForHoldYmd(holdYmd, locale) {
   const now = new Date();
   const todayYmd = getJstCalendarYmd(now);
   const tomorrowYmd = addJstCalendarDays(todayYmd, 1);
   const yesterdayYmd = addJstCalendarDays(todayYmd, -1);
-  if (holdYmd === todayYmd) return '**今日の購入履歴**';
-  if (holdYmd === tomorrowYmd) return '**明日の購入履歴**';
-  if (holdYmd === yesterdayYmd) return '**昨日の購入履歴**';
+  if (holdYmd === todayYmd) {
+    return t('race_purchase_history.title.today', null, locale);
+  }
+  if (holdYmd === tomorrowYmd) {
+    return t('race_purchase_history.title.tomorrow', null, locale);
+  }
+  if (holdYmd === yesterdayYmd) {
+    return t('race_purchase_history.title.yesterday', null, locale);
+  }
   const y = holdYmd.slice(0, 4);
   const mo = holdYmd.slice(4, 6);
   const da = holdYmd.slice(6, 8);
-  return `**${y}-${mo}-${da} 開催の購入履歴**`;
+  return t('race_purchase_history.title.date', { y, m: mo, d: da }, locale);
 }
 
 /**
- * 前の日・次の日・前へ・次へを 1 行に並べる（ページが 1 枚だけのときは前へ・次へは出さない）
- * @param {string} periodKey YYYYMMDD
- * @param {string} meetingFilter
- * @param {string | null} prevYmd
- * @param {string | null} nextYmd
- * @param {number} page
- * @param {number} totalPages
- */
-function historyDayAndPageNavRow(
-  periodKey,
-  meetingFilter,
-  prevYmd,
-  nextYmd,
-  page,
-  totalPages,
-  bpRankProfileUserId = null,
-  rankLeaderboardReturn = null,
-) {
-  const mf = String(meetingFilter || 'all').trim() || 'all';
-  const sfx = historyCtxSuffix(bpRankProfileUserId, rankLeaderboardReturn);
-  const dayId = (ymd) =>
-    `${RACE_HISTORY_DAY_PREFIX}|${ymd}|0|${mf}${sfx}`;
-  /** 無効時も custom_id は行内で一意（Discord は重複を拒否） */
-  const disabledPrevId = `${RACE_HISTORY_DAY_PREFIX}|${periodKey}|0|${mf}|_${sfx}`;
-  const disabledNextId = `${RACE_HISTORY_DAY_PREFIX}|${periodKey}|0|${mf}|__${sfx}`;
-
-  const navId = (pg) =>
-    `${RACE_HISTORY_PAGE_PREFIX}|${periodKey}|${pg}|${mf}${sfx}`;
-  const showPageNav = totalPages > 1;
-  const safePage = Math.min(Math.max(0, Number(page) || 0), Math.max(0, totalPages - 1));
-
-  const components = [
-    new ButtonBuilder()
-      .setCustomId(prevYmd ? dayId(prevYmd) : disabledPrevId)
-      .setLabel('前の日')
-      .setEmoji(botingEmoji('mae'))
-      .setStyle(ButtonStyle.Secondary)
-      .setDisabled(prevYmd == null),
-    new ButtonBuilder()
-      .setCustomId(nextYmd ? dayId(nextYmd) : disabledNextId)
-      .setLabel('次の日')
-      .setEmoji(botingEmoji('tsugi'))
-      .setStyle(ButtonStyle.Secondary)
-      .setDisabled(nextYmd == null),
-  ];
-  if (showPageNav) {
-    components.push(
-      new ButtonBuilder()
-        .setCustomId(navId(Math.max(0, safePage - 1)))
-        .setLabel('前へ')
-        .setEmoji(botingEmoji('mae'))
-        .setStyle(ButtonStyle.Secondary)
-        .setDisabled(safePage <= 0),
-      new ButtonBuilder()
-        .setCustomId(navId(Math.min(totalPages - 1, safePage + 1)))
-        .setLabel('次へ')
-        .setEmoji(botingEmoji('tsugi'))
-        .setStyle(ButtonStyle.Secondary)
-        .setDisabled(safePage >= totalPages - 1),
-    );
-  }
-  return new ActionRowBuilder().addComponents(...components);
-}
-
-/**
- * 開催場フィルタのみ（前へ・次の日などは {@link historyDayAndPageNavRow} 側）
- * @param {{ periodKey: string, page: number, totalPages: number, meetingFilter: string, meetings: { key: string, label: string }[] }} opts
- * @returns {import('discord.js').ActionRowBuilder[]}
- */
-function historyFilterAndPaginationRows({
-  periodKey,
-  meetingFilter,
-  meetings,
-  bpRankProfileUserId = null,
-  rankLeaderboardReturn = null,
-}) {
-  const rows = [];
-  const showMeetings = meetings.length >= 2;
-  if (!showMeetings) return rows;
-
-  const sfx = historyCtxSuffix(bpRankProfileUserId, rankLeaderboardReturn);
-  const venueId = (key) =>
-    `${RACE_HISTORY_PAGE_PREFIX}|${periodKey}|0|${key}${sfx}`;
-
-  const allBtn =
-    meetingFilter !== 'all'
-      ? new ButtonBuilder()
-          .setCustomId(`${RACE_HISTORY_PAGE_PREFIX}|${periodKey}|0|all${sfx}`)
-          .setLabel('すべて')
-          .setStyle(ButtonStyle.Primary)
-      : null;
-
-  const venueBtn = (m) =>
-    new ButtonBuilder()
-      .setCustomId(venueId(m.key))
-      .setLabel(m.label)
-      .setStyle(meetingFilter === m.key ? ButtonStyle.Success : ButtonStyle.Secondary);
-
-  const head = [];
-  if (allBtn) head.push(allBtn);
-  const room = Math.max(0, 5 - head.length);
-  const firstVenues = meetings.slice(0, room);
-  const rest = meetings.slice(room);
-  const firstRow = [...head, ...firstVenues.map(venueBtn)];
-  if (firstRow.length) rows.push(new ActionRowBuilder().addComponents(...firstRow));
-  for (let i = 0; i < rest.length; i += 5) {
-    const chunk = rest.slice(i, i + 5).map(venueBtn);
-    rows.push(new ActionRowBuilder().addComponents(...chunk));
-  }
-
-  return rows;
-}
-
-/**
- * @param {{ userId: string, periodKey?: string, page?: number, meetingFilter?: string, extraFlags?: number, bpRankProfileUserId?: string | null, rankLeaderboardReturn?: { limit: number, mode: string } | null }} opts
+ * @param {{ userId: string, periodKey?: string, page?: number, meetingFilter?: string, extraFlags?: number, bpRankProfileUserId?: string | null, rankLeaderboardReturn?: { limit: number, mode: string } | null, locale?: string | null }} opts
  * periodKey … レース開催日 YYYYMMDD（JST）。省略時は resolveDefaultRaceHistoryHoldYmd。
  * bpRankProfileUserId … 設定時はナビ customId に bpctx が付く。
  * rankLeaderboardReturn … 設定時は戻るがランキング向け（`/boting` のランキングから開いた場合）。
+ * locale … `ja` / `en`。未指定は `getDefaultLocale()`（`BOT_LOCALE` または ja）。
  */
 export async function buildRacePurchaseHistoryV2Payload({
   userId,
@@ -618,6 +664,7 @@ export async function buildRacePurchaseHistoryV2Payload({
   extraFlags = 0,
   bpRankProfileUserId = null,
   rankLeaderboardReturn = null,
+  locale = null,
 }) {
   try {
     await runPendingRaceRefundsForUser(userId);
@@ -690,10 +737,55 @@ export async function buildRacePurchaseHistoryV2Payload({
 
   const flat = flattenBetsByRace(bets);
   const totalBets = flat.length;
-  const totalPages = Math.max(1, Math.ceil(totalBets / HISTORY_BETS_PER_PAGE));
+
+  const summaryLinesWithoutPagination = [
+    historyTitleLineForHoldYmd(periodKey, locale),
+    t('race_purchase_history.summary.target_line', { ymd }, locale),
+    '',
+    t('race_purchase_history.summary.bp_balance', { amount: formatBpAmount(bpBalance) }, locale),
+    '',
+    t('race_purchase_history.summary.hit_counts', { hits, misses, pending }, locale),
+    t('race_purchase_history.summary.return_rate', {
+      rate: returnRateStr,
+      refund: formatBpAmount(totalRefundBp),
+      invest: formatBpAmount(totalInvestBp),
+    }, locale),
+  ];
+  if (filterKey !== 'all') {
+    const labelHit = bets.find(
+      (b) => String(b.raceId || '').slice(0, 10) === filterKey,
+    );
+    const vn = labelHit
+      ? venuePrefixForHistoryBet(labelHit) || meetings.find((m) => m.key === filterKey)?.label
+      : meetings.find((m) => m.key === filterKey)?.label;
+    if (vn) {
+      summaryLinesWithoutPagination.push(
+        '',
+        t('race_purchase_history.summary.filter_venue_note', { name: vn }, locale),
+      );
+    }
+  }
+  const meetingSelectCap = historyMeetingSelectMaxVenues();
+  if (meetings.length > meetingSelectCap) {
+    summaryLinesWithoutPagination.push(
+      '',
+      t('race_purchase_history.summary.footnote_meeting_cap', { cap: meetingSelectCap }, locale),
+    );
+  }
+
+  const pagePlan = bets.length
+    ? computeHistoryPagePlan(flat, summaryLinesWithoutPagination, locale)
+    : { exclusiveEnds: [0], showPaginationLine: false };
+  const pageRanges = [];
+  let prev = 0;
+  for (const end of pagePlan.exclusiveEnds) {
+    pageRanges.push({ start: prev, end });
+    prev = end;
+  }
+  const totalPages = Math.max(1, pageRanges.length);
   const safePage = Math.min(Math.max(0, Number(page) || 0), totalPages - 1);
-  const start = safePage * HISTORY_BETS_PER_PAGE;
-  const slice = flat.slice(start, start + HISTORY_BETS_PER_PAGE);
+  const pageRange = pageRanges[safePage] || { start: 0, end: 0 };
+  const slice = flat.slice(pageRange.start, pageRange.end);
 
   let timeByRaceId = new Map();
   let resultPickRow = null;
@@ -706,51 +798,39 @@ export async function buildRacePurchaseHistoryV2Payload({
       bpRankProfileUserId,
       rankLeaderboardReturn,
     });
-    resultPickRow = buildHistoryResultPickRow(slice, pickCustomId, timeByRaceId);
+    resultPickRow = buildHistoryResultPickRow(slice, pickCustomId, timeByRaceId, locale);
   }
 
-  const summaryLines = [
-    historyTitleLineForHoldYmd(periodKey),
-    `対象: **${ymd}** 開催（中央は開催日を保存、地方はレースID先頭の日付でも照合。前日購入分も含みます）`,
-    '',
-    `現在のBP残高 **${formatBpAmount(bpBalance)}** bp`,
-    '',
-    `的中 **${hits}** 件　不的中 **${misses}** 件　未決着 **${pending}** 件`,
-    `回収率 **${returnRateStr}**（払い戻し **${formatBpAmount(totalRefundBp)}** bp ÷ 投資 **${formatBpAmount(totalInvestBp)}** bp）`,
-  ];
-  if (filterKey !== 'all') {
-    const labelHit = bets.find(
-      (b) => String(b.raceId || '').slice(0, 10) === filterKey,
-    );
-    const vn = labelHit
-      ? venuePrefixForHistoryBet(labelHit) || meetings.find((m) => m.key === filterKey)?.label
-      : meetings.find((m) => m.key === filterKey)?.label;
-    if (vn) {
-      summaryLines.push('', `*表示中の開催: **${vn}***`);
-    }
-  }
-  if (totalPages > 1) {
-    summaryLines.push(
-      '',
-      `*ページ **${safePage + 1}** / **${totalPages}**（**${HISTORY_BETS_PER_PAGE}** 件ずつ）*`,
-    );
+  const summaryLines = [...summaryLinesWithoutPagination];
+  if (pagePlan.showPaginationLine && totalPages > 1) {
+    summaryLines.push('', formatHistoryPaginationLine(safePage, totalPages, slice.length, locale));
   }
 
   const container = new ContainerBuilder().setAccentColor(HISTORY_ACCENT);
-  appendChunkedText(container, summaryLines.join('\n'));
+  const textBudget = { remaining: HISTORY_V2_DISPLAY_TEXT_MAX };
+  appendChunkedTextWithinBudget(container, summaryLines.join('\n'), textBudget);
   container.addSeparatorComponents((s) => s);
 
   if (!allBets.length) {
-    appendChunkedText(container, '*この開催日のレースへの購入はまだありません。*');
+    appendChunkedTextWithinBudget(
+      container,
+      t('race_purchase_history.empty.no_bets_on_day', null, locale),
+      textBudget,
+    );
   } else if (!bets.length) {
-    appendChunkedText(container, '*この開催に該当する購入はありません。*');
+    appendChunkedTextWithinBudget(
+      container,
+      t('race_purchase_history.empty.no_bets_for_filter', null, locale),
+      textBudget,
+    );
   } else {
-    const raceChunks = buildHistoryRaceTextChunks(slice, timeByRaceId);
+    const raceChunks = buildHistoryRaceTextChunks(slice, timeByRaceId, locale);
     for (let i = 0; i < raceChunks.length; i++) {
+      if (textBudget.remaining <= 0) break;
       if (i > 0) {
         container.addSeparatorComponents((separator) => separator);
       }
-      appendChunkedText(container, raceChunks[i]);
+      appendChunkedTextWithinBudget(container, raceChunks[i], textBudget);
     }
   }
 
@@ -763,13 +843,15 @@ export async function buildRacePurchaseHistoryV2Payload({
     totalPages,
     bpRankProfileUserId,
     rankLeaderboardReturn,
+    locale,
   );
-  const filterRows = historyFilterAndPaginationRows({
+  const meetingRow = historyMeetingFilterRow({
     periodKey,
     meetingFilter: filterKey,
     meetings,
     bpRankProfileUserId,
     rankLeaderboardReturn,
+    locale,
   });
   let hubBack;
   if (rankLeaderboardReturn?.limit != null && rankLeaderboardReturn.mode) {
@@ -777,17 +859,18 @@ export async function buildRacePurchaseHistoryV2Payload({
       rankLeaderboardReturn.limit,
       rankLeaderboardReturn.mode,
       userId,
+      locale,
     );
   } else if (bpRankProfileUserId) {
-    hubBack = buildBpRankProfileBackButtonRow(bpRankProfileUserId);
+    hubBack = buildBpRankProfileBackButtonRow(bpRankProfileUserId, locale);
   } else {
-    hubBack = buildBotingMenuBackRow();
+    hubBack = buildBotingMenuBackRow({ locale });
   }
   const components = [
     container,
     ...(resultPickRow ? [resultPickRow] : []),
+    ...(meetingRow ? [meetingRow] : []),
     dayRow,
-    ...filterRows,
     hubBack,
   ];
 

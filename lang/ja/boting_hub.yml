@@ -1,0 +1,48 @@
+# /boting メインパネル・開催導線・Daily・収支の種別ラベル
+bp_line: "bp残高：`{{amount}}`"
+schedule_kind_intro: |-
+  まず **中央(JRA)** か **地方(NAR)** を選び、その後に開催場を選ぶとレース一覧が表示されます。続けてレースを選ぶと出馬表を表示します。
+venue_pick_intro: |-
+  開催場を選ぶと、その場のレース一覧（発走時刻・発売状態）が表示されます。続けてレースを選ぶと出馬表を表示します。
+buttons:
+  daily: Dailyをもらう
+  rank: ランキング
+  ledger: 直近の収支
+  purchase: 馬券を購入
+  history: 購入履歴
+  slip: 購入予定
+  annual_stats: 年間統計
+  weekly_challenge: 週間チャレンジ
+  help: ヘルプ
+daily:
+  title_claimed: "## 本日分は受け取り済み"
+  title_available: "## 今日の Daily を受け取れます"
+  balance: "**残高**  **{{amount}}** bp"
+  streak_label: "**いまの連続記録**"
+  streak_none: "—"
+  streak_bonus: "**{{n}}** 日（次の日は {{next}} 日目のボーナス）"
+  foot_jst: "*日次は日本時間 毎日 8:00 で切り替わります*"
+  foot_ledger: "*直近の収支は **直近の収支** ボタンから表示できます。*"
+daily_success_banner: "✅ **+{{granted}}** bp（{{kind}}）\n残高: **{{balance}}** bp"
+errors:
+  points_save_failed: "❌ ポイントの保存に失敗しました: {{message}}"
+  daily_claim_failed: ❌ Daily の受け取りに失敗しました。
+ledger_kinds:
+  first: 初回ボーナス
+  debug_extra: デバッグ
+  debug_bp_adjust: デバッグ（BP調整）
+  race_bet: 競馬（購入）
+  race_refund: 競馬（払戻）
+  race_refund_adjust: 競馬（払戻調整）
+  weekly_challenge: 週間チャレンジ
+  daily_streak: （連続{{n}}日目）
+  daily_plain: デイリー
+  fallback: デイリー
+ledger:
+  title: "## 直近の収支"
+  target_line: "対象: {{mention}}\n\n"
+  page_line: "**{{size}}** 件/ページ ・ **{{page}}** ページ目"
+  capped_warning: "\n⚠️ 一度に読める件数は最大 **{{max}}** 件までです。ページを戻すか、表示件数を小さくしてください。"
+  empty_page: （このページに表示する収支がありません）
+  truncated_suffix: "\n…他省略"
+  change_page_size: 表示数を変える

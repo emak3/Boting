@@ -1,0 +1,47 @@
+bp_line: "bp balance: `{{amount}}`"
+schedule_kind_intro: |-
+  Pick **JRA** or **NAR**, then a meeting to see the race list. Pick a race to open entries.
+venue_pick_intro: |-
+  Pick a meeting to see its race list (post times and sales status). Pick a race to open entries.
+buttons:
+  daily: Claim Daily
+  rank: Rankings
+  ledger: Recent ledger
+  purchase: Buy tickets
+  history: Purchase history
+  slip: Saved picks
+  annual_stats: Yearly stats
+  weekly_challenge: Weekly challenge
+  help: Help
+daily:
+  title_claimed: "## Already claimed today"
+  title_available: "## Daily is available"
+  balance: "**Balance**  **{{amount}}** bp"
+  streak_label: "**Current streak**"
+  streak_none: "—"
+  streak_bonus: "**{{n}}** days (next is day **{{next}}** bonus)"
+  foot_jst: "*Daily resets every day at **08:00 JST**.*"
+  foot_ledger: "*Use **Recent ledger** for the latest transactions.*"
+daily_success_banner: "✅ **+{{granted}}** bp ({{kind}})\nBalance: **{{balance}}** bp"
+errors:
+  points_save_failed: "❌ Failed to save points: {{message}}"
+  daily_claim_failed: ❌ Could not claim Daily.
+ledger_kinds:
+  first: First-time bonus
+  debug_extra: Debug
+  debug_bp_adjust: Debug (BP adjust)
+  race_bet: Racing (bet)
+  race_refund: Racing (refund)
+  race_refund_adjust: Racing (refund adjust)
+  weekly_challenge: Weekly challenge
+  daily_streak: "(day {{n}} of streak)"
+  daily_plain: Daily
+  fallback: Daily
+ledger:
+  title: "## Recent ledger"
+  target_line: "User: {{mention}}\n\n"
+  page_line: "**{{size}}** per page · page **{{page}}**"
+  capped_warning: "\n⚠️ At most **{{max}}** rows can be loaded. Go back or lower the page size."
+  empty_page: (No rows on this page)
+  truncated_suffix: "\n…truncated"
+  change_page_size: Change page size

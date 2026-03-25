@@ -1,26 +1,27 @@
+import { t } from '../../../i18n/index.mjs';
+import { betTypeLabel } from './betFlowLabels.mjs';
+
+const LEGACY_UNKNOWN_JA = '（券種不明）';
+
 /**
- * race_bets.betType（フロー ID）を画面表示用の日本語に変換する。
- * @see raceSchedule.mjs の BET_TYPES と揃える
+ * race_bets.betType（フロー ID）を画面表示用に変換する。
+ * @param {string} raw
+ * @param {string | null} [locale]
+ * @returns {string}
  */
-const BET_TYPE_LABEL_JA = {
-  win: '単勝',
-  place: '複勝',
-  win_place: '単勝+複勝',
-  frame_pair: '枠連',
-  horse_pair: '馬連',
-  wide: 'ワイド',
-  umatan: '馬単',
-  trifuku: '3連複',
-  tritan: '3連単',
-};
+export function betTypeDisplayLabel(raw, locale = null) {
+  const k = String(raw ?? '').trim();
+  const unk = t('bet_flow.unknown_bet_type', null, locale);
+  if (!k || k === LEGACY_UNKNOWN_JA) return unk;
+  const lbl = betTypeLabel(k, locale);
+  if (!lbl || lbl.startsWith('bet_flow.')) return k;
+  return lbl;
+}
 
 /**
  * @param {string} raw
  * @returns {string}
  */
 export function betTypeDisplayLabelJa(raw) {
-  const k = String(raw ?? '').trim();
-  if (!k) return '（券種不明）';
-  if (k === '（券種不明）') return k;
-  return BET_TYPE_LABEL_JA[k] ?? k;
+  return betTypeDisplayLabel(raw, 'ja');
 }

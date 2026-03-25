@@ -1,23 +1,25 @@
 import { ActionRowBuilder, ButtonBuilder, ButtonStyle, MessageFlags } from 'discord.js';
+import { t } from '../../../i18n/index.mjs';
 import { BOTING_HUB_PREFIX } from './botingHubConstants.mjs';
 import { botingEmoji } from './botingEmojis.mjs';
 
 /** `/boting` メインメニューへ戻る（エラー文面・サブ画面の下に並べる） */
-export function buildBotingMenuBackRow() {
+export function buildBotingMenuBackRow(options = {}) {
+  const loc = options.locale ?? null;
   return new ActionRowBuilder().addComponents(
     new ButtonBuilder()
       .setCustomId(`${BOTING_HUB_PREFIX}|back`)
-      .setLabel('メニューに戻る')
+      .setLabel(t('common.menu_back', null, loc))
       .setEmoji(botingEmoji('home'))
       .setStyle(ButtonStyle.Secondary),
   );
 }
 
 /** エフェメラル返信用（本文 + メニューに戻る。スラッシュを再度打たなくてよい） */
-export function buildEphemeralWithBotingBackPayload(content) {
+export function buildEphemeralWithBotingBackPayload(content, options = {}) {
   return {
     content,
-    components: [buildBotingMenuBackRow()],
+    components: [buildBotingMenuBackRow(options)],
     flags: MessageFlags.Ephemeral,
   };
 }

@@ -1,5 +1,5 @@
 import { MessageFlags } from 'discord.js';
-import { MSG_SLIP_BATCH_REVIEW_SESSION_INVALID } from '../../utils/bet/betSlipCopy.mjs';
+import { msgSlipBatchReviewSessionInvalid } from '../../utils/bet/betSlipCopy.mjs';
 import {
   getSlipPendingReview,
   replaceSlipPendingItems,
@@ -9,6 +9,7 @@ import { buildSlipReviewV2Payload } from '../../utils/bet/betSlipReview.mjs';
 import { buildTextAndRowsV2Payload } from '../../utils/race/raceCardDisplay.mjs';
 import { buildUnitKeypadPayload, initBufferFromUnitYen } from '../../utils/unit/unitYenKeypad.mjs';
 import { setUnitKeypadDraft } from '../../utils/unit/unitYenKeypadStore.mjs';
+import { resolveLocaleFromInteraction, t } from '../../../i18n/index.mjs';
 
 function anchorRaceIdFromSlipCustomId(customId) {
   const parts = String(customId).split('|');
@@ -18,13 +19,14 @@ function anchorRaceIdFromSlipCustomId(customId) {
 export default async function betSlipMenu(interaction) {
   if (!interaction.isStringSelectMenu()) return;
   const customId = interaction.customId;
+  const loc = resolveLocaleFromInteraction(interaction);
 
   if (customId.startsWith('race_bet_slip_unit_pick|')) {
     const userId = interaction.user.id;
     const pending = getSlipPendingReview(userId);
     if (!pending?.items?.length) {
       await interaction.reply({
-        content: MSG_SLIP_BATCH_REVIEW_SESSION_INVALID,
+        content: msgSlipBatchReviewSessionInvalid(loc),
         flags: MessageFlags.Ephemeral,
       });
       return;
@@ -33,7 +35,7 @@ export default async function betSlipMenu(interaction) {
     const anchorRaceId = anchorRaceIdFromSlipCustomId(customId);
     if (!anchorRaceId || !/^\d{12}$/.test(anchorRaceId)) {
       await interaction.reply({
-        content: '❌ 操作が無効です。',
+        content: t('bet_slip.menu_invalid_op', null, loc),
         flags: MessageFlags.Ephemeral,
       });
       return;
@@ -42,7 +44,7 @@ export default async function betSlipMenu(interaction) {
     const idx = parseInt(interaction.values[0], 10);
     if (!Number.isFinite(idx) || idx < 0 || idx >= pending.items.length) {
       await interaction.reply({
-        content: '❌ 選択が無効です。',
+        content: t('bet_slip.menu_invalid_pick', null, loc),
         flags: MessageFlags.Ephemeral,
       });
       return;
@@ -72,7 +74,7 @@ export default async function betSlipMenu(interaction) {
         kind: 'slip',
         slipIdx: idx,
         buffer: buf,
-        subtitle: `**${idx + 1}番の購入予定**`,
+        subtitle: t('bet_slip.pick_subtitle', { n: idx + 1 }, loc),
         extraFlags,
       }),
     );
@@ -85,7 +87,7 @@ export default async function betSlipMenu(interaction) {
   const pending = getSlipPendingReview(userId);
   if (!pending?.items?.length) {
     await interaction.reply({
-      content: MSG_SLIP_BATCH_REVIEW_SESSION_INVALID,
+      content: msgSlipBatchReviewSessionInvalid(loc),
       flags: MessageFlags.Ephemeral,
     });
     return;
@@ -94,7 +96,7 @@ export default async function betSlipMenu(interaction) {
   const vi = parseInt(interaction.values[0], 10);
   if (!Number.isFinite(vi) || vi < 0 || vi >= pending.items.length) {
     await interaction.reply({
-      content: '❌ 削除できませんでした。',
+      content: t('bet_slip.menu_remove_failed', null, loc),
       flags: MessageFlags.Ephemeral,
     });
     return;
@@ -115,16 +117,18 @@ export default async function betSlipMenu(interaction) {
     clearSlipPending(userId);
     await interaction.update(
       buildTextAndRowsV2Payload({
-        headline:
-          '購入予定をすべて削除しました。\n\nもう一度 **/boting** からやり直してください。',
+        headline: t('bet_slip.all_picks_removed', null, loc),
         actionRows: [],
         extraFlags,
         withBotingMenuBack: true,
+        locale: loc,
       }),
     );
     return;
   }
 
   replaceSlipPendingItems(userId, next);
-  await interaction.update(await buildSlipReviewV2Payload({ userId, extraFlags }));
+  await interaction.update(
+    await buildSlipReviewV2Payload({ userId, extraFlags, locale: loc }),
+  );
 }

@@ -1,0 +1,5 @@
+db_quota: |
+  ❌ Database limit reached (quota exceeded or disk full).
+  Check free space on the host, or your cloud DB quota in the console.
+display_failed: '❌ Failed to display: {{message}}'
+interaction_failed: 'Something went wrong. Please try again in a moment.'

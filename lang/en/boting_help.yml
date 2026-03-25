@@ -1,0 +1,33 @@
+title: "## Help"
+overview_intro: |-
+  Bet types and rules are explained on JRA’s official site. **Which bets are sold for a given field size** follows that official chart for both **JRA** and **NAR** (local rules may differ in real life). Pick a **region tab** below for official YouTube channels.
+link_types_heading: Bet types (beginners)
+link_types_sub: Overview of 10 bet types
+link_types_btn: "JRA: bet types"
+link_rules_heading: Bet rules
+link_rules_sub: Sales, payouts, validity, etc.
+link_rules_btn: "JRA: rules"
+youtube_section: "### YouTube (live)\nPick a **region tab** (e.g. Kanto, Hokkaido)."
+region_intro: Open each official YouTube channel with the buttons on the right.
+region_footer: Pick another region from the **region tab** below.
+select_placeholder: Choose a region tab
+select_placeholder_active: "Region tab (showing: {{label}})"
+tabs:
+  overview:
+    label: Overview
+    description: Bet types & rules (JRA reference)
+  central:
+    label: JRA (central)
+    description: JRA on YouTube
+  hokkaido_tohoku:
+    label: Hokkaido / Tohoku
+    description: Obihiro, Monbetsu, Sapporo, Iwate, …
+  nan_kanto:
+    label: South Kanto
+    description: Urawa, Funabashi, Oi, Kawasaki
+  chubu_hokuriku:
+    label: Chubu / Hokuriku
+    description: Kanazawa, Kasamatsu, Nagoya
+  kinki_shikoku_kyushu:
+    label: Kinki / Shikoku / Kyushu
+    description: Sonoda, Himeji, Kochi, Saga

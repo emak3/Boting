@@ -1,0 +1,158 @@
+# 開催表・レース一覧・購入フロー（raceSchedule）専用。券種名・モード名は bet_flow を参照。
+placeholders:
+  pick_race: レースを選択（出馬表を表示）
+  pick_venue: 開催場を選択
+schedule_kind:
+  placeholder: 中央(JRA) か 地方(NAR) を選択
+  jra_label: 中央競馬 (JRA)
+  jra_desc: race.netkeiba.com
+  nar_label: 地方競馬 (NAR)
+  nar_desc: nar.netkeiba.com
+  back_button: JRA/NARを選び直す
+buttons:
+  to_venue: 開催場へ
+  clear_cart: 購入予定をクリア
+  cart: 購入予定
+  cart_with_count: "購入予定({{n}})"
+  multi_on: "マルチ: ON"
+  multi_off: "マルチ: OFF"
+  unit_edit: 金額変更
+  add_to_cart: 購入予定に追加
+  purchase_history: 購入履歴
+venue:
+  race_count: "全{{n}}レース"
+  nar_prefix: "[地方] "
+format:
+  bet_points: "点数: {{points}}点 | 合計: {{yen}} bp（{{unit}} bp/点）"
+lines:
+  venue_quick_pick_hint: "**発売中で締切が近いレース**を選ぶと、そのまま出馬表へ進めます。"
+  race_list_title: "🏇 **レース一覧**"
+  race_list_kaisai: "開催日 {{date}}（日本時間）"
+  result_url: "\n結果: {{url}}"
+bp_footer:
+  refund_positive: "**あなたの競馬払戻** +{{net}} bp（残高 {{balance}} bp）"
+  refund_adjust: "**あなたの競馬払戻（調整）** {{net}} bp（残高 {{balance}} bp）"
+  refund_none: "**あなたの競馬払戻** 該当なし（精算 {{settled}} 件・残高 {{balance}} bp）"
+display:
+  unit_frame: 枠
+  unit_horse: 馬番
+selection_snippets:
+  frames_colon: "枠: {{list}}"
+  horses_colon: "馬番: {{list}}"
+  axis_opp: "軸: {{axis}} / 相手: {{opp}}"
+  form_two_groups: "第1群: {{g1}} / 第2群: {{g2}}"
+sales_status:
+  short:
+    result_final: 確定
+    time_unknown: —
+    time_parse_error: —
+    posted: 発走済
+    sales_closed: 締切
+    open: 発売中
+  detail:
+    result_final: 結果確定
+    time_unknown: 時刻不明
+    time_parse_error: 時刻解析エラー
+    posted: 発走済み（発売終了）
+    sales_closed: 発売締切（発走2分前）
+    open: 発売中（発走約2分前まで）
+errors:
+  summary_replay_failed: ❌ サマリーを再表示できませんでした。
+  hub_quick_invalid: ❌ メニュー値が不正です。中央/地方を選び直すか、もう一度 **馬券を購入** からやり直してください。
+  card_fetch_failed: "❌ 出馬表の取得に失敗: {{message}}"
+  jra_no_meeting_date: "❌ **{{date}}**（日本時間）の日付では中央（JRA）の開催がありません（休場日など）。開催のある日に再度お試しください。"
+  jra_no_races_post_date: ❌ この操作日（日本時間）に発走のある中央開催が見つかりませんでした。
+  nar_no_races_post_date: ❌ この操作日（日本時間）に発走のある地方開催が見つかりませんでした。
+  schedule_fetch_failed: "❌ 開催一覧の取得に失敗: {{message}}"
+  menu_invalid_boting: ❌ メニュー値が不正です。もう一度 /boting から試してください。
+  venue_no_races_today: ❌ その開催場で、この操作日（日本時間）の発走として表示できるレースがありません。
+  generic_message: "❌ {{message}}"
+  jra_bet_type_not_allowed: |-
+    ❌ この出走頭数ではその券種は発売されません（JRA 公式の発売頭数表に準拠し、中央(JRA)・地方(NAR)とも同じルールで絞り込み）。
+    https://www.jra.go.jp/kouza/baken/index.html#cat_sell
+    別の券種を選んでください。
+  unsupported_bet_type: ❌ 未対応の賭け方式です。
+  schedule_back_invalid: ❌ 戻れません。
+  schedule_back_no_flow: ❌ 戻れません（開催情報が見つかりません）。もう一度 /boting から試してください。
+  schedule_back_race_list_refetch: ❌ レース一覧を再取得できませんでした。
+  schedule_back_no_races_post_date: ❌ この操作日に該当するレースがありません。もう一度 /boting から開催を選び直してください。
+  schedule_back_failed: "❌ 戻る処理に失敗: {{message}}"
+headlines:
+  wait_confirm_payout: "⏳ **確定までしばらくお待ちください。**"
+  result_fetch_failed: ❌ レース結果の取得に失敗しました。時間をおいて再度お試しください。
+  sales_closed_wait: ⏳ 発売は締め切られています。レース結果の確定までお待ちください。
+  pick_horses: "「{{betType}}」の馬番を選択してください。"
+  pick_vote_mode: "「{{betType}}」の投票形式を選択してください。"
+  pair_normal_frame_first: "「通常（枠連）」: 第1枠を1つ選択してください。"
+  pair_normal_horse_two: "「通常」: 馬番を2つまで選択してください。"
+  pair_nagashi_axis: "「ながし」: まず軸を{{unit}}で1つ選んでください。"
+  pair_nagashi_opponent: "「ながし」: 相手を{{unit}}で選択してください。"
+  pair_box: "「ボックス」: {{unit}}を必要数選択してください。"
+  pair_form_first: "「フォーメーション」: 第1群（{{unit}}）を選択してください。"
+  pair_form_second: "「フォーメーション」: 第2群（{{unit}}）を選択してください。"
+  pair_normal_pick_two: ❌ 通常は2つ選択してください。
+  frame_pick_second: 次に第2枠を選択してください。
+  frame_same_wakuren_error: 同枠に2頭以上いないため、同枠同士は選べません。第2枠を選び直してください。
+  umatan_normal_first: "「馬単 通常」: まず1着を選択してください。"
+  umatan_nagashi1_axis: "「1着ながし」: 軸（1着）を選択してください。"
+  umatan_nagashi2_axis: "「2着ながし」: 軸（2着）を選択してください。"
+  umatan_box: "「馬単 ボックス」: 馬番を必要数選択してください。"
+  umatan_form_a: "「馬単 フォーメーション」: 第1群（1着候補）を選択してください。"
+  umatan_pick_second: 次に2着を選択してください。
+  umatan_opp_second: 相手（2着）を選択してください（複数可）。
+  umatan_opp_first: 相手（1着）を選択してください（複数可）。
+  umatan_form_b: 第2群（2着候補）を選択してください。
+  trifuku_normal: "「3連複 通常」: 馬番を3つ（3頭）選択してください。"
+  trifuku_n1_axis: "「軸1頭ながし」: 軸を1頭選択してください。"
+  trifuku_n2_axis: "「軸2頭ながし」: 軸を2頭選択してください。"
+  trifuku_box: "「3連複 ボックス」: 馬番を必要数選択してください（3頭以上）。"
+  trifuku_form_a: "「3連複 フォーメーション」: 第1群を選択してください。"
+  trifuku_opp_two: 相手（2頭分）を選択してください（複数可）。
+  trifuku_opp_one: 相手（残り1頭）を選択してください（複数可）。
+  trifuku_form_b: 第2群を選択してください。
+  trifuku_form_c: 第3群を選択してください。
+  tritan_normal_first: "「3連単 通常」: まず1着を選択してください。"
+  tritan_n1_axis: "「1着ながし」: 軸（1着）を選択してください。"
+  tritan_n2_axis: "「2着ながし」: 軸（2着）を選択してください。"
+  tritan_n3_axis: "「3着ながし」: 軸（3着）を選択してください。"
+  tritan_n12_first: "「1・2着ながし」: まず1着を選択してください。"
+  tritan_n13_first: "「1・3着ながし」: まず1着を選択してください。"
+  tritan_n23_first: "「2・3着ながし」: まず2着を選択してください。"
+  tritan_box: "「3連単 ボックス」: 馬番を必要数選択してください（3頭以上）。"
+  tritan_form_a: "「3連単 フォーメーション」: 第1群（1着候補）を選択してください。"
+  tritan_pick_second: 次に2着を選択してください。
+  tritan_pick_third: 最後に3着を選択してください。
+  tritan_opp_23: 相手（2着・3着）を選択してください（複数可）。
+  tritan_opp_13: 相手（1着・3着）を選択してください（複数可）。
+  tritan_opp_12: 相手（1着・2着）を選択してください（複数可）。
+  tritan_pick_second_again: 次に2着を選択してください。
+  tritan_opp_third_multi: 次に3着（相手）を選択してください（複数可）。
+  tritan_pick_third_plain: 次に3着を選択してください。
+  tritan_opp_second_multi: 次に2着（相手）を選択してください（複数可）。
+  tritan_pick_third_again: 次に3着を選択してください。
+  tritan_opp_first_multi: 次に1着（相手）を選択してください（複数可）。
+  tritan_form_b_group: 第2群（2着候補）を選択してください。
+  tritan_form_c_group: 第3群（3着候補）を選択してください。
+selection:
+  arrow: "選択: {{betType}} => {{summary}}"
+  with_mode: "選択: {{betType}}（{{mode}}）=> {{summary}}"
+  frame_pair_normal: "選択: {{betType}}（{{mode}}）=> {{summary}}"
+  umatan_normal: "選択: {{betType}}（{{mode}}）=> 1着: {{p1}} / 2着: {{p2}}"
+  umatan_nagashi1: "選択: {{betType}}（{{mode}}）=> 軸(1着): {{axis}} / 相手(2着): {{opp}}"
+  umatan_nagashi2: "選択: {{betType}}（{{mode}}）=> 軸(2着): {{axis}} / 相手(1着): {{opp}}"
+  umatan_box: "選択: {{betType}}（{{mode}}）=> 馬番: {{horses}}"
+  umatan_form: "選択: {{betType}}（{{mode}}）=> 1着群: {{a}} / 2着群: {{b}}"
+  trifuku_normal: "選択: {{betType}}（{{mode}}）=> {{horses}}"
+  trifuku_n1: "選択: {{betType}}（{{mode}}）=> 軸: {{axis}} / 相手: {{opp}}"
+  trifuku_n2: "選択: {{betType}}（{{mode}}）=> 軸: {{axis}} / 相手: {{opp}}"
+  trifuku_box: "選択: {{betType}}（{{mode}}）=> {{horses}}"
+  trifuku_form: "選択: {{betType}}（{{mode}}）=> A: {{a}} / B: {{b}} / C: {{c}}"
+  tritan_normal: "選択: {{betType}}（{{mode}}）=> 1着: {{p1}} / 2着: {{p2}} / 3着: {{p3}}"
+  tritan_nagashi1: "選択: {{betType}}（{{mode}}）=> 軸: {{axis}} / 相手: {{opp}}"
+  tritan_nagashi2: "選択: {{betType}}（{{mode}}）=> 軸: {{axis}} / 相手: {{opp}}"
+  tritan_nagashi3: "選択: {{betType}}（{{mode}}）=> 軸: {{axis}} / 相手: {{opp}}"
+  tritan_n12: "選択: {{betType}}（{{mode}}）=> 1着: {{a1}} / 2着: {{a2}} / 3着相手: {{opp}}"
+  tritan_n13: "選択: {{betType}}（{{mode}}）=> 1着: {{a1}} / 3着: {{a3}} / 2着相手: {{opp}}"
+  tritan_n23: "選択: {{betType}}（{{mode}}）=> 2着: {{a2}} / 3着: {{a3}} / 1着相手: {{opp}}"
+  tritan_box: "選択: {{betType}}（{{mode}}）=> {{horses}}"
+  tritan_form: "選択: {{betType}}（{{mode}}）=> 1着群: {{a}} / 2着群: {{b}} / 3着群: {{c}}"

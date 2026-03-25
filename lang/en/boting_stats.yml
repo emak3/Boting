@@ -1,0 +1,48 @@
+annual:
+  target: "User: {{mention}}"
+  title: "**Yearly stats (JST {{year}}, by purchase time)**"
+  purchase_count: "・Purchases: **{{count}}**"
+  total_cost: "・Total staked: **{{amount}}** bp"
+  total_refund: "・Total refunds (settled): **{{amount}}** bp"
+  recovery: "・Recovery (settled): **{{pct}}**"
+  hit_rate: "・Hit rate (settled): **{{pct}}** (hits {{hits}} / settled {{settled}})"
+  top_bet_types_heading: "**Top bet types (top 3)**"
+  top_bet_type_line: "{{i}}. {{label}} ({{count}})"
+  top_bet_types_empty: "— (no purchases)"
+  max_miss_streak: "**Longest miss streak (settled, refund 0)**: **{{n}}**"
+
+weekly:
+  week_range: "{{start}} (Mon)–{{end}} (Sun)"
+  challenge_labels:
+    hits: Hit count
+    recovery: Recovery rate
+    hitRate: Hit rate
+    purchases: Purchase count
+  claim_none: "**No rewards to claim this time.**\n\n"
+  claim_heading: "**Rewards claimed**"
+  claim_line: "・{{label}} (week {{week}}): **+{{bp}}** bp"
+  claim_total: "**Total +{{bp}}** bp"
+  prev_week_heading: "**Last week**"
+  prev_week_empty: "(No completed week yet)"
+  status_off: "・{{label}}: — (reward 0 in settings)"
+  status_not_met: "・{{label}}: Not met"
+  status_claimed: "・{{label}}: Met (**+{{bp}}** bp claimed)"
+  status_blocked: "・{{label}}: Met (**+{{bp}}** bp · weekly CH disabled)"
+  status_pending: "・{{label}}: Met (**+{{bp}}** bp unclaimed)"
+  cfg_heading: "**This week’s challenge (Mon 0:00–Sun 24:00 JST)**"
+  cfg_off_warning: "⚠️ **Currently OFF**"
+  cfg_targets_heading: "**Goals & rewards**"
+  cfg_on: "ON"
+  cfg_off: "OFF"
+  cfg_enabled: "Enabled: **{{on}}**"
+  cfg_row_hits: "> Hits ≥ **{{min}}** → **+{{bp}}** bp"
+  cfg_row_recovery: "> Recovery ≥ **{{min}}%** → **+{{bp}}** bp"
+  cfg_row_hit_rate: "> Hit rate ≥ **{{min}}%** → **+{{bp}}** bp"
+  cfg_row_purchases: "> Purchases ≥ **{{min}}** → **+{{bp}}** bp"
+  prog_heading: "**This week’s progress**"
+  prog_hits: "・Hits (settled): **{{cur}}** / need ≥ {{min}}"
+  prog_recovery: "・Recovery (settled): **{{cur}}** / need ≥ {{min}}%"
+  prog_hit_rate: "・Hit rate (settled): **{{cur}}** / need ≥ {{min}}%"
+  prog_purchases: "・Purchases: **{{cur}}** / need ≥ {{min}}"
+  prog_footnote: "※ If older weeks are unclaimed, the button below applies them once per challenge type."
+  claim_button: Claim challenge rewards

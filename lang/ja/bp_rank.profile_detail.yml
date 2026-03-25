@@ -1,0 +1,32 @@
+# /bp_rank プロフィール本文・購入予定（閲覧のみ）
+user_fallback: ユーザー
+
+rank:
+  line: "**{{rank}}** / {{total}} 位（同率は同順位）"
+  outside: （ランキング対象外・データなし）
+
+detail:
+  title: "**BP 詳細 — {{username}}**"
+  current_bp: "**現在の BP**　**{{amount}}** bp"
+  rank_row: "**順位**　{{line}}"
+  section_guild: "**サーバー参加日**"
+  section_first_use: "**初回利用（台帳・購入の早い方）**"
+  section_racing: "**競馬購入**"
+  hit_count: "的中件数: **{{n}}** 件"
+  purchase_count: "購入件数: **{{n}}** 件"
+  total_cost: "購入金額合計: **{{amount}}** bp"
+  max_cost_per_bet: "1点あたり最大金額: **{{amount}}** bp"
+  settled_count: "精算済み件数: **{{n}}** 件"
+  total_recovery: "トータル回収率（精算済み合計）: **{{pct}}**（払戻 **{{refund}}** bp / 購入 **{{cost}}** bp）"
+  max_recovery: "最大回収率（精算済み1件あたり）: **{{pct}}**"
+  min_recovery: "最低回収率（精算済み1件あたり）: **{{pct}}**"
+  recovery_footnote: "*回収率 = 払戻 bp ÷ 購入 bp（未確定は集計に含めません）*"
+
+slip_readonly:
+  errors:
+    invalid_user: ❌ ユーザーの指定が無効です。
+  empty: "❌ **{{username}}** の購入予定はありません。"
+  title: "**{{username}} の購入予定（閲覧のみ）**"
+  balance: "対象の bp 残高 **{{amount}}** bp"
+  totals: "合計 **{{points}}** 点　合計 **{{yen}}** bp（確定時の目安）"
+  disclaimer: "*他のユーザーの購入予定は閲覧のみです。編集・購入は /boting から行えます。*"

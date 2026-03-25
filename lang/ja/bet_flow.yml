@@ -1,0 +1,159 @@
+# 馬券フロー（ボタン・セレクト・エラー）
+unknown_bet_type: （券種不明）
+bet_types:
+  win: 単勝
+  place: 複勝
+  win_place: 単勝+複勝
+  frame_pair: 枠連
+  horse_pair: 馬連
+  wide: ワイド
+  umatan: 馬単
+  trifuku: 3連複
+  tritan: 3連単
+pair_modes:
+  normal: 通常
+  nagashi: ながし
+  box: ボックス
+  formation: フォーメーション
+umatan_modes:
+  normal: 通常
+  nagashi1: 1着ながし
+  nagashi2: 2着ながし
+  box: ボックス
+  formation: フォーメーション
+trifuku_modes:
+  normal: 通常
+  nagashi1: 軸1頭ながし
+  nagashi2: 軸2頭ながし
+  box: ボックス
+  formation: フォーメーション
+tritan_modes:
+  normal: 通常
+  nagashi1: 1着ながし
+  nagashi2: 2着ながし
+  nagashi3: 3着ながし
+  nagashi12: 1・2着ながし
+  nagashi13: 1・3着ながし
+  nagashi23: 2・3着ながし
+  box: ボックス
+  formation: フォーメーション
+nav:
+  to_race_list: レース一覧へ
+  back: 戻る
+  forward: 進む
+resume_headline: 購入前（戻り）
+resume_with_pick: |-
+  購入前（戻り）
+  {{line}}
+frame_option:
+  count_only: "{{count}}頭"
+  with_example: "{{count}}頭（例: {{name}}）"
+descriptions:
+  after_bet_type: 選択後に馬番/枠番を指定します
+  next_pick_horses: 次で馬番/枠番を選びます
+placeholders:
+  choose_bet_style: 賭ける方式を選択
+  pick_one_horse: 馬番を1頭選択
+  vote_mode: 投票形式を選択
+  frame_pick_two: 枠を選択（最大2）
+  horse_pick_two: 馬番を選択（最大2）
+  axis_frame: 軸の枠を選択
+  axis_horse: 軸の馬番を選択
+  opponents_multi: 相手を選択（複数可）
+  frame_pick: 枠を選択
+  horse_pick: 馬番を選択
+  form_a_frame: 第1群枠を選択
+  form_a_horse: 第1群馬番を選択
+  form_b_frame: 第2群枠を選択
+  form_b_horse: 第2群馬番を選択
+  first_frame: 第1枠を選択
+  second_frame: 第2枠を選択
+  umatan_place_1: 1着（1頭）
+  umatan_place_2: 2着（1頭）
+  axis_one: 軸（1頭）
+  opponents_multi_short: 相手（複数可）
+  horses_multi: 馬番を選択（複数可）
+  group_1st: 第1群（1着）
+  group_2nd: 第2群（2着）
+  pick_three: 3頭を選択
+  axis_two: 軸（2頭）
+  horses_multi_short: 馬番（複数可）
+  tritan_place_1: 1着（1頭）
+  tritan_place_2: 2着（1頭）
+  tritan_place_3: 3着（1頭）
+  form_group_1: 第1群
+  form_group_2: 第2群
+  form_group_3: 第3群
+  form_group_1_tritan: 第1群（1着候補）
+  form_group_2_tritan: 第2群（2着候補）
+  form_group_3_tritan: 第3群（3着候補）
+  group_a_umatan: 第1群（1着）
+  group_b_umatan: 第2群（2着）
+  # 軸・相手（着順付き、raceSchedule）
+  axis_place_1: 軸（1着）
+  axis_place_2: 軸（2着）
+  axis_place_3: 軸（3着）
+  opp_place_1: 相手（1着）
+  opp_place_2: 相手（2着）
+  opponent_pick: 相手
+  opp_3rd_multi: 3着相手
+  opp_2nd_multi: 2着相手
+  opp_1st_multi: 1着相手
+  # 枠連フォーメーション用ショート（第1群枠 / 第1群馬番）
+  pair_form_group1_frame: 第1群枠
+  pair_form_group1_horse: 第1群馬番
+  pair_form_group2_frame: 第2群枠
+  pair_form_group2_horse: 第2群馬番
+  # 3連単フォーメーション（着順付きグループ名）
+  tritan_form_group2_place: 第2群（2着）
+  tritan_form_group3_place: 第3群（3着）
+# 1点あたり金額モーダル（race_bet_unit_modal）
+unit_modal:
+  selection_none: （選択なし）
+  errors:
+    session_invalid: ❌ セッションが無効です。
+    bp_positive_int: ❌ bp は正の整数で入力してください。
+# 買い目・サマリー内（絵文字が無いときの表記）
+display:
+  horse_number_fallback: "{{n}}番"
+  frame_token_fallback: "枠{{raw}}"
+errors:
+  invalid_op: ❌ 操作が無効です。
+  jra_multi_here: ❌ ここではマルチを切り替えられません。
+  slip_back_invalid: ❌ 戻れません。もう一度 /boting から開き直してください。
+  slip_back_stale: ❌ このメッセージは古いです。もう一度開き直してください。
+  slip_back_failed: ❌ 戻れません。
+  add_incomplete: ❌ 追加できません（選択が完了していません）。
+  add_stale_data: ❌ 購入予定データが古いか不完全です。出馬表から式別を選び直してから **購入予定に追加** してください。
+  forward_blocked: ❌ ここからは進めません。
+  unit_edit_blocked: ❌ いまは金額を変えられません。式別と馬番の選択を完了してください。
+  no_tickets_data: ❌ 購入予定に **払戻用データ** がありません。出馬表から該当レースを開き直し、式別を選び直して **購入予定に追加** し直してください。
+  bp_short_confirm: |-
+    ❌ **bp が不足**しています（必要 **{{need}}** bp / 残高 **{{bal}}** bp）。
+    /boting の **Dailyをもらう** で受け取るか、購入予定を減らす・1点あたりの金額を下げてください。
+  db_save_failed: "❌ **データベースへの保存に失敗しました**（bp の減算・購入記録は行われていません）。ホストのディスク空きやネットワークを確認し、しばらくしてから再度お試しください。\n`{{detail}}`"
+  purchase_failed_generic: ❌ 購入を完了できませんでした。
+  purchase_bp_short: ❌ **bp が不足**しています（必要 **{{need}}** bp / 残高 **{{bal}}** bp）。
+  purchase_bad_tickets: ❌ 購入予定データが不正です。出馬表からやり直し、**購入予定に追加** し直してください。
+  purchase_bad_race: ❌ レースIDの形式が不正です。出馬表から開き直し、**購入予定に追加** し直してください。
+  purchase_bad_points: ❌ 点数が不正です。出馬表からやり直してください。
+  purchase_empty: ❌ 購入対象がありません。
+slip_confirm:
+  closed_warn_intro: ⚠️ **発売が締め切られている購入予定があるため、この内容では確定できません。**
+  closed_warn_mid: 次の行は、発売終了・発走済み、または結果確定と判定されています。
+  closed_warn_footer: "**締切分のみ削除**でこれらだけを一覧から外します。残りがあれば、もう一度 **この内容で確定** を押してください。"
+  line_item: |-
+    {{i}}. **{{title}}**
+    └ {{sel}}
+  race_fallback: レース
+  unknown_pick: (内容不明)
+  btn_remove_closed: 締切分のみ削除
+  btn_back_review: 確認画面に戻る
+  all_closed_removed: ✅ 表示されていた購入予定はすべて発売締切のため一覧から外しました。/boting から購入予定を追加し直せます。
+add_to_cart_done: |-
+  ✅ 購入予定に追加しました（保存: **{{count}}**件）
+
+  同じレースで別の式別を選ぶか、他レースから追加できます。**購入予定** ボタンで一覧・まとめて確認できます。
+purchase_done:
+  line1_suffix: "**購入完了** −**{{spent}}** bp（残高 **{{balance}}** bp）"
+  line2: レース結果が出たら /boting の馬券購入メニューや開催メニューで結果を表示すると、netkeiba の払戻に基づき bp が自動加算されます。

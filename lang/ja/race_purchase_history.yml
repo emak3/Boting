@@ -1,0 +1,37 @@
+# 購入履歴（V2 パネル・ナビ）
+nav:
+  prev_day: 前の日
+  next_day: 次の日
+  prev_page: 前へ
+  next_page: 次へ
+select:
+  all_meetings: すべて
+  meeting_placeholder: 開催場で絞り込み
+  result_placeholder: このページのレース結果を表示
+post_time_label: ' 発走'
+title:
+  today: '**今日の購入履歴**'
+  tomorrow: '**明日の購入履歴**'
+  yesterday: '**昨日の購入履歴**'
+  date: '**{{y}}-{{m}}-{{d}} 開催の購入履歴**'
+summary:
+  target_line: '対象: **{{ymd}}** 開催（中央は開催日を保存、地方はレースID先頭の日付でも照合。前日購入分も含みます）'
+  bp_balance: '現在のBP残高 **{{amount}}** bp'
+  hit_counts: '的中 **{{hits}}** 件　不的中 **{{misses}}** 件　未決着 **{{pending}}** 件'
+  return_rate: '回収率 **{{rate}}**（払い戻し **{{refund}}** bp ÷ 投資 **{{invest}}** bp）'
+  filter_venue_note: '*表示中の開催: **{{name}}***'
+  footnote_meeting_cap: '*開催場メニューは最大 **{{cap}}** 件まで表示しています。*'
+pagination_line: '*ページ **{{a}}** / **{{b}}**（**{{c}}** 件）*'
+empty:
+  no_bets_on_day: '*この開催日のレースへの購入はまだありません。*'
+  no_bets_for_filter: '*この開催に該当する購入はありません。*'
+errors:
+  invalid_history_param: ❌ 指定が無効です。
+  invalid_period: ❌ 開催日の指定が無効です。
+  invalid_meeting: ❌ 開催の指定が無効です。
+  invalid_date: ❌ 日付の指定が無効です。
+  invalid_page: ❌ ページ指定が無効です。
+  update_failed: '❌ 表示の更新に失敗しました: {{message}}'
+  fetch_failed: '❌ 購入履歴の取得に失敗しました: {{message}}'
+  invalid_race_selection: ❌ レースの指定が無効です。
+  result_display_failed: '❌ 表示に失敗しました: {{message}}'

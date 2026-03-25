@@ -2,9 +2,12 @@ import {
   SlashCommandBuilder,
   InteractionContextType,
   MessageFlags,
+  Locale,
 } from 'discord.js';
 import { buildBotingPanelPayload } from '../utils/race/raceCommandHub.mjs';
 import { isDatabaseCapacityError } from '../utils/shared/databaseErrors.mjs';
+import { deferEphemeral } from '../utils/shared/interactionResponse.mjs';
+import { resolveLocaleFromInteraction, t } from '../../i18n/index.mjs';
 
 const commandObject = {
   command: new SlashCommandBuilder()
@@ -12,31 +15,34 @@ const commandObject = {
     .setDescription(
       'メインメニュー（Daily・馬券・履歴・購入予定・ランキング）',
     )
+    .setDescriptionLocalizations({
+      [Locale.EnglishUS]: t('slash_commands.boting', null, 'en'),
+    })
     .setContexts(InteractionContextType.Guild),
 
   async execute(interaction) {
-    await interaction.deferReply({ flags: MessageFlags.Ephemeral });
+    await deferEphemeral(interaction);
 
+    const loc = resolveLocaleFromInteraction(interaction);
     try {
       await interaction.editReply(
         await buildBotingPanelPayload({
           user: interaction.user,
           guild: interaction.guild,
           extraFlags: MessageFlags.Ephemeral,
+          locale: loc,
         }),
       );
     } catch (e) {
       console.error('boting:', e);
       if (isDatabaseCapacityError(e)) {
         await interaction.editReply({
-          content:
-            '❌ データベースの利用上限に達しました（クォータ超過またはディスク不足）。\n' +
-            'ホストの空き容量や、クラウド DB の場合はコンソールの上限設定を確認してください。',
+          content: t('errors.db_quota', null, loc),
         });
         return;
       }
       await interaction.editReply({
-        content: `❌ 表示に失敗しました: ${e.message}`,
+        content: t('errors.display_failed', { message: e.message }, loc),
       });
     }
   },

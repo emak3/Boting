@@ -1,0 +1,13 @@
+# /debug ハブ・モーダル（管理者向け）
+errors:
+  forbidden: ❌ この操作は使用できません。
+  invalid_user_id: ❌ ユーザーIDの形式が不正です（17〜20桁の数字）。
+  user_fetch_failed: ❌ その ID のユーザーを取得できませんでした。
+  bot_not_allowed: ❌ BOT ではなくユーザーを指定してください。
+  invalid_schedule_choice: ❌ 不正な選択です。
+  race_id_invalid: ❌ レースIDは 12 桁の数字で入力してください。
+weekly:
+  unknown_modal: ❌ 不明なモーダルです。
+  saved_banner: ✅ 週間チャレンジの設定を保存しました。
+  saved_no_panel: ✅ 保存しました。`/debug` でパネルを開き直すと反映されます（編集用の記録がないか期限切れです）。
+  save_failed: "❌ 保存またはパネル更新に失敗しました: {{message}}"

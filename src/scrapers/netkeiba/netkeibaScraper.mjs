@@ -33,6 +33,32 @@ const SHUTUBA_SKIP_SECOND_FETCH_MIN_SCORE = 120_000;
 const RESULT_JRA_STRONG_MIN_HORSES = 8;
 const RESULT_JRA_STRONG_MIN_PAYOUT_ROWS = 1;
 
+/** 中央(JRA) 確定時の払戻セクション見出し */
+const OFFICIAL_PAYOUT_H2_JRA = new Set(['払い戻し', '払戻し']);
+
+/** 地方(NAR) 確定時の払戻セクション見出し（JRA は「払い戻し」） */
+const OFFICIAL_PAYOUT_H2_NAR = new Set(['払戻金', ...OFFICIAL_PAYOUT_H2_JRA]);
+
+/**
+ * result.html の払戻ブロックが確定表示か。
+ * - 未確定（JRA/NAR 共通）: `h3.TitleHeading` に「想定払戻金」
+ * - 確定: `div.Title_Sec` 内 `h2` が JRA「払い戻し」系 / NAR「払戻金」
+ */
+function netkeibaResultPagePayoutReady($) {
+  const compact = (s) => String(s || '').replace(/\s+/g, '').trim();
+
+  const hasAssumedPayoutHeading = $('h3.TitleHeading').toArray().some((el) => {
+    return compact($(el).text()).includes('想定払戻金');
+  });
+  if (hasAssumedPayoutHeading) return false;
+
+  const hasOfficialPayoutHeading = $('div.Title_Sec h2').toArray().some((el) => {
+    const t = $(el).text().replace(/\s+/g, ' ').trim();
+    return OFFICIAL_PAYOUT_H2_NAR.has(t);
+  });
+  return hasOfficialPayoutHeading;
+}
+
 /** JRA / NAR で同一 race_id が別コンテンツになる。先に取れた方が誤ページだと馬数が少なく払戻も空になりがち */
 function scoreScrapedRaceQuality(parsed) {
   const horses = parsed?.horses?.length ?? 0;
@@ -180,12 +206,24 @@ class NetkeibaScraper {
   /**
    * レース結果・払戻（result.html）
    * JRA で払戻行があり十分な頭数が取れた場合は NAR を取らない（同一 race_id の二重取得を避ける）。
-   * @returns {{ confirmed: false } | { confirmed: true, raceId: string, raceInfo: object, horses: object[], payouts: object[] }}
+   * `payoutReady: false` は「想定払戻金」見出しのみのとき（精算・TTL キャッシュの対象外）。
+   * @returns {{ confirmed: false } | { confirmed: true, payoutReady?: boolean, raceId: string, raceInfo: object, horses: object[], payouts: object[] }}
    */
   async scrapeRaceResult(raceId) {
-    return memoRaceResult(`rr:${raceId}`, RACE_RESULT_CACHE_TTL_MS, () =>
-      this.scrapeRaceResultUncached(raceId),
-    );
+    try {
+      return await memoRaceResult(`rr:${raceId}`, RACE_RESULT_CACHE_TTL_MS, async () => {
+        const r = await this.scrapeRaceResultUncached(raceId);
+        if (r.confirmed === true && r.payoutReady === false) {
+          const err = new Error('netkeiba-result-provisional');
+          err._nkProvisional = r;
+          throw err;
+        }
+        return r;
+      });
+    } catch (e) {
+      if (e?._nkProvisional) return e._nkProvisional;
+      throw e;
+    }
   }
 
   async scrapeRaceResultUncached(raceId) {
@@ -218,8 +256,10 @@ class NetkeibaScraper {
         const excludedBlock = this.parseExcludedResultHorseRows($);
         const raceInfo = this.extractRaceInfo($);
         const payouts = this.parseResultPayouts($);
+        const payoutReady = netkeibaResultPagePayoutReady($);
         const candidate = {
           confirmed: true,
+          payoutReady,
           raceId: String(raceId),
           raceInfo,
           horses: [...horses, ...excludedBlock.horses],
@@ -236,6 +276,7 @@ class NetkeibaScraper {
         }
         if (
           origin === 'jra' &&
+          candidate.payoutReady &&
           horses.length >= RESULT_JRA_STRONG_MIN_HORSES &&
           payouts.length >= RESULT_JRA_STRONG_MIN_PAYOUT_ROWS
         ) {

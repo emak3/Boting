@@ -1,0 +1,19 @@
+other_user_fallback_name: ユーザー
+batch_review_invalid: ❌ 購入予定の確認セッションが無効です。**まとめて購入（仮）**の画面から開き直してください。
+batch_review_mismatch: ❌ **まとめて購入（仮）** のセッションが一致しません。画面を開き直してください。
+batch_review_open_empty: ❌ 購入予定がありません。**購入予定に追加**で溜めるか、購入サマリーまで進めてください。
+batch_review_pending_missing: ❌ 購入予定の確認データがありません。**/boting** から **まとめて購入（仮）** を開き直してください。
+modal_custom_id_invalid: ❌ この入力は使えません。**まとめて購入（仮）** を開き直し、メニューから金額を変更してください。
+saved_max_exceeded: '❌ 購入予定は **最大 {{max}} 件** までです。**購入予定** で整理するか、**まとめて購入（仮）** を開き直してください。'
+too_many_for_other_user: '❌ **{{username}}** の購入予定が **最大 {{max}} 件** を超えているため表示できません。'
+keypad_invalid: ❌ このキーは無効です。金額変更を開き直してください。
+menu_invalid_op: ❌ 操作が無効です。
+menu_invalid_pick: ❌ 選択が無効です。
+menu_remove_failed: ❌ 削除できませんでした。
+modal_item_not_found: ❌ 対象の購入予定が見つかりません。
+modal_invalid_bp: ❌ bp は正の整数で入力してください。
+pick_subtitle: "**{{n}}番の購入予定**"
+all_picks_removed: |-
+  購入予定をすべて削除しました。
+
+  もう一度 **/boting** からやり直してください。

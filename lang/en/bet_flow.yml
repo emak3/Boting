@@ -1,0 +1,160 @@
+unknown_bet_type: (Unknown bet type)
+bet_types:
+  win: Win
+  place: Place
+  win_place: Win + Place
+  frame_pair: Quinella Place (frame)
+  horse_pair: Quinella
+  wide: Wide
+  umatan: Exacta
+  trifuku: Trio
+  tritan: Trifecta
+pair_modes:
+  normal: Straight
+  nagashi: Key box
+  box: Box
+  formation: Formation
+umatan_modes:
+  normal: Straight
+  nagashi1: Key 1st
+  nagashi2: Key 2nd
+  box: Box
+  formation: Formation
+trifuku_modes:
+  normal: Straight
+  nagashi1: 1-key
+  nagashi2: 2-key
+  box: Box
+  formation: Formation
+tritan_modes:
+  normal: Straight
+  nagashi1: Key 1st
+  nagashi2: Key 2nd
+  nagashi3: Key 3rd
+  nagashi12: Key 1st–2nd
+  nagashi13: Key 1st–3rd
+  nagashi23: Key 2nd–3rd
+  box: Box
+  formation: Formation
+nav:
+  to_race_list: Race list
+  back: Back
+  forward: Next
+resume_headline: Before purchase (back)
+resume_with_pick: |-
+  Before purchase (back)
+  {{line}}
+frame_option:
+  count_only: "{{count}} horses"
+  with_example: "{{count}} horses (e.g. {{name}})"
+descriptions:
+  after_bet_type: Then pick frame/horse numbers
+  next_pick_horses: "Next: pick horse/frame numbers"
+placeholders:
+  choose_bet_style: Choose bet type
+  pick_one_horse: "Pick one horse #"
+  vote_mode: Choose format
+  frame_pick_two: Frames (up to 2)
+  horse_pick_two: "Horse #s (up to 2)"
+  axis_frame: Key frame
+  axis_horse: "Key horse #"
+  opponents_multi: Opponents (multi)
+  frame_pick: Pick frame
+  horse_pick: "Pick horse #"
+  form_a_frame: Group A (frames)
+  form_a_horse: Group A (horses)
+  form_b_frame: Group B (frames)
+  form_b_horse: Group B (horses)
+  first_frame: 1st frame
+  second_frame: 2nd frame
+  umatan_place_1: 1st (1)
+  umatan_place_2: 2nd (1)
+  axis_one: Key (1)
+  opponents_multi_short: Opponents (multi)
+  horses_multi: "Horse #s (multi)"
+  group_1st: Group (1st)
+  group_2nd: Group (2nd)
+  pick_three: Pick 3 horses
+  axis_two: Key (2)
+  horses_multi_short: "Horse #s (multi)"
+  tritan_place_1: 1st (1)
+  tritan_place_2: 2nd (1)
+  tritan_place_3: 3rd (1)
+  form_group_1: Group 1
+  form_group_2: Group 2
+  form_group_3: Group 3
+  form_group_1_tritan: Group 1 (1st)
+  form_group_2_tritan: Group 2 (2nd)
+  form_group_3_tritan: Group 3 (3rd)
+  group_a_umatan: Group (1st)
+  group_b_umatan: Group (2nd)
+  axis_place_1: Key (1st)
+  axis_place_2: Key (2nd)
+  axis_place_3: Key (3rd)
+  opp_place_1: Opponents (1st)
+  opp_place_2: Opponents (2nd)
+  opponent_pick: Opponents
+  opp_3rd_multi: 3rd opponents
+  opp_2nd_multi: 2nd opponents
+  opp_1st_multi: 1st opponents
+  pair_form_group1_frame: Group 1 (frames)
+  pair_form_group1_horse: Group 1 (horses)
+  pair_form_group2_frame: Group 2 (frames)
+  pair_form_group2_horse: Group 2 (horses)
+  tritan_form_group2_place: Group 2 (2nd)
+  tritan_form_group3_place: Group 3 (3rd)
+unit_modal:
+  selection_none: (No selection)
+  errors:
+    session_invalid: ❌ Session is invalid.
+    bp_positive_int: ❌ Enter bp as a positive whole number.
+display:
+  horse_number_fallback: "#{{n}}"
+  frame_token_fallback: "F{{raw}}"
+errors:
+  invalid_op: ❌ Invalid action.
+  jra_multi_here: ❌ Multi cannot be toggled here.
+  slip_back_invalid: ❌ Cannot go back. Open again from /boting.
+  slip_back_stale: ❌ This message is stale. Please reopen.
+  slip_back_failed: ❌ Cannot go back.
+  add_incomplete: ❌ Cannot add (selection incomplete).
+  add_stale_data: ❌ Saved pick data is stale. Reopen the card and pick the bet
+    type again, then **Add to saved picks**.
+  forward_blocked: ❌ Cannot proceed from here.
+  unit_edit_blocked: ❌ Cannot change amount yet. Finish bet type and numbers first.
+  no_tickets_data: ❌ Missing payout data on a pick. Reopen the race card and
+    re-add to **saved picks**.
+  bp_short_confirm: |-
+    ❌ **Not enough bp** (need **{{need}}** bp / balance **{{bal}}** bp).
+    Use /boting **Daily** or reduce picks / per-ticket amount.
+  db_save_failed: "❌ **Database save failed** (no bp charge / no bet saved). Check disk/network and retry.\n`{{detail}}`"
+  purchase_failed_generic: ❌ Purchase could not be completed.
+  purchase_bp_short: ❌ **Not enough bp** (need **{{need}}** bp / balance **{{bal}}** bp).
+  purchase_bad_tickets: ❌ Invalid pick data. Start over and **add to saved picks** again.
+  purchase_bad_race: ❌ Invalid race id. Reopen the card and **add to saved picks** again.
+  purchase_bad_points: ❌ Invalid ticket count. Start over from the card.
+  purchase_empty: ❌ Nothing to purchase.
+slip_confirm:
+  closed_warn_intro: ⚠️ **Some picks are past sales close; cannot confirm as-is.**
+  closed_warn_mid: The following are treated as closed / started / resulted.
+  closed_warn_footer: Use **Remove closed only** to drop them. If picks remain,
+    press **Confirm** again.
+  line_item: |-
+    {{i}}. **{{title}}**
+    └ {{sel}}
+  race_fallback: Race
+  unknown_pick: (unknown)
+  btn_remove_closed: Remove closed only
+  btn_back_review: Back to review
+  all_closed_removed: ✅ All shown picks were past sales close and were removed.
+    Add picks again from /boting.
+add_to_cart_done: >-
+  ✅ Added to saved picks (**{{count}}** total).
+
+
+  Pick another bet type on this race or add from others. Use **Saved picks** to
+  review or batch confirm.
+purchase_done:
+  line1_suffix: "**Purchase done** −**{{spent}}** bp (balance **{{balance}}** bp)"
+  line2: When results are out, show results from /boting to credit bp from
+    netkeiba payouts.

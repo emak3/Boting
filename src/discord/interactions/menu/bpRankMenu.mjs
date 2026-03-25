@@ -4,8 +4,12 @@ import {
   buildBpRankLeaderboardFullPayload,
   BP_RANK_MODE,
 } from '../../utils/bp/bpRankLeaderboardEmbed.mjs';
-import { MessageFlags } from 'discord.js';
 import { buildTextAndRowsV2Payload } from '../../utils/race/raceCardDisplay.mjs';
+import {
+  deferUpdateThenEditReply,
+  v2ExtraFlags,
+} from '../../utils/shared/interactionResponse.mjs';
+import { resolveLocaleFromInteraction, t } from '../../../i18n/index.mjs';
 
 /**
  * ランキング種別セレクト（`/boting` のランキング画面）
@@ -15,6 +19,7 @@ export default async function bpRankMenu(interaction) {
   if (!interaction.isStringSelectMenu()) return;
   if (!interaction.customId.startsWith(`${BP_RANK_SELECT_PREFIX}|`)) return;
 
+  const loc = resolveLocaleFromInteraction(interaction);
   const limitPart = interaction.customId.split('|')[1];
   const limit = Math.min(
     BP_RANK_DISPLAY_MAX,
@@ -29,33 +34,27 @@ export default async function bpRankMenu(interaction) {
       ? raw
       : BP_RANK_MODE.BALANCE;
 
-  await interaction.deferUpdate();
-
-  let extraFlags = 0;
-  try {
-    if (interaction.message?.flags?.has(MessageFlags.Ephemeral)) {
-      extraFlags |= MessageFlags.Ephemeral;
-    }
-  } catch (_) {
-    /* ignore */
-  }
+  const extraFlags = v2ExtraFlags(interaction);
 
   try {
-    await interaction.editReply(
-      await buildBpRankLeaderboardFullPayload(limit, mode, extraFlags, {
+    await deferUpdateThenEditReply(
+      interaction,
+      buildBpRankLeaderboardFullPayload(limit, mode, extraFlags, {
         client: interaction.client,
         guild: interaction.guild,
         refundForUserId: interaction.user.id,
+        locale: loc,
       }),
     );
   } catch (e) {
     console.error('bpRankMenu:', e);
     await interaction.editReply(
       buildTextAndRowsV2Payload({
-        headline: `❌ ランキングの更新に失敗しました: ${e.message}`,
+        headline: t('bp_rank.errors.leaderboard_update_failed', { message: e.message }, loc),
         actionRows: [],
         extraFlags,
         withBotingMenuBack: true,
+        locale: loc,
       }),
     );
   }

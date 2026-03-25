@@ -3,18 +3,7 @@ import { canUseDebugCommands } from '../../utils/debug/raceDebugBypass.mjs';
 import { buildDebugBpKeypadPayload } from '../../utils/debug/debugBpKeypad.mjs';
 import { setDebugBpDraft } from '../../utils/debug/debugBpFlowStore.mjs';
 import { DEBUG_HUB_PREFIX } from '../../utils/debug/debugHubConstants.mjs';
-
-function v2ExtraFlags(interaction) {
-  let extraFlags = 0;
-  try {
-    if (interaction.message?.flags?.has(MessageFlags.Ephemeral)) {
-      extraFlags |= MessageFlags.Ephemeral;
-    }
-  } catch (_) {
-    /* ignore */
-  }
-  return extraFlags;
-}
+import { v2ExtraFlags } from '../../utils/shared/interactionResponse.mjs';
 
 function targetMention(userId) {
   return `<@${userId}>`;

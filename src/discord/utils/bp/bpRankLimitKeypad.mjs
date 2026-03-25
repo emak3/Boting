@@ -6,6 +6,7 @@ import {
   TextDisplayBuilder,
 } from 'discord.js';
 import { botingEmoji } from '../boting/botingEmojis.mjs';
+import { t } from '../../../i18n/index.mjs';
 
 export const BP_RANK_OPEN_LIM_PREFIX = 'bp_rank_open_lim';
 export const BP_RANK_LIM_KPAD_PREFIX = 'bp_rank_lim_kpad';
@@ -48,11 +49,11 @@ export function bufferToLimit(buffer) {
   return n;
 }
 
-function formatHeadline(buffer) {
+function formatHeadline(buffer, locale = null) {
   const part = buffer.length ? buffer : '_';
   return [
-    `**ランキング表示件数（1〜${MAX_LIMIT}）**`,
-    `# \`${part}\` 件`,
+    t('bp_rank.keypad.headline', { max: MAX_LIMIT }, locale),
+    t('bp_rank.keypad.value_line', { part }, locale),
   ].join('\n');
 }
 
@@ -62,9 +63,13 @@ function mkId(op, arg = '') {
 }
 
 /**
- * @param {{ buffer: string, extraFlags?: number }} opts
+ * @param {{ buffer: string, extraFlags?: number, locale?: string | null }} opts
  */
-export function buildBpRankLimitKeypadPayload({ buffer, extraFlags = 0 }) {
+export function buildBpRankLimitKeypadPayload({
+  buffer,
+  extraFlags = 0,
+  locale = null,
+}) {
   const bid = mkId;
   const mk = (label, style, op, arg) =>
     new ButtonBuilder().setCustomId(bid(op, arg)).setLabel(label).setStyle(style);
@@ -98,12 +103,12 @@ export function buildBpRankLimitKeypadPayload({ buffer, extraFlags = 0 }) {
     new ActionRowBuilder().addComponents(
       new ButtonBuilder()
         .setCustomId(bid('can', ''))
-        .setLabel('キャンセル')
+        .setLabel(t('bp_rank.keypad.cancel', null, locale))
         .setStyle(ButtonStyle.Secondary),
     ),
   ];
 
-  const text = formatHeadline(buffer).slice(0, 3900);
+  const text = formatHeadline(buffer, locale).slice(0, 3900);
   const flags = MessageFlags.IsComponentsV2 | extraFlags;
   return {
     content: null,

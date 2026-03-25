@@ -56,18 +56,7 @@ import {
   DEBUG_HUB_MODAL_PREFIX,
   DEBUG_HUB_PREFIX,
 } from '../../utils/debug/debugHubConstants.mjs';
-
-function v2ExtraFlags(interaction) {
-  let extraFlags = 0;
-  try {
-    if (interaction.message?.flags?.has(MessageFlags.Ephemeral)) {
-      extraFlags |= MessageFlags.Ephemeral;
-    }
-  } catch (_) {
-    /* ignore */
-  }
-  return extraFlags;
-}
+import { v2ExtraFlags } from '../../utils/shared/interactionResponse.mjs';
 
 function buildUserIdModal(mode) {
   const title = mode === 'grant' ? 'ユーザーID（付与）' : 'ユーザーID（剥奪）';

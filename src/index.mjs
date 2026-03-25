@@ -99,9 +99,17 @@ for (const file of readdirSync(join(__dirname, "discord/interactions/userMenu"))
     client.userMenus.push(userMenu);
 }
 
-client.login(getConfig().token).then(() =>
-    log.info("Discord client ready.", getConfigLogSummary()),
-).catch((e) => {
-    log.error("Discord login failed:", formatErr(e));
+const token = String(getConfig().token || "").trim();
+if (!token) {
+    log.error(
+        "TOKEN is not set. Copy dev.env.example to dev.env and set TOKEN.",
+    );
     shutdownLogger().finally(() => process.exit(1));
-});
+} else {
+    client.login(token).then(() =>
+        log.info("Discord client ready.", getConfigLogSummary()),
+    ).catch((e) => {
+        log.error("Discord login failed:", formatErr(e));
+        shutdownLogger().finally(() => process.exit(1));
+    });
+}

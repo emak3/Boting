@@ -1,0 +1,158 @@
+# Schedule / race list / purchase flow (raceSchedule). Bet-type names use bet_flow.
+placeholders:
+  pick_race: Select a race (show entries)
+  pick_venue: Select a meeting
+schedule_kind:
+  placeholder: Choose JRA or NAR
+  jra_label: JRA (central)
+  jra_desc: race.netkeiba.com
+  nar_label: NAR (local)
+  nar_desc: nar.netkeiba.com
+  back_button: Change JRA/NAR
+buttons:
+  to_venue: Meetings
+  clear_cart: Clear saved picks
+  cart: Saved picks
+  cart_with_count: "Saved picks ({{n}})"
+  multi_on: "Multi: ON"
+  multi_off: "Multi: OFF"
+  unit_edit: Change stake
+  add_to_cart: Add to saved picks
+  purchase_history: Purchase history
+venue:
+  race_count: "{{n}} races"
+  nar_prefix: "[NAR] "
+format:
+  bet_points: "Tickets: {{points}} | Total: {{yen}} bp ({{unit}} bp/ticket)"
+lines:
+  venue_quick_pick_hint: Pick a **live race nearing the betting deadline** to jump straight to entries.
+  race_list_title: "🏇 **Race list**"
+  race_list_kaisai: "Meeting date {{date}} (JST)"
+  result_url: "\nResult: {{url}}"
+bp_footer:
+  refund_positive: "**Your racing refund** +{{net}} bp (balance {{balance}} bp)"
+  refund_adjust: "**Your racing refund (adjustment)** {{net}} bp (balance {{balance}} bp)"
+  refund_none: "**Your racing refund** none (settled {{settled}} · balance {{balance}} bp)"
+display:
+  unit_frame: frame
+  unit_horse: horse #
+selection_snippets:
+  frames_colon: "Frames: {{list}}"
+  horses_colon: "Horses: {{list}}"
+  axis_opp: "Key: {{axis}} / Opp: {{opp}}"
+  form_two_groups: "Group 1: {{g1}} / Group 2: {{g2}}"
+sales_status:
+  short:
+    result_final: Final
+    time_unknown: —
+    time_parse_error: —
+    posted: Off
+    sales_closed: Closed
+    open: Open
+  detail:
+    result_final: Result confirmed
+    time_unknown: Post time unknown
+    time_parse_error: Invalid post time
+    posted: Race started (sales closed)
+    sales_closed: Sales closed (2 min to post)
+    open: On sale (until ~2 min to post)
+errors:
+  summary_replay_failed: ❌ Could not reload the summary.
+  hub_quick_invalid: ❌ Invalid menu value. Pick JRA/NAR again or restart from **Buy tickets**.
+  card_fetch_failed: "❌ Failed to load entries: {{message}}"
+  jra_no_meeting_date: "❌ No JRA meeting on **{{date}}** (JST). Try a date with racing."
+  jra_no_races_post_date: ❌ No JRA races found for your local post date (JST).
+  nar_no_races_post_date: ❌ No NAR races found for your local post date (JST).
+  schedule_fetch_failed: "❌ Failed to load schedule: {{message}}"
+  menu_invalid_boting: ❌ Invalid menu value. Try again from /boting.
+  venue_no_races_today: ❌ No races at this meeting for your post date (JST).
+  generic_message: "❌ {{message}}"
+  jra_bet_type_not_allowed: |-
+    ❌ That bet type is not sold for this field size (same rules as JRA field-size chart for JRA/NAR).
+    https://www.jra.go.jp/kouza/baken/index.html#cat_sell
+    Choose another bet type.
+  unsupported_bet_type: ❌ Unsupported bet type.
+  schedule_back_invalid: ❌ Can't go back.
+  schedule_back_no_flow: ❌ Can't go back (schedule info missing). Try again from /boting.
+  schedule_back_race_list_refetch: ❌ Could not reload the race list.
+  schedule_back_no_races_post_date: ❌ No races for this day. Pick a meeting again from /boting.
+  schedule_back_failed: "❌ Back failed: {{message}}"
+headlines:
+  wait_confirm_payout: "⏳ **Please wait until the result is confirmed.**"
+  result_fetch_failed: ❌ Could not load the result. Please try again later.
+  sales_closed_wait: ⏳ Sales are closed. Please wait until the result is confirmed.
+  pick_horses: "Pick a horse # for **{{betType}}**."
+  pick_vote_mode: "Choose a format for **{{betType}}**."
+  pair_normal_frame_first: "**Straight (frame QP)**: pick one frame."
+  pair_normal_horse_two: "**Straight**: pick up to two horse numbers."
+  pair_nagashi_axis: "**Key box**: first pick one key {{unit}}."
+  pair_nagashi_opponent: "**Key box**: pick opponents as {{unit}}."
+  pair_box: "**Box**: pick the required number of {{unit}}."
+  pair_form_first: "**Formation**: pick group 1 ({{unit}})."
+  pair_form_second: "**Formation**: pick group 2 ({{unit}})."
+  pair_normal_pick_two: ❌ Pick two for straight.
+  frame_pick_second: Pick the second frame.
+  frame_same_wakuren_error: Same-frame pairs need two horses in that frame. Pick the second frame again.
+  umatan_normal_first: "**Exacta straight**: pick 1st."
+  umatan_nagashi1_axis: "**Key 1st**: pick the key (1st)."
+  umatan_nagashi2_axis: "**Key 2nd**: pick the key (2nd)."
+  umatan_box: "**Exacta box**: pick horse numbers as needed."
+  umatan_form_a: "**Exacta formation**: pick group 1 (1st candidates)."
+  umatan_pick_second: Pick 2nd next.
+  umatan_opp_second: Opponents (2nd) — multiple OK.
+  umatan_opp_first: Opponents (1st) — multiple OK.
+  umatan_form_b: Pick group 2 (2nd candidates).
+  trifuku_normal: "**Trio straight**: pick three horses."
+  trifuku_n1_axis: "**1-key**: pick the key horse."
+  trifuku_n2_axis: "**2-key**: pick two key horses."
+  trifuku_box: "**Trio box**: pick at least three horses."
+  trifuku_form_a: "**Trio formation**: pick group 1."
+  trifuku_opp_two: Opponents (two slots) — multiple OK.
+  trifuku_opp_one: Opponents (remaining one) — multiple OK.
+  trifuku_form_b: Pick group 2.
+  trifuku_form_c: Pick group 3.
+  tritan_normal_first: "**Trifecta straight**: pick 1st first."
+  tritan_n1_axis: "**Key 1st**: pick the key (1st)."
+  tritan_n2_axis: "**Key 2nd**: pick the key (2nd)."
+  tritan_n3_axis: "**Key 3rd**: pick the key (3rd)."
+  tritan_n12_first: "**Key 1st–2nd**: pick 1st first."
+  tritan_n13_first: "**Key 1st–3rd**: pick 1st first."
+  tritan_n23_first: "**Key 2nd–3rd**: pick 2nd first."
+  tritan_box: "**Trifecta box**: pick at least three horses."
+  tritan_form_a: "**Trifecta formation**: pick group 1 (1st candidates)."
+  tritan_pick_second: Pick 2nd next.
+  tritan_pick_third: Pick 3rd last.
+  tritan_opp_23: Opponents (2nd & 3rd) — multiple OK.
+  tritan_opp_13: Opponents (1st & 3rd) — multiple OK.
+  tritan_opp_12: Opponents (1st & 2nd) — multiple OK.
+  tritan_pick_second_again: Pick 2nd next.
+  tritan_opp_third_multi: Opponents for 3rd next — multiple OK.
+  tritan_pick_third_plain: Pick 3rd next.
+  tritan_opp_second_multi: Opponents for 2nd next — multiple OK.
+  tritan_pick_third_again: Pick 3rd next.
+  tritan_opp_first_multi: Opponents for 1st next — multiple OK.
+  tritan_form_b_group: Pick group 2 (2nd candidates).
+  tritan_form_c_group: Pick group 3 (3rd candidates).
+selection:
+  arrow: "Pick: {{betType}} => {{summary}}"
+  with_mode: "Pick: {{betType}} ({{mode}}) => {{summary}}"
+  frame_pair_normal: "Pick: {{betType}} ({{mode}}) => {{summary}}"
+  umatan_normal: "Pick: {{betType}} ({{mode}}) => 1st: {{p1}} / 2nd: {{p2}}"
+  umatan_nagashi1: "Pick: {{betType}} ({{mode}}) => Key (1st): {{axis}} / Opp (2nd): {{opp}}"
+  umatan_nagashi2: "Pick: {{betType}} ({{mode}}) => Key (2nd): {{axis}} / Opp (1st): {{opp}}"
+  umatan_box: "Pick: {{betType}} ({{mode}}) => Horses: {{horses}}"
+  umatan_form: "Pick: {{betType}} ({{mode}}) => 1st grp: {{a}} / 2nd grp: {{b}}"
+  trifuku_normal: "Pick: {{betType}} ({{mode}}) => {{horses}}"
+  trifuku_n1: "Pick: {{betType}} ({{mode}}) => Key: {{axis}} / Opp: {{opp}}"
+  trifuku_n2: "Pick: {{betType}} ({{mode}}) => Key: {{axis}} / Opp: {{opp}}"
+  trifuku_box: "Pick: {{betType}} ({{mode}}) => {{horses}}"
+  trifuku_form: "Pick: {{betType}} ({{mode}}) => A: {{a}} / B: {{b}} / C: {{c}}"
+  tritan_normal: "Pick: {{betType}} ({{mode}}) => 1st: {{p1}} / 2nd: {{p2}} / 3rd: {{p3}}"
+  tritan_nagashi1: "Pick: {{betType}} ({{mode}}) => Key: {{axis}} / Opp: {{opp}}"
+  tritan_nagashi2: "Pick: {{betType}} ({{mode}}) => Key: {{axis}} / Opp: {{opp}}"
+  tritan_nagashi3: "Pick: {{betType}} ({{mode}}) => Key: {{axis}} / Opp: {{opp}}"
+  tritan_n12: "Pick: {{betType}} ({{mode}}) => 1st: {{a1}} / 2nd: {{a2}} / 3rd opp: {{opp}}"
+  tritan_n13: "Pick: {{betType}} ({{mode}}) => 1st: {{a1}} / 3rd: {{a3}} / 2nd opp: {{opp}}"
+  tritan_n23: "Pick: {{betType}} ({{mode}}) => 2nd: {{a2}} / 3rd: {{a3}} / 1st opp: {{opp}}"
+  tritan_box: "Pick: {{betType}} ({{mode}}) => {{horses}}"
+  tritan_form: "Pick: {{betType}} ({{mode}}) => 1st grp: {{a}} / 2nd grp: {{b}} / 3rd grp: {{c}}"

@@ -4,6 +4,7 @@ import {
   buildBotingHelpPanelPayload,
   normalizeBotingHelpRegion,
 } from '../../utils/boting/botingHelpPanel.mjs';
+import { resolveLocaleFromInteraction } from '../../../i18n/index.mjs';
 
 function ephemeralExtraFromMessage(message) {
   let extra = 0;
@@ -27,6 +28,7 @@ export default async function botingHelpMenu(interaction) {
 
   const region = normalizeBotingHelpRegion(interaction.values[0]);
   const extraFlags = ephemeralExtraFromMessage(interaction.message);
+  const loc = resolveLocaleFromInteraction(interaction);
 
   if (interaction.deferred || interaction.replied) return;
   try {
@@ -38,7 +40,7 @@ export default async function botingHelpMenu(interaction) {
   }
 
   try {
-    await interaction.editReply(buildBotingHelpPanelPayload({ extraFlags, region }));
+    await interaction.editReply(buildBotingHelpPanelPayload({ extraFlags, region, locale: loc }));
   } catch (e) {
     console.error('botingHelpMenu', e);
   }

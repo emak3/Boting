@@ -1,7 +1,7 @@
 import { MessageFlags } from 'discord.js';
 import { getBetFlow, patchBetFlow } from './betFlowStore.mjs';
 import {
-  MSG_SLIP_BATCH_REVIEW_OPEN_EMPTY,
+  msgSlipBatchReviewOpenEmpty,
   msgSlipSavedMaxItemsExceeded,
 } from './betSlipCopy.mjs';
 import {
@@ -18,7 +18,7 @@ import { deriveRaceHoldYmdFromFlow } from '../race/raceHoldDate.mjs';
 import { buildPickCompactOneLine } from './betPurchaseEmbed.mjs';
 import { buildSlipReviewV2Payload } from './betSlipReview.mjs';
 import { buildTextAndRowsV2Payload } from '../race/raceCardDisplay.mjs';
-import { buildBotingMenuBackRow } from '../race/raceCommandHub.mjs';
+import { resolveLocaleFromInteraction } from '../../../i18n/index.mjs';
 import { jraMultiEligibleLastMenu } from '../race/raceBetTickets.mjs';
 
 /**
@@ -191,13 +191,14 @@ export function resetFlowAfterSlipAction(userId, raceId) {
  * @returns {Promise<boolean>} 画面を開いたら true
  */
 export async function runOpenBetSlipReviewScreen(interaction, { userId, raceId, extraFlags = 0 }) {
+  const loc = resolveLocaleFromInteraction(interaction);
   const prep = prepareBetSlipReviewMerge(userId, raceId);
   if (!prep.ok) {
     await interaction.reply({
       content:
         prep.error === 'empty'
-          ? MSG_SLIP_BATCH_REVIEW_OPEN_EMPTY
-          : msgSlipSavedMaxItemsExceeded(),
+          ? msgSlipBatchReviewOpenEmpty(loc)
+          : msgSlipSavedMaxItemsExceeded(loc),
       flags: MessageFlags.Ephemeral,
     });
     return false;
@@ -216,7 +217,7 @@ export async function runOpenBetSlipReviewScreen(interaction, { userId, raceId, 
   }
 
   await interaction.editReply(
-    await buildSlipReviewV2Payload({ userId, extraFlags }),
+    await buildSlipReviewV2Payload({ userId, extraFlags, locale: loc }),
   );
   return true;
 }
@@ -226,16 +227,19 @@ export async function runOpenBetSlipReviewScreen(interaction, { userId, raceId, 
  * @returns {Promise<boolean>} 画面を開いたら true
  */
 export async function editReplyOpenBetSlipReview(interaction, { userId, raceId, extraFlags = 0 }) {
+  const loc = resolveLocaleFromInteraction(interaction);
   const prep = prepareBetSlipReviewMerge(userId, raceId);
   if (!prep.ok) {
     await interaction.editReply(
       buildTextAndRowsV2Payload({
         headline:
           prep.error === 'empty'
-            ? MSG_SLIP_BATCH_REVIEW_OPEN_EMPTY
-            : msgSlipSavedMaxItemsExceeded(),
-        actionRows: [buildBotingMenuBackRow()],
+            ? msgSlipBatchReviewOpenEmpty(loc)
+            : msgSlipSavedMaxItemsExceeded(loc),
+        actionRows: [],
         extraFlags,
+        withBotingMenuBack: true,
+        locale: loc,
       }),
     );
     return false;
@@ -253,7 +257,7 @@ export async function editReplyOpenBetSlipReview(interaction, { userId, raceId, 
   }
 
   await interaction.editReply(
-    await buildSlipReviewV2Payload({ userId, extraFlags }),
+    await buildSlipReviewV2Payload({ userId, extraFlags, locale: loc }),
   );
   return true;
 }

@@ -1,5 +1,4 @@
 import { Events, Client, Routes, ActivityType } from "discord.js";
-import { getConfig } from '../../config/config.mjs';
 import { initLogger } from '../../utils/logging/logger.mjs';
 import { refreshDebugAuthorizedCache } from '../utils/debug/debugAuthStore.mjs';
 import { initDatabase } from '../utils/db/initDb.mjs';
@@ -12,8 +11,6 @@ export default {
      */
     async execute(client) {
 
-        await getConfig();
-    
         client.user.setActivity({
             name: '競馬Boting v1',
             type: ActivityType.Playing

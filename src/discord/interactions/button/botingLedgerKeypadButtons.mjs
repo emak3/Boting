@@ -1,4 +1,3 @@
-import { MessageFlags } from 'discord.js';
 import {
   appendDigitLedgerLimit,
   bufferToLedgerLimit,
@@ -13,18 +12,11 @@ import {
 } from '../../utils/boting/botingLedgerKeypadStore.mjs';
 import { buildEphemeralWithBotingBackPayload } from '../../utils/boting/botingBackButton.mjs';
 import { buildBotingLedgerViewPayload } from '../../utils/boting/botingLedgerView.mjs';
-
-function v2ExtraFlags(interaction) {
-  let extraFlags = 0;
-  try {
-    if (interaction.message?.flags?.has(MessageFlags.Ephemeral)) {
-      extraFlags |= MessageFlags.Ephemeral;
-    }
-  } catch (_) {
-    /* ignore */
-  }
-  return extraFlags;
-}
+import {
+  deferUpdateThenEditReply,
+  v2ExtraFlags,
+} from '../../utils/shared/interactionResponse.mjs';
+import { resolveLocaleFromInteraction } from '../../../i18n/index.mjs';
 
 /**
  * @param {import('discord.js').ButtonInteraction} interaction
@@ -56,6 +48,7 @@ export default async function botingLedgerKeypadButtons(interaction) {
   }
 
   const extraFlags = v2ExtraFlags(interaction);
+  const loc = resolveLocaleFromInteraction(interaction);
 
   if (parsed.op === 'digit' && parsed.digit != null) {
     const nextBuf = appendDigitLedgerLimit(draft.buffer, parsed.digit);
@@ -77,15 +70,16 @@ export default async function botingLedgerKeypadButtons(interaction) {
 
   if (parsed.op === 'can') {
     clearBotingLedgerLimitDraft(userId);
-    await interaction.deferUpdate();
     const ledgerUid = draft.ledgerSubjectUserId ?? userId;
-    await interaction.editReply(
-      await buildBotingLedgerViewPayload({
+    await deferUpdateThenEditReply(
+      interaction,
+      buildBotingLedgerViewPayload({
         userId: ledgerUid,
         pageSize: draft.savedPageSize,
         pageIndex: draft.savedPageIndex,
         extraFlags,
         rankLeaderboardReturn: draft.rankLeaderboardReturn ?? null,
+        locale: loc,
       }),
     );
     return;
@@ -94,15 +88,16 @@ export default async function botingLedgerKeypadButtons(interaction) {
   if (parsed.op === 'ok') {
     const lim = bufferToLedgerLimit(draft.buffer);
     clearBotingLedgerLimitDraft(userId);
-    await interaction.deferUpdate();
     const ledgerUid = draft.ledgerSubjectUserId ?? userId;
-    await interaction.editReply(
-      await buildBotingLedgerViewPayload({
+    await deferUpdateThenEditReply(
+      interaction,
+      buildBotingLedgerViewPayload({
         userId: ledgerUid,
         pageSize: lim,
         pageIndex: 0,
         extraFlags,
         rankLeaderboardReturn: draft.rankLeaderboardReturn ?? null,
+        locale: loc,
       }),
     );
   }

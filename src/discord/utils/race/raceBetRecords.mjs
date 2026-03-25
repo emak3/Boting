@@ -213,7 +213,7 @@ export async function tryConfirmRacePurchase(userId, items) {
 /**
  * @param {string} userId
  * @param {string} raceId
- * @param {{ payouts?: object[] }} parsedResult scrapeRaceResult の戻り
+ * @param {{ payouts?: object[], payoutReady?: boolean }} parsedResult scrapeRaceResult の戻り（`payoutReady === false` のとき精算しない）
  * @param {{ reconcileSettledRows?: boolean }} [opts] `reconcileSettledRows` が true のときだけ、既に精算済みの行の refundBp・残高を結果に合わせて再調整する（デバッグ販売バイパス ON 想定）。
  * @returns {Promise<{ settled: number, totalRefund: number, reconcileBalanceDelta: number, balance: number | null }>}
  */
@@ -221,6 +221,15 @@ export async function settleOpenRaceBetsForUser(userId, raceId, parsedResult, op
   const reconcileSettledRows = opts.reconcileSettledRows === true;
   const rid = String(raceId || '');
   if (!/^\d{12}$/.test(rid)) {
+    return {
+      settled: 0,
+      totalRefund: 0,
+      reconcileBalanceDelta: 0,
+      balance: null,
+    };
+  }
+
+  if (parsedResult?.payoutReady === false) {
     return {
       settled: 0,
       totalRefund: 0,
@@ -448,7 +457,7 @@ export async function settlePendingOpenRaceBetsForUser(userId, scrapeRaceResult,
   );
 
   for (const { raceId, parsed, scrapeErr } of scrapeResults) {
-    if (scrapeErr || !parsed?.confirmed) {
+    if (scrapeErr || !parsed?.confirmed || parsed.payoutReady === false) {
       skippedNoResult += 1;
       continue;
     }

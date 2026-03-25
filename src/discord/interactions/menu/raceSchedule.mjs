@@ -40,7 +40,20 @@ import {
   wakuUmaEmojiResolvable,
   DISCORD_SELECT_OPTION_LABEL_RESERVE_POST_SELECTION,
 } from '../../utils/race/raceNumberEmoji.mjs';
-import { MSG_RACE_BET_FLOW_SESSION_INVALID } from '../../utils/bet/betFlowSessionCopy.mjs';
+import {
+  raceSalesStatusShortLabel,
+  raceSalesStatusDetailLabel,
+} from '../../utils/race/raceSalesStatusLabels.mjs';
+import { msgRaceBetFlowSessionInvalid } from '../../utils/bet/betFlowSessionCopy.mjs';
+import { resolveLocaleFromInteraction, t } from '../../../i18n/index.mjs';
+import {
+  betTypesLabeled,
+  pairModesLabeled,
+  umatanModesLabeled,
+  trifukuModesLabeled,
+  tritanModesLabeled,
+  betTypeLabel,
+} from '../../utils/bet/betFlowLabels.mjs';
 import { getBetFlow, setBetFlow, patchBetFlow, clearBetFlow } from '../../utils/bet/betFlowStore.mjs';
 import { getSlipSavedCount } from '../../utils/bet/betSlipStore.mjs';
 import {
@@ -85,33 +98,25 @@ import {
   parseHubQuickSelectValue,
   buildQuickPickItemsFromScheduleVenues,
   buildHubQuickRacesSelectRow,
-  VENUE_QUICK_PICK_BODY_SUFFIX,
+  venueQuickPickBodySuffix,
 } from '../../utils/race/raceHubQuickPick.mjs';
 import { formatBpAmount } from '../../utils/bp/bpFormat.mjs';
+import { v2ExtraFlags } from '../../utils/shared/interactionResponse.mjs';
 
 const VENUE_MENU_ID = 'race_menu_venue';
 const RACE_MENU_ID = 'race_menu_race';
 
-function v2ExtraFlags(interaction) {
-  try {
-    if (interaction.message?.flags?.has(MessageFlags.Ephemeral)) {
-      return MessageFlags.Ephemeral;
-    }
-  } catch (_) {
-    /* ignore */
-  }
-  return 0;
-}
-
 function raceCardPayload(interaction, opts) {
   const rid = opts.result?.raceId;
   const uid = interaction.user?.id;
+  const loc = opts.locale ?? resolveLocaleFromInteraction(interaction);
   const utilityContext =
     uid && rid && /^\d{12}$/.test(String(rid))
       ? { userId: uid, flow: getBetFlow(uid, String(rid)) }
       : null;
   return buildRaceCardV2Payload({
     ...opts,
+    locale: loc,
     utilityContext,
   });
 }
@@ -121,27 +126,26 @@ const BET_PREFIX = 'race_bet_';
 /** 買い目まとめ確認用（betSlipMenu.mjs で処理。ここではベットフロー扱いしない） */
 const BET_SLIP_MENU_PREFIX = 'race_bet_slip_';
 
-const BET_TYPES = [
-  { id: 'win', label: '単勝' },
-  { id: 'place', label: '複勝' },
-  { id: 'win_place', label: '単勝+複勝' },
-  { id: 'frame_pair', label: '枠連' },
-  { id: 'horse_pair', label: '馬連' },
-  { id: 'wide', label: 'ワイド' },
-  { id: 'umatan', label: '馬単' },
-  { id: 'trifuku', label: '3連複' },
-  { id: 'tritan', label: '3連単' },
-];
-
-const BET_TYPE_LABEL = Object.fromEntries(BET_TYPES.map((x) => [x.id, x.label]));
-
 // ===== Bet points / total estimate =====
 // 1点あたりの金額はベットフローごとに編集可能
 const DEFAULT_UNIT_YEN = 100;
 
-function formatBetPoints(points, unitYen = DEFAULT_UNIT_YEN) {
+function formatBetPoints(points, unitYen = DEFAULT_UNIT_YEN, locale = null) {
   const yen = points * unitYen;
-  return `点数: ${formatBpAmount(points)}点 | 合計: ${formatBpAmount(yen)} bp（${formatBpAmount(unitYen)} bp/点）`;
+  return t(
+    'race_schedule.format.bet_points',
+    {
+      points: formatBpAmount(points),
+      yen: formatBpAmount(yen),
+      unit: formatBpAmount(unitYen),
+    },
+    locale,
+  );
+}
+
+/** @param {string} key `bet_flow.placeholders` のキー */
+function ph(key, locale = null) {
+  return t(`bet_flow.placeholders.${key}`, null, locale);
 }
 
 function uniqValues(arr) {
@@ -271,50 +275,15 @@ function countOrderedTriplesDistinct(a, b, c) {
   return count;
 }
 
-const PAIR_MODE_OPTIONS = [
-  { id: 'normal', label: '通常' },
-  { id: 'nagashi', label: 'ながし' },
-  { id: 'box', label: 'ボックス' },
-  { id: 'formation', label: 'フォーメーション' },
-];
-
-const UMATAN_MODE_OPTIONS = [
-  { id: 'normal', label: '通常' },
-  { id: 'nagashi1', label: '1着ながし' },
-  { id: 'nagashi2', label: '2着ながし' },
-  { id: 'box', label: 'ボックス' },
-  { id: 'formation', label: 'フォーメーション' },
-];
-
-const TRIFUKU_MODE_OPTIONS = [
-  { id: 'normal', label: '通常' },
-  { id: 'nagashi1', label: '軸1頭ながし' },
-  { id: 'nagashi2', label: '軸2頭ながし' },
-  { id: 'box', label: 'ボックス' },
-  { id: 'formation', label: 'フォーメーション' },
-];
-
-const TRITAN_MODE_OPTIONS = [
-  { id: 'normal', label: '通常' },
-  { id: 'nagashi1', label: '1着ながし' },
-  { id: 'nagashi2', label: '2着ながし' },
-  { id: 'nagashi3', label: '3着ながし' },
-  { id: 'nagashi12', label: '1・2着ながし' },
-  { id: 'nagashi13', label: '1・3着ながし' },
-  { id: 'nagashi23', label: '2・3着ながし' },
-  { id: 'box', label: 'ボックス' },
-  { id: 'formation', label: 'フォーメーション' },
-];
-
-function raceSelectRow(kaisaiDateYmd, races) {
+function raceSelectRow(kaisaiDateYmd, races, locale = null) {
   const menu = new StringSelectMenuBuilder()
     .setCustomId(RACE_MENU_ID)
-    .setPlaceholder('レースを選択（出馬表を表示）')
+    .setPlaceholder(t('race_schedule.placeholders.pick_race', null, locale))
     .addOptions(
       races.slice(0, 25).map((r) => {
         const st = getRaceSalesStatus(r, kaisaiDateYmd);
         const label = `${r.roundLabel} ${r.timeText}`.replace(/\s+/g, ' ').trim().slice(0, 100);
-        const desc = `${st.shortLabel} · ${r.title}`.slice(0, 100);
+        const desc = `${raceSalesStatusShortLabel(st, locale)} · ${r.title}`.slice(0, 100);
         return new StringSelectMenuOptionBuilder()
           .setLabel(label || r.raceId)
           // RACE_MENU_ID 側で「確定/発売前」を判定するため、isResult を一緒に渡す
@@ -325,73 +294,76 @@ function raceSelectRow(kaisaiDateYmd, races) {
   return new ActionRowBuilder().addComponents(menu);
 }
 
-function scheduleBackToVenueButtonRow(kaisaiDateYmd, currentGroup, scheduleKind = 'jra') {
+function scheduleBackToVenueButtonRow(kaisaiDateYmd, currentGroup, scheduleKind = 'jra', locale = null) {
   const pad = scheduleKind === 'nar' ? '_' : currentGroup;
   return new ActionRowBuilder().addComponents(
     new ButtonBuilder()
       .setCustomId(`race_sched_back_to_venue|${scheduleKind}|${kaisaiDateYmd}|${pad}`)
-      .setLabel('開催場へ')
+      .setLabel(t('race_schedule.buttons.to_venue', null, locale))
       .setStyle(ButtonStyle.Secondary),
   );
 }
 
-function venueSelectRowFromSchedule(scheduleKind, kaisaiDate, currentGroup, venues) {
+function venueSelectRowFromSchedule(scheduleKind, kaisaiDate, currentGroup, venues, locale = null) {
   const menu = new StringSelectMenuBuilder()
     .setCustomId(VENUE_MENU_ID)
-    .setPlaceholder('開催場を選択')
+    .setPlaceholder(t('race_schedule.placeholders.pick_venue', null, locale))
     .addOptions(
       venues.slice(0, 25).map((v) => {
         const value =
           scheduleKind === 'nar'
             ? `nar|${kaisaiDate}|${v.kaisaiId}`
             : `jra|${kaisaiDate}|${currentGroup}|${v.kaisaiId}`;
-        const prefix = scheduleKind === 'nar' ? '[地方] ' : '';
+        const prefix =
+          scheduleKind === 'nar' ? t('race_schedule.venue.nar_prefix', null, locale) : '';
         return new StringSelectMenuOptionBuilder()
           .setLabel(`${prefix}${v.title}`.slice(0, 100))
           .setValue(value)
-          .setDescription(`全${v.races.length}レース`.slice(0, 100));
+          .setDescription(
+            t('race_schedule.venue.race_count', { n: v.races.length }, locale).slice(0, 100),
+          );
       }),
     );
   return new ActionRowBuilder().addComponents(menu);
 }
 
-function scheduleBackToRaceListButtonRow(raceId) {
+function scheduleBackToRaceListButtonRow(raceId, locale = null) {
   return new ActionRowBuilder().addComponents(
     new ButtonBuilder()
       .setCustomId(`race_sched_back_to_race_list|${raceId}`)
-      .setLabel('レース一覧へ')
+      .setLabel(t('bet_flow.nav.to_race_list', null, locale))
       .setStyle(ButtonStyle.Secondary),
   );
 }
 
 /** /race 経由で開催情報があるときだけ、レース一覧に戻る行を付ける（メニューの下に並べる） */
-function scheduleRaceListBackIfScheduled(userId, raceId) {
+function scheduleRaceListBackIfScheduled(userId, raceId, locale = null) {
   const f = getBetFlow(userId, raceId);
   if (!f?.kaisaiDate || !f?.kaisaiId) return null;
-  if (f.source === 'nar') return scheduleBackToRaceListButtonRow(raceId);
+  if (f.source === 'nar') return scheduleBackToRaceListButtonRow(raceId, locale);
   if (f.currentGroup != null && String(f.currentGroup).length > 0) {
-    return scheduleBackToRaceListButtonRow(raceId);
+    return scheduleBackToRaceListButtonRow(raceId, locale);
   }
   return null;
 }
 
-function betTypeSelectRow(raceId, selectedBetTypeId = null, flow = null) {
-  const types = filterBetTypesForJraSale(BET_TYPES, {
+function betTypeSelectRow(raceId, selectedBetTypeId = null, flow = null, locale = null) {
+  const types = filterBetTypesForJraSale(betTypesLabeled(locale), {
     source: flow?.source,
     result: flow?.result,
   });
   const selRaw = selectedBetTypeId != null ? String(selectedBetTypeId) : null;
-  const sel = selRaw && types.some((t) => t.id === selRaw) ? selRaw : null;
+  const sel = selRaw && types.some((x) => x.id === selRaw) ? selRaw : null;
   const menu = new StringSelectMenuBuilder()
     .setCustomId(`${BET_TYPE_MENU_PREFIX}${raceId}`)
-    .setPlaceholder('賭ける方式を選択')
+    .setPlaceholder(t('bet_flow.placeholders.choose_bet_style', null, locale))
     .addOptions(
-      types.map((t) => {
+      types.map((x) => {
         const o = new StringSelectMenuOptionBuilder()
-          .setLabel(t.label)
-          .setValue(t.id)
-          .setDescription('選択後に馬番/枠番を指定します');
-        if (sel && t.id === sel) o.setDefault(true);
+          .setLabel(x.label)
+          .setValue(x.id)
+          .setDescription(t('bet_flow.descriptions.after_bet_type', null, locale));
+        if (sel && x.id === sel) o.setDefault(true);
         return o;
       }),
     );
@@ -437,7 +409,7 @@ function buildSelectionRow({
 }
 
 /** 購入サマリー下部: 1行目 金額変更・購入予定に追加・購入履歴 / 2行目 購入予定・(マルチ)・購入予定をクリア。その下に戻る・レース一覧 */
-function summaryPurchaseButtonRows(raceId, userId, backMenuIndex, flow = null) {
+function summaryPurchaseButtonRows(raceId, userId, backMenuIndex, flow = null, locale = null) {
   const savedN = getSlipSavedCount(userId);
   const hasCurrent = !!(flow?.purchase?.selectionLine);
   const batchTotal = savedN + (hasCurrent ? 1 : 0);
@@ -447,36 +419,44 @@ function summaryPurchaseButtonRows(raceId, userId, backMenuIndex, flow = null) {
 
   const cartClearBtn = new ButtonBuilder()
     .setCustomId(`race_bet_cart_clear|${raceId}`)
-    .setLabel('購入予定をクリア')
+    .setLabel(t('race_schedule.buttons.clear_cart', null, locale))
     .setEmoji(botingEmoji('delete'))
     .setStyle(ButtonStyle.Danger)
     .setDisabled(savedN === 0);
 
   const slipOpenBtn = new ButtonBuilder()
     .setCustomId(`${BET_SLIP_OPEN_CUSTOM_ID}|${raceId}`)
-    .setLabel(batchTotal ? `購入予定(${batchTotal})` : '購入予定')
+    .setLabel(
+      batchTotal
+        ? t('race_schedule.buttons.cart_with_count', { n: batchTotal }, locale)
+        : t('race_schedule.buttons.cart', null, locale),
+    )
     .setEmoji(botingEmoji('cart'))
     .setStyle(ButtonStyle.Primary);
 
   const multiBtn = new ButtonBuilder()
     .setCustomId(`race_bet_jra_multi_toggle|${raceId}`)
-    .setLabel(jraMultiOn ? 'マルチ: ON' : 'マルチ: OFF')
+    .setLabel(
+      jraMultiOn
+        ? t('race_schedule.buttons.multi_on', null, locale)
+        : t('race_schedule.buttons.multi_off', null, locale),
+    )
     .setStyle(jraMultiOn ? ButtonStyle.Success : ButtonStyle.Secondary);
 
   const row1 = new ActionRowBuilder().addComponents(
     new ButtonBuilder()
       .setCustomId(`race_bet_unit_edit|${raceId}`)
-      .setLabel('金額変更')
+      .setLabel(t('race_schedule.buttons.unit_edit', null, locale))
       .setEmoji(botingEmoji('henko'))
       .setStyle(ButtonStyle.Primary),
     new ButtonBuilder()
       .setCustomId(`race_bet_add_to_cart|${raceId}`)
-      .setLabel('購入予定に追加')
+      .setLabel(t('race_schedule.buttons.add_to_cart', null, locale))
       .setEmoji(botingEmoji('plus'))
       .setStyle(ButtonStyle.Success),
     new ButtonBuilder()
       .setCustomId(`${RACE_PURCHASE_HISTORY_CUSTOM_ID}|${raceId}`)
-      .setLabel('購入履歴')
+      .setLabel(t('race_schedule.buttons.purchase_history', null, locale))
       .setEmoji(botingEmoji('history'))
       .setStyle(ButtonStyle.Secondary),
   );
@@ -489,20 +469,20 @@ function summaryPurchaseButtonRows(raceId, userId, backMenuIndex, flow = null) {
   } else {
     rows.push(new ActionRowBuilder().addComponents(slipOpenBtn, cartClearBtn));
   }
-  const br = backButtonRow(raceId, backMenuIndex);
+  const br = backButtonRow(raceId, backMenuIndex, locale);
   if (br) rows.push(br);
-  const sched = scheduleRaceListBackIfScheduled(userId, raceId);
+  const sched = scheduleRaceListBackIfScheduled(userId, raceId, locale);
   if (sched) rows.push(sched);
   return rows;
 }
 
-function backButtonRow(raceId, backMenuIndex) {
+function backButtonRow(raceId, backMenuIndex, locale = null) {
   const idx = Number(backMenuIndex);
   if (!Number.isFinite(idx) || idx < 1) return null;
   return new ActionRowBuilder().addComponents(
     new ButtonBuilder()
       .setCustomId(`race_bet_back|${raceId}`)
-      .setLabel('戻る')
+      .setLabel(t('bet_flow.nav.back', null, locale))
       .setEmoji(botingEmoji('modoru'))
       .setStyle(ButtonStyle.Secondary),
   );
@@ -678,15 +658,17 @@ function computeBackMenuIds({ raceId, flow, betType, lastMenuCustomId }) {
  * 購入サマリー画面を flow から再描画（「進む」で復帰時など）
  */
 export async function editReplyPurchaseSummaryFromFlow(interaction, userId, raceId) {
+  const loc = resolveLocaleFromInteraction(interaction);
   const flow = getBetFlow(userId, raceId);
   const purch = flow?.purchase;
   if (!purch?.lastMenuCustomId || !flow?.result) {
     await interaction.editReply(
       buildTextAndRowsV2Payload({
-        headline: '❌ サマリーを再表示できませんでした。',
+        headline: t('race_schedule.errors.summary_replay_failed', null, loc),
         actionRows: [],
         extraFlags: v2ExtraFlags(interaction),
         withBotingMenuBack: true,
+        locale: loc,
       }),
     );
     return;
@@ -730,8 +712,10 @@ export async function editReplyPurchaseSummaryFromFlow(interaction, userId, race
   const parts = [];
   if (slipPick) parts.push(slipPick);
   else parts.push(selectionLine);
-  const content = `${parts.join('\n')}\n${formatBetPoints(points, unitYen)}${
-    resultUrl ? `\n結果: ${resultUrl}` : ''
+  const content = `${parts.join('\n')}\n${formatBetPoints(points, unitYen, loc)}${
+    resultUrl
+      ? t('race_schedule.lines.result_url', { url: resultUrl }, loc)
+      : ''
   }`;
 
   const betTypeMenuId = `race_bet_type|${raceId}`;
@@ -739,11 +723,12 @@ export async function editReplyPurchaseSummaryFromFlow(interaction, userId, race
   for (const menuId of backMenuIds) {
     const row =
       menuId === betTypeMenuId
-        ? buildBetTypeMenuRow(raceId, flowSynced)
+        ? buildBetTypeMenuRow(raceId, flowSynced, loc)
         : buildMenuRowFromCustomId({
             menuCustomId: menuId,
             flow: flowSynced,
             result,
+            locale: loc,
           });
     if (row) summaryMenuRows.push(row);
   }
@@ -753,10 +738,11 @@ export async function editReplyPurchaseSummaryFromFlow(interaction, userId, race
       headline: content,
       actionRows: [
         ...summaryMenuRows,
-        ...summaryPurchaseButtonRows(raceId, userId, backMenuIndex, flowSynced),
+        ...summaryPurchaseButtonRows(raceId, userId, backMenuIndex, flowSynced, loc),
       ].filter(Boolean),
       extraFlags: v2ExtraFlags(interaction),
       withBotingMenuBack: true,
+      locale: loc,
     }),
   );
 }
@@ -775,6 +761,7 @@ async function renderFinalSelection({
   flowUnitYen,
   lastMenu,
 }) {
+  const loc = resolveLocaleFromInteraction(interaction);
   const currentFlow = getBetFlow(userId, raceId) || {};
 
   const backMenuIds = computeBackMenuIds({
@@ -846,8 +833,10 @@ async function renderFinalSelection({
   const parts = [];
   if (slipPick) parts.push(slipPick);
   else parts.push(selStored);
-  const content = `${parts.join('\n')}\n${formatBetPoints(pointsResolved, unitYen)}${
-    resultUrl ? `\n結果: ${resultUrl}` : ''
+  const content = `${parts.join('\n')}\n${formatBetPoints(pointsResolved, unitYen, loc)}${
+    resultUrl
+      ? t('race_schedule.lines.result_url', { url: resultUrl }, loc)
+      : ''
   }`;
 
   const betTypeMenuId = `race_bet_type|${raceId}`;
@@ -855,11 +844,12 @@ async function renderFinalSelection({
   for (const menuId of backMenuIds) {
     const row =
       menuId === betTypeMenuId
-        ? buildBetTypeMenuRow(raceId, flowAfter)
+        ? buildBetTypeMenuRow(raceId, flowAfter, loc)
         : buildMenuRowFromCustomId({
             menuCustomId: menuId,
             flow: flowAfter,
             result,
+            locale: loc,
           });
     if (row) summaryMenuRows.push(row);
   }
@@ -869,10 +859,11 @@ async function renderFinalSelection({
       headline: content,
       actionRows: [
         ...summaryMenuRows,
-        ...summaryPurchaseButtonRows(raceId, userId, backMenuIndex, flowAfter),
+        ...summaryPurchaseButtonRows(raceId, userId, backMenuIndex, flowAfter, loc),
       ].filter(Boolean),
       extraFlags: v2ExtraFlags(interaction),
       withBotingMenuBack: true,
+      locale: loc,
     }),
   );
 }
@@ -898,7 +889,7 @@ function horseOptionsFromResult(result, cap = 25) {
   });
 }
 
-function frameOptionsFromResult(result, cap = 25, opts = {}) {
+function frameOptionsFromResult(result, cap = 25, opts = {}, locale = null) {
   const omit = new Set((opts.omitFrames || []).map((x) => String(x)));
   const counts = new Map();
   const frameToHorses = new Map();
@@ -918,18 +909,25 @@ function frameOptionsFromResult(result, cap = 25, opts = {}) {
   return arr.map(({ frame, count, horses }) => {
     const firstHorseName = horses?.[0]?.name || '';
     const f = parseInt(String(frame).replace(/\D/g, ''), 10);
+    const desc = firstHorseName
+      ? t(
+          'bet_flow.frame_option.with_example',
+          { count: String(count), name: firstHorseName },
+          locale,
+        )
+      : t('bet_flow.frame_option.count_only', { count: String(count) }, locale);
     const opt = new StringSelectMenuOptionBuilder()
       .setLabel(selectFrameLabel(frame, '', DISCORD_SELECT_OPTION_LABEL_RESERVE_POST_SELECTION))
       .setValue(frame)
-      .setDescription(`${count}頭${firstHorseName ? `（例: ${firstHorseName}）` : ''}`.slice(0, 70));
+      .setDescription(desc.slice(0, 70));
     const em = Number.isFinite(f) ? wakuUmaEmojiResolvable(f, f) : null;
     if (em) opt.setEmoji({ id: em.id, name: em.name });
     return opt;
   });
 }
 
-/** 買い目テキスト用: 馬名は付けず枠馬絵文字または「N番」のみ */
-function formatNamesByNums(result, nums) {
+/** 買い目テキスト用: 馬名は付けず枠馬絵文字または番号表記（言語依存） */
+function formatNamesByNums(result, nums, locale = null) {
   const byKey = new Map();
   for (const h of result.horses || []) {
     byKey.set(String(h.horseNumber), h);
@@ -947,18 +945,26 @@ function formatNamesByNums(result, nums) {
           ? wakuUmaEmoji(horse.frameNumber, horse.horseNumber)
           : null;
       if (em) return em;
-      return Number.isFinite(kn) ? `${kn}番` : ns;
+      return Number.isFinite(kn)
+        ? t('bet_flow.display.horse_number_fallback', { n: String(kn) }, locale)
+        : ns;
     })
     .join(', ');
 }
 
-/** 枠連など: 枠番は枠×枠の枠馬絵文字（名前なし）、無ければ「枠N」 */
-function formatFrames(_result, frames) {
+/** 枠連など: 枠番は枠×枠の枠馬絵文字（名前なし）、無ければ言語依存の枠表記 */
+function formatFrames(_result, frames, locale = null) {
   return frames
     .map((f) => {
       const w = parseInt(String(f).replace(/\D/g, ''), 10);
-      if (!Number.isFinite(w)) return `枠${f}`;
-      return wakuUmaEmoji(w, w) ?? `枠${f}`;
+      const raw = String(f);
+      if (!Number.isFinite(w)) {
+        return t('bet_flow.display.frame_token_fallback', { raw }, locale);
+      }
+      return (
+        wakuUmaEmoji(w, w) ??
+        t('bet_flow.display.frame_token_fallback', { raw }, locale)
+      );
     })
     .join(', ');
 }
@@ -1040,6 +1046,7 @@ async function resolveScheduleMetaForRaceSelection({
  */
 export async function buildRaceMenuSelectionPayload(interaction, { raceId, isResultFlag }) {
   const userId = interaction.user?.id;
+  const loc = resolveLocaleFromInteraction(interaction);
   const scraper = new NetkeibaScraper();
   const lastVenue = venueSelectionStore.get(userId);
 
@@ -1089,7 +1096,27 @@ export async function buildRaceMenuSelectionPayload(interaction, { raceId, isRes
 
   const salesBypass = canBypassSalesClosed(userId);
 
-  if (resultSnap.confirmed) {
+  if (
+    resultSnap.confirmed &&
+    resultSnap.payoutReady === false &&
+    !salesBypass
+  ) {
+    setBetFlow(userId, raceId, {
+      ...flowCtx,
+      source: flowCtx.source || resultSnap.netkeibaOrigin || 'jra',
+    });
+    return buildTextAndRowsV2Payload({
+      headline: t('race_schedule.headlines.wait_confirm_payout', null, loc),
+      actionRows: [
+        flowCtx.kaisaiId ? scheduleBackToRaceListButtonRow(raceId, loc) : null,
+      ].filter(Boolean),
+      extraFlags: v2ExtraFlags(interaction),
+      withBotingMenuBack: true,
+      locale: loc,
+    });
+  }
+
+  if (resultSnap.confirmed && resultSnap.payoutReady !== false) {
     let bpFooter = null;
     try {
       const pay = await settleOpenRaceBetsForUser(userId, raceId, resultSnap, {
@@ -1099,11 +1126,26 @@ export async function buildRaceMenuSelectionPayload(interaction, { raceId, isRes
       const net = pay.totalRefund + adj;
       if (pay.settled > 0 || adj !== 0) {
         if (net > 0) {
-          bpFooter = `**あなたの競馬払戻** +${formatBpAmount(net)} bp（残高 ${formatBpAmount(pay.balance)} bp）`;
+          bpFooter = t(
+            'race_schedule.bp_footer.refund_positive',
+            { net: formatBpAmount(net), balance: formatBpAmount(pay.balance) },
+            loc,
+          );
         } else if (net < 0) {
-          bpFooter = `**あなたの競馬払戻（調整）** ${formatBpAmount(net)} bp（残高 ${formatBpAmount(pay.balance)} bp）`;
+          bpFooter = t(
+            'race_schedule.bp_footer.refund_adjust',
+            { net: formatBpAmount(net), balance: formatBpAmount(pay.balance) },
+            loc,
+          );
         } else if (pay.settled > 0) {
-          bpFooter = `**あなたの競馬払戻** 該当なし（精算 ${pay.settled} 件・残高 ${formatBpAmount(pay.balance)} bp）`;
+          bpFooter = t(
+            'race_schedule.bp_footer.refund_none',
+            {
+              settled: String(pay.settled),
+              balance: formatBpAmount(pay.balance),
+            },
+            loc,
+          );
         }
       }
     } catch (e) {
@@ -1118,7 +1160,7 @@ export async function buildRaceMenuSelectionPayload(interaction, { raceId, isRes
         parsed: resultSnap,
         bpFooter,
         actionRows: [
-          flowCtx.kaisaiId ? scheduleBackToRaceListButtonRow(raceId) : null,
+          flowCtx.kaisaiId ? scheduleBackToRaceListButtonRow(raceId, loc) : null,
         ].filter(Boolean),
         extraFlags: v2ExtraFlags(interaction),
       });
@@ -1132,13 +1174,13 @@ export async function buildRaceMenuSelectionPayload(interaction, { raceId, isRes
       source: flowCtx.source || 'jra',
     });
     return buildTextAndRowsV2Payload({
-      headline:
-        '❌ レース結果の取得に失敗しました。時間をおいて再度お試しください。',
+      headline: t('race_schedule.headlines.result_fetch_failed', null, loc),
       actionRows: [
-        flowCtx.kaisaiId ? scheduleBackToRaceListButtonRow(raceId) : null,
+        flowCtx.kaisaiId ? scheduleBackToRaceListButtonRow(raceId, loc) : null,
       ].filter(Boolean),
       extraFlags: v2ExtraFlags(interaction),
       withBotingMenuBack: true,
+      locale: loc,
     });
   }
 
@@ -1148,13 +1190,13 @@ export async function buildRaceMenuSelectionPayload(interaction, { raceId, isRes
       source: flowCtx.source || 'jra',
     });
     return buildTextAndRowsV2Payload({
-      headline:
-        '⏳ 発売は締め切られています。レース結果の確定までお待ちください。',
+      headline: t('race_schedule.headlines.sales_closed_wait', null, loc),
       actionRows: [
-        flowCtx.kaisaiId ? scheduleBackToRaceListButtonRow(raceId) : null,
+        flowCtx.kaisaiId ? scheduleBackToRaceListButtonRow(raceId, loc) : null,
       ].filter(Boolean),
       extraFlags: v2ExtraFlags(interaction),
       withBotingMenuBack: true,
+      locale: loc,
     });
   }
 
@@ -1176,10 +1218,11 @@ export async function buildRaceMenuSelectionPayload(interaction, { raceId, isRes
     result,
     headline: '',
     actionRows: [
-      betTypeSelectRow(raceId, betTypeDefault, flowAfter),
-      flowCtx.kaisaiId ? scheduleBackToRaceListButtonRow(raceId) : null,
+      betTypeSelectRow(raceId, betTypeDefault, flowAfter, loc),
+      flowCtx.kaisaiId ? scheduleBackToRaceListButtonRow(raceId, loc) : null,
     ].filter(Boolean),
     extraFlags: v2ExtraFlags(interaction),
+    locale: loc,
   });
 }
 
@@ -1202,6 +1245,7 @@ export default async function raceScheduleMenu(interaction) {
     return;
 
   const userId = interaction.user?.id;
+  const loc = resolveLocaleFromInteraction(interaction);
 
   // 馬券購入トップ: 締切が近い発売中レースから出馬表へ
   if (customId === RACE_MENU_HUB_QUICK_ID) {
@@ -1211,11 +1255,11 @@ export default async function raceScheduleMenu(interaction) {
     if (!parsed || !userId) {
       await interaction.editReply(
         buildTextAndRowsV2Payload({
-          headline:
-            '❌ メニュー値が不正です。中央/地方を選び直すか、もう一度 **馬券を購入** からやり直してください。',
+          headline: t('race_schedule.errors.hub_quick_invalid', null, loc),
           actionRows: [],
           extraFlags: v2ExtraFlags(interaction),
           withBotingMenuBack: true,
+          locale: loc,
         }),
       );
       return;
@@ -1232,10 +1276,11 @@ export default async function raceScheduleMenu(interaction) {
       console.error(e);
       await interaction.editReply(
         buildTextAndRowsV2Payload({
-          headline: `❌ 出馬表の取得に失敗: ${e.message}`,
+          headline: t('race_schedule.errors.card_fetch_failed', { message: e.message }, loc),
           actionRows: [],
           extraFlags: v2ExtraFlags(interaction),
           withBotingMenuBack: true,
+          locale: loc,
         }),
       );
     }
@@ -1261,11 +1306,12 @@ export default async function raceScheduleMenu(interaction) {
           await interaction.editReply(
             buildTextAndRowsV2Payload({
               headline: noTabForDate
-                ? `❌ **${interactionYmd}**（日本時間）の日付では中央（JRA）の開催がありません（休場日など）。開催のある日に再度お試しください。`
-                : '❌ この操作日（日本時間）に発走のある中央開催が見つかりませんでした。',
+                ? t('race_schedule.errors.jra_no_meeting_date', { date: interactionYmd }, loc)
+                : t('race_schedule.errors.jra_no_races_post_date', null, loc),
               actionRows: [],
               extraFlags: v2ExtraFlags(interaction),
               withBotingMenuBack: true,
+              locale: loc,
             }),
           );
           return;
@@ -1281,11 +1327,12 @@ export default async function raceScheduleMenu(interaction) {
           await buildVenuePickIntroV2Payload({
             userId,
             extraFlags: v2ExtraFlags(interaction),
-            introBodySuffix: jraQuickItems.length ? VENUE_QUICK_PICK_BODY_SUFFIX : '',
+            locale: loc,
+            introBodySuffix: jraQuickItems.length ? venueQuickPickBodySuffix(loc) : '',
             actionRows: [
-              venueSelectRowFromSchedule('jra', kaisaiDateYmd, currentGroup, venuesDay),
+              venueSelectRowFromSchedule('jra', kaisaiDateYmd, currentGroup, venuesDay, loc),
               ...(jraQuickRow ? [jraQuickRow] : []),
-              scheduleBackToKindSelectButtonRow(),
+              scheduleBackToKindSelectButtonRow(loc),
               betSlipOpenReviewButtonRowForSchedule(
                 userId,
                 firstScheduleAnchorRaceIdFromVenues(venuesDay),
@@ -1306,11 +1353,11 @@ export default async function raceScheduleMenu(interaction) {
         if (!venuesDay.length) {
           await interaction.editReply(
             buildTextAndRowsV2Payload({
-              headline:
-                '❌ この操作日（日本時間）に発走のある地方開催が見つかりませんでした。',
+              headline: t('race_schedule.errors.nar_no_races_post_date', null, loc),
               actionRows: [],
               extraFlags: v2ExtraFlags(interaction),
               withBotingMenuBack: true,
+              locale: loc,
             }),
           );
           return;
@@ -1326,11 +1373,12 @@ export default async function raceScheduleMenu(interaction) {
           await buildVenuePickIntroV2Payload({
             userId,
             extraFlags: v2ExtraFlags(interaction),
-            introBodySuffix: narQuickItems.length ? VENUE_QUICK_PICK_BODY_SUFFIX : '',
+            locale: loc,
+            introBodySuffix: narQuickItems.length ? venueQuickPickBodySuffix(loc) : '',
             actionRows: [
-              venueSelectRowFromSchedule('nar', kaisaiDateYmd, null, venuesDay),
+              venueSelectRowFromSchedule('nar', kaisaiDateYmd, null, venuesDay, loc),
               ...(narQuickRow ? [narQuickRow] : []),
-              scheduleBackToKindSelectButtonRow(),
+              scheduleBackToKindSelectButtonRow(loc),
               betSlipOpenReviewButtonRowForSchedule(
                 userId,
                 firstScheduleAnchorRaceIdFromVenues(venuesDay),
@@ -1344,10 +1392,11 @@ export default async function raceScheduleMenu(interaction) {
       console.error(e);
       await interaction.editReply(
         buildTextAndRowsV2Payload({
-          headline: `❌ 開催一覧の取得に失敗: ${e.message}`,
+          headline: t('race_schedule.errors.schedule_fetch_failed', { message: e.message }, loc),
           actionRows: [],
           extraFlags: v2ExtraFlags(interaction),
           withBotingMenuBack: true,
+          locale: loc,
         }),
       );
     }
@@ -1368,10 +1417,11 @@ export default async function raceScheduleMenu(interaction) {
       if (!kaisaiDate || !currentGroup || !kaisaiId) {
         await interaction.editReply(
           buildTextAndRowsV2Payload({
-            headline: '❌ メニュー値が不正です。もう一度 /boting から試してください。',
+            headline: t('race_schedule.errors.menu_invalid_boting', null, loc),
             actionRows: [],
             extraFlags: v2ExtraFlags(interaction),
             withBotingMenuBack: true,
+            locale: loc,
           }),
         );
         return;
@@ -1387,10 +1437,11 @@ export default async function raceScheduleMenu(interaction) {
       if (!kaisaiDate || !kaisaiId) {
         await interaction.editReply(
           buildTextAndRowsV2Payload({
-            headline: '❌ メニュー値が不正です。もう一度 /boting から試してください。',
+            headline: t('race_schedule.errors.menu_invalid_boting', null, loc),
             actionRows: [],
             extraFlags: v2ExtraFlags(interaction),
             withBotingMenuBack: true,
+            locale: loc,
           }),
         );
         return;
@@ -1404,10 +1455,11 @@ export default async function raceScheduleMenu(interaction) {
     } else {
       await interaction.editReply(
         buildTextAndRowsV2Payload({
-          headline: '❌ メニュー値が不正です。もう一度 /boting から試してください。',
+          headline: t('race_schedule.errors.menu_invalid_boting', null, loc),
           actionRows: [],
           extraFlags: v2ExtraFlags(interaction),
           withBotingMenuBack: true,
+          locale: loc,
         }),
       );
       return;
@@ -1434,11 +1486,11 @@ export default async function raceScheduleMenu(interaction) {
       if (!races.length) {
         await interaction.editReply(
           buildTextAndRowsV2Payload({
-            headline:
-              '❌ その開催場で、この操作日（日本時間）の発走として表示できるレースがありません。',
+            headline: t('race_schedule.errors.venue_no_races_today', null, loc),
             actionRows: [],
             extraFlags: v2ExtraFlags(interaction),
             withBotingMenuBack: true,
+            locale: loc,
           }),
         );
         return;
@@ -1448,17 +1500,18 @@ export default async function raceScheduleMenu(interaction) {
       }
       const lines = races.map((r) => {
         const st = getRaceSalesStatus(r, kaisaiDate);
-        return `**${r.roundLabel}** ${r.timeText} — ${r.title}\n└ ${st.detail}`;
+        const detail = raceSalesStatusDetailLabel(st, loc);
+        return `**${r.roundLabel}** ${r.timeText} — ${r.title}\n└ ${detail}`;
       });
       let description = lines.join('\n\n');
       if (description.length > 4090) description = `${description.slice(0, 4087)}…`;
 
       const headline = [
-        '🏇 **レース一覧**',
+        t('race_schedule.lines.race_list_title', null, loc),
         '',
         description,
         '',
-        `開催日 ${kaisaiDate}（日本時間）`,
+        t('race_schedule.lines.race_list_kaisai', { date: kaisaiDate }, loc),
       ].join('\n');
 
       const vs = venueSelectionStore.get(userId);
@@ -1469,9 +1522,9 @@ export default async function raceScheduleMenu(interaction) {
         buildTextAndRowsV2Payload({
           headline,
           actionRows: [
-            raceSelectRow(kaisaiDate, races),
-            scheduleBackToVenueButtonRow(kaisaiDate, backGroup, backKind),
-            scheduleBackToKindSelectButtonRow(),
+            raceSelectRow(kaisaiDate, races, loc),
+            scheduleBackToVenueButtonRow(kaisaiDate, backGroup, backKind, loc),
+            scheduleBackToKindSelectButtonRow(loc),
             betSlipOpenReviewButtonRowForSchedule(
               userId,
               firstScheduleAnchorRaceIdFromRaces(races),
@@ -1479,16 +1532,18 @@ export default async function raceScheduleMenu(interaction) {
           ],
           extraFlags: v2ExtraFlags(interaction),
           withBotingMenuBack: true,
+          locale: loc,
         }),
       );
     } catch (e) {
       console.error(e);
       await interaction.editReply(
         buildTextAndRowsV2Payload({
-          headline: `❌ ${e.message}`,
+          headline: t('race_schedule.errors.generic_message', { message: e.message }, loc),
           actionRows: [],
           extraFlags: v2ExtraFlags(interaction),
           withBotingMenuBack: true,
+          locale: loc,
         }),
       );
     }
@@ -1510,10 +1565,11 @@ export default async function raceScheduleMenu(interaction) {
       console.error(e);
       await interaction.editReply(
         buildTextAndRowsV2Payload({
-          headline: `❌ 出馬表の取得に失敗: ${e.message}`,
+          headline: t('race_schedule.errors.card_fetch_failed', { message: e.message }, loc),
           actionRows: [],
           extraFlags: v2ExtraFlags(interaction),
           withBotingMenuBack: true,
+          locale: loc,
         }),
       );
     }
@@ -1564,11 +1620,10 @@ export default async function raceScheduleMenu(interaction) {
       await interaction.editReply(
         raceCardPayload(interaction,{
           result: flow.result,
-          headline:
-            '❌ この出走頭数ではその券種は発売されません（JRA 公式の発売頭数表に準拠し、中央(JRA)・地方(NAR)とも同じルールで絞り込み）。\nhttps://www.jra.go.jp/kouza/baken/index.html#cat_sell\n別の券種を選んでください。',
+          headline: t('race_schedule.errors.jra_bet_type_not_allowed', null, loc),
           actionRows: [
-            betTypeSelectRow(raceId, null, flow),
-            scheduleRaceListBackIfScheduled(userId, raceId),
+            betTypeSelectRow(raceId, null, flow, loc),
+            scheduleRaceListBackIfScheduled(userId, raceId, loc),
           ].filter(Boolean),
         }),
       );
@@ -1637,17 +1692,17 @@ export default async function raceScheduleMenu(interaction) {
       await interaction.editReply(
         raceCardPayload(interaction,{
           result,
-          headline: `「${BET_TYPE_LABEL[betType]}」の馬番を選択してください。`,
+          headline: t('race_schedule.headlines.pick_horses', { betType: betTypeLabel(betType, loc) }, loc),
           actionRows: [
         buildSelectionRow({
             customId: `race_bet_single_pick|${raceId}|${betType}`,
-            placeholder: '馬番を1頭選択',
+            placeholder: ph('pick_one_horse', loc),
             options,
             minValues: 1,
             maxValues: 1,
           }),
-          backButtonRow(raceId, backMenuIndex),
-          scheduleRaceListBackIfScheduled(userId, raceId),
+          backButtonRow(raceId, backMenuIndex, loc),
+          scheduleRaceListBackIfScheduled(userId, raceId, loc),
         ].filter(Boolean),
         }),
       );
@@ -1661,25 +1716,25 @@ export default async function raceScheduleMenu(interaction) {
       await interaction.editReply(
         raceCardPayload(interaction,{
           result,
-          headline: `「${BET_TYPE_LABEL[betType]}」の投票形式を選択してください。`,
+          headline: t('race_schedule.headlines.pick_vote_mode', { betType: betTypeLabel(betType, loc) }, loc),
           actionRows: [
         new ActionRowBuilder().addComponents(
             new StringSelectMenuBuilder()
               .setCustomId(lastId)
-              .setPlaceholder('投票形式を選択')
+              .setPlaceholder(t('bet_flow.placeholders.vote_mode', null, loc))
               .setMinValues(1)
               .setMaxValues(1)
               .addOptions(
-                PAIR_MODE_OPTIONS.map((m) =>
+                pairModesLabeled(loc).map((m) =>
                   new StringSelectMenuOptionBuilder()
                     .setLabel(m.label)
                     .setValue(m.id)
-                    .setDescription('次で馬番/枠番を選びます'),
+                    .setDescription(t('bet_flow.descriptions.next_pick_horses', null, loc)),
                 ),
               ),
           ),
-          backButtonRow(raceId, bi),
-          scheduleRaceListBackIfScheduled(userId, raceId),
+          backButtonRow(raceId, bi, loc),
+          scheduleRaceListBackIfScheduled(userId, raceId, loc),
         ].filter(Boolean),
         }),
       );
@@ -1693,25 +1748,25 @@ export default async function raceScheduleMenu(interaction) {
       await interaction.editReply(
         raceCardPayload(interaction,{
           result,
-          headline: '「馬単」の投票形式を選択してください。',
+          headline: t('race_schedule.headlines.pick_vote_mode', { betType: betTypeLabel('umatan', loc) }, loc),
           actionRows: [
         new ActionRowBuilder().addComponents(
             new StringSelectMenuBuilder()
               .setCustomId(lastId)
-              .setPlaceholder('投票形式を選択')
+              .setPlaceholder(t('bet_flow.placeholders.vote_mode', null, loc))
               .setMinValues(1)
               .setMaxValues(1)
               .addOptions(
-                UMATAN_MODE_OPTIONS.map((m) =>
+                umatanModesLabeled(loc).map((m) =>
                   new StringSelectMenuOptionBuilder()
                     .setLabel(m.label)
                     .setValue(m.id)
-                    .setDescription('次で馬番を選びます'),
+                    .setDescription(t('bet_flow.descriptions.next_pick_horses', null, loc)),
                 ),
               ),
           ),
-          backButtonRow(raceId, bi),
-          scheduleRaceListBackIfScheduled(userId, raceId),
+          backButtonRow(raceId, bi, loc),
+          scheduleRaceListBackIfScheduled(userId, raceId, loc),
         ].filter(Boolean),
         }),
       );
@@ -1725,25 +1780,25 @@ export default async function raceScheduleMenu(interaction) {
       await interaction.editReply(
         raceCardPayload(interaction,{
           result,
-          headline: '「3連複」の投票形式を選択してください。',
+          headline: t('race_schedule.headlines.pick_vote_mode', { betType: betTypeLabel('trifuku', loc) }, loc),
           actionRows: [
         new ActionRowBuilder().addComponents(
             new StringSelectMenuBuilder()
               .setCustomId(lastId)
-              .setPlaceholder('投票形式を選択')
+              .setPlaceholder(t('bet_flow.placeholders.vote_mode', null, loc))
               .setMinValues(1)
               .setMaxValues(1)
               .addOptions(
-                TRIFUKU_MODE_OPTIONS.map((m) =>
+                trifukuModesLabeled(loc).map((m) =>
                   new StringSelectMenuOptionBuilder()
                     .setLabel(m.label)
                     .setValue(m.id)
-                    .setDescription('次で馬番を選びます'),
+                    .setDescription(t('bet_flow.descriptions.next_pick_horses', null, loc)),
                 ),
               ),
           ),
-          backButtonRow(raceId, bi),
-          scheduleRaceListBackIfScheduled(userId, raceId),
+          backButtonRow(raceId, bi, loc),
+          scheduleRaceListBackIfScheduled(userId, raceId, loc),
         ].filter(Boolean),
         }),
       );
@@ -1757,25 +1812,25 @@ export default async function raceScheduleMenu(interaction) {
       await interaction.editReply(
         raceCardPayload(interaction,{
           result,
-          headline: '「3連単」の投票形式を選択してください。',
+          headline: t('race_schedule.headlines.pick_vote_mode', { betType: betTypeLabel('tritan', loc) }, loc),
           actionRows: [
         new ActionRowBuilder().addComponents(
             new StringSelectMenuBuilder()
               .setCustomId(lastId)
-              .setPlaceholder('投票形式を選択')
+              .setPlaceholder(t('bet_flow.placeholders.vote_mode', null, loc))
               .setMinValues(1)
               .setMaxValues(1)
               .addOptions(
-                TRITAN_MODE_OPTIONS.map((m) =>
+                tritanModesLabeled(loc).map((m) =>
                   new StringSelectMenuOptionBuilder()
                     .setLabel(m.label)
                     .setValue(m.id)
-                    .setDescription('次で馬番を選びます'),
+                    .setDescription(t('bet_flow.descriptions.next_pick_horses', null, loc)),
                 ),
               ),
           ),
-          backButtonRow(raceId, bi),
-          scheduleRaceListBackIfScheduled(userId, raceId),
+          backButtonRow(raceId, bi, loc),
+          scheduleRaceListBackIfScheduled(userId, raceId, loc),
         ].filter(Boolean),
         }),
       );
@@ -1785,7 +1840,7 @@ export default async function raceScheduleMenu(interaction) {
     await interaction.editReply(
         raceCardPayload(interaction,{
           result,
-          headline: '❌ 未対応の賭け方式です。',
+          headline: t('race_schedule.errors.unsupported_bet_type', null, loc),
           actionRows: [
         
         ].filter(Boolean),
@@ -1802,21 +1857,27 @@ export default async function raceScheduleMenu(interaction) {
     const picks = interaction.values; // [horseNo]
 
     const flow = getBetFlow(userId, raceId);
+    const flowLoc = resolveLocaleFromInteraction(interaction);
     if (!flow?.result) {
       await interaction.editReply(
         buildTextAndRowsV2Payload({
-          headline: MSG_RACE_BET_FLOW_SESSION_INVALID,
+          headline: msgRaceBetFlowSessionInvalid(flowLoc),
           actionRows: [],
           extraFlags: v2ExtraFlags(interaction),
           withBotingMenuBack: true,
+          locale: flowLoc,
         }),
       );
       return;
     }
     const result = flow.result;
-    const horseText = formatNamesByNums(result, picks);
+    const horseText = formatNamesByNums(result, picks, loc);
     const points = betType === 'win_place' ? 2 : 1;
-    const selectionLine = `選択: ${BET_TYPE_LABEL[betType]} => ${horseText}`;
+    const selectionLine = t(
+      'race_schedule.selection.arrow',
+      { betType: betTypeLabel(betType, loc), summary: horseText },
+      loc,
+    );
 
     const options = horseOptionsFromResult(result);
 
@@ -1831,7 +1892,7 @@ export default async function raceScheduleMenu(interaction) {
       flowUnitYen: flow.unitYen,
       lastMenu: {
         customId: `race_bet_single_pick|${raceId}|${betType}`,
-        placeholder: '馬番を1頭選択',
+        placeholder: ph('pick_one_horse', loc),
         options,
         minValues: 1,
         maxValues: 1,
@@ -1853,7 +1914,7 @@ export default async function raceScheduleMenu(interaction) {
     const result = flow.result;
 
     const isFrame = betType === 'frame_pair';
-    const options = isFrame ? frameOptionsFromResult(result) : horseOptionsFromResult(result);
+    const options = isFrame ? frameOptionsFromResult(result, 25, {}, loc) : horseOptionsFromResult(result);
 
     // 通常（2つまで）
     if (mode === 'normal') {
@@ -1876,17 +1937,17 @@ export default async function raceScheduleMenu(interaction) {
         await interaction.editReply(
         raceCardPayload(interaction,{
           result,
-          headline: '「通常（枠連）」: 第1枠を1つ選択してください。',
+          headline: t('race_schedule.headlines.pair_normal_frame_first', null, loc),
           actionRows: [
         buildSelectionRow({
               customId: lastMenuCustomId,
-              placeholder: '第1枠を選択',
+              placeholder: ph('first_frame', loc),
               options,
               minValues: 1,
               maxValues: 1,
             }),
-            backButtonRow(raceId, backMenuIndex),
-            scheduleRaceListBackIfScheduled(userId, raceId),
+            backButtonRow(raceId, backMenuIndex, loc),
+            scheduleRaceListBackIfScheduled(userId, raceId, loc),
         ].filter(Boolean),
         }),
       );
@@ -1908,17 +1969,17 @@ export default async function raceScheduleMenu(interaction) {
       await interaction.editReply(
         raceCardPayload(interaction,{
           result,
-          headline: '「通常」: 馬番を2つまで選択してください。',
+          headline: t('race_schedule.headlines.pair_normal_horse_two', null, loc),
           actionRows: [
         buildSelectionRow({
             customId: lastMenuCustomId,
-            placeholder: '馬番を選択（最大2）',
+            placeholder: ph('horse_pick_two', loc),
             options,
             minValues: 1,
             maxValues: 2,
           }),
-          backButtonRow(raceId, backMenuIndex),
-          scheduleRaceListBackIfScheduled(userId, raceId),
+          backButtonRow(raceId, backMenuIndex, loc),
+          scheduleRaceListBackIfScheduled(userId, raceId, loc),
         ].filter(Boolean),
         }),
       );
@@ -1942,17 +2003,21 @@ export default async function raceScheduleMenu(interaction) {
       await interaction.editReply(
         raceCardPayload(interaction,{
           result,
-          headline: `「ながし」: まず軸を${isFrame ? '枠' : '馬番'}で1つ選んでください。`,
+          headline: t('race_schedule.headlines.pair_nagashi_axis', {
+            unit: isFrame
+              ? t('race_schedule.display.unit_frame', null, loc)
+              : t('race_schedule.display.unit_horse', null, loc),
+          }, loc),
           actionRows: [
         buildSelectionRow({
             customId: `race_bet_pair_nagashi_axis|${raceId}|${betType}`,
-            placeholder: isFrame ? '軸の枠を選択' : '軸の馬番を選択',
+            placeholder: isFrame ? ph('axis_frame', loc) : ph('axis_horse', loc),
             options,
             minValues: 1,
             maxValues: 1,
           }),
-          backButtonRow(raceId, backMenuIndex),
-          scheduleRaceListBackIfScheduled(userId, raceId),
+          backButtonRow(raceId, backMenuIndex, loc),
+          scheduleRaceListBackIfScheduled(userId, raceId, loc),
         ].filter(Boolean),
         }),
       );
@@ -1976,17 +2041,21 @@ export default async function raceScheduleMenu(interaction) {
       await interaction.editReply(
         raceCardPayload(interaction,{
           result,
-          headline: `「ボックス」: ${isFrame ? '枠' : '馬番'}を必要数選択してください。`,
+          headline: t('race_schedule.headlines.pair_box', {
+            unit: isFrame
+              ? t('race_schedule.display.unit_frame', null, loc)
+              : t('race_schedule.display.unit_horse', null, loc),
+          }, loc),
           actionRows: [
         buildSelectionRow({
             customId: `race_bet_pair_box|${raceId}|${betType}`,
-            placeholder: isFrame ? '枠を選択' : '馬番を選択',
+            placeholder: isFrame ? ph('frame_pick', loc) : ph('horse_pick', loc),
             options,
             minValues: 2,
             maxValues: Math.min(options.length, 25),
           }),
-          backButtonRow(raceId, backMenuIndex),
-          scheduleRaceListBackIfScheduled(userId, raceId),
+          backButtonRow(raceId, backMenuIndex, loc),
+          scheduleRaceListBackIfScheduled(userId, raceId, loc),
         ].filter(Boolean),
         }),
       );
@@ -2010,17 +2079,23 @@ export default async function raceScheduleMenu(interaction) {
       await interaction.editReply(
         raceCardPayload(interaction,{
           result,
-          headline: `「フォーメーション」: 第1群（${isFrame ? '枠' : '馬番'}）を選択してください。`,
+          headline: t('race_schedule.headlines.pair_form_first', {
+            unit: isFrame
+              ? t('race_schedule.display.unit_frame', null, loc)
+              : t('race_schedule.display.unit_horse', null, loc),
+          }, loc),
           actionRows: [
         buildSelectionRow({
             customId: `race_bet_pair_formA|${raceId}|${betType}`,
-            placeholder: `第1群${isFrame ? '枠' : '馬番'}`,
+            placeholder: isFrame
+              ? ph('pair_form_group1_frame', loc)
+              : ph('pair_form_group1_horse', loc),
             options,
             minValues: 1,
             maxValues: Math.min(options.length, 25),
           }),
-          backButtonRow(raceId, backMenuIndex),
-          scheduleRaceListBackIfScheduled(userId, raceId),
+          backButtonRow(raceId, backMenuIndex, loc),
+          scheduleRaceListBackIfScheduled(userId, raceId, loc),
         ].filter(Boolean),
         }),
       );
@@ -2040,7 +2115,7 @@ export default async function raceScheduleMenu(interaction) {
     const isFrame = betType === 'frame_pair';
 
     if (picks.length < 2) {
-      const options = isFrame ? frameOptionsFromResult(result) : horseOptionsFromResult(result);
+      const options = isFrame ? frameOptionsFromResult(result, 25, {}, loc) : horseOptionsFromResult(result);
       const lastMenuCustomId = `race_bet_pair_normal|${raceId}|${betType}`;
       const backMenuIds = computeBackMenuIds({
         raceId,
@@ -2056,28 +2131,46 @@ export default async function raceScheduleMenu(interaction) {
       await interaction.editReply(
         raceCardPayload(interaction,{
           result,
-          headline: '❌ 通常は2つ選択してください。',
+          headline: t('race_schedule.headlines.pair_normal_pick_two', null, loc),
           actionRows: [
         buildSelectionRow({
             customId: lastMenuCustomId,
-            placeholder: isFrame ? '枠を選択（最大2）' : '馬番を選択（最大2）',
+            placeholder: isFrame ? ph('frame_pick_two', loc) : ph('horse_pick_two', loc),
             options,
             minValues: 1,
             maxValues: 2,
           }),
-          backButtonRow(raceId, backMenuIndex),
-          scheduleRaceListBackIfScheduled(userId, raceId),
+          backButtonRow(raceId, backMenuIndex, loc),
+          scheduleRaceListBackIfScheduled(userId, raceId, loc),
         ].filter(Boolean),
         }),
       );
       return;
     }
 
-    const summary = isFrame ? `枠: ${formatFrames(result, picks)}` : `馬番: ${formatNamesByNums(result, picks)}`;
+    const summary = isFrame
+      ? t(
+          'race_schedule.selection_snippets.frames_colon',
+          { list: formatFrames(result, picks, loc) },
+          loc,
+        )
+      : t(
+          'race_schedule.selection_snippets.horses_colon',
+          { list: formatNamesByNums(result, picks, loc) },
+          loc,
+        );
     const points = 1;
-    const selectionLine = `選択: ${BET_TYPE_LABEL[betType]}（通常） => ${summary}`;
+    const selectionLine = t(
+      'race_schedule.selection.with_mode',
+      {
+        betType: betTypeLabel(betType, loc),
+        mode: t('bet_flow.pair_modes.normal', null, loc),
+        summary,
+      },
+      loc,
+    );
 
-    const options = isFrame ? frameOptionsFromResult(result) : horseOptionsFromResult(result);
+    const options = isFrame ? frameOptionsFromResult(result, 25, {}, loc) : horseOptionsFromResult(result);
     await renderFinalSelection({
       interaction,
       userId,
@@ -2089,7 +2182,7 @@ export default async function raceScheduleMenu(interaction) {
       flowUnitYen: flow.unitYen,
       lastMenu: {
         customId: `race_bet_pair_normal|${raceId}|${betType}`,
-        placeholder: isFrame ? '枠を選択（最大2）' : '馬番を選択（最大2）',
+        placeholder: isFrame ? ph('frame_pick_two', loc) : ph('horse_pick_two', loc),
         options,
         minValues: 1,
         maxValues: 2,
@@ -2120,21 +2213,21 @@ export default async function raceScheduleMenu(interaction) {
 
     const omitFrames =
       !frameAllowsWakurenSamePair(result.horses, first) ? [String(first)] : [];
-    const options = frameOptionsFromResult(result, 25, { omitFrames });
+    const options = frameOptionsFromResult(result, 25, { omitFrames }, loc);
     await interaction.editReply(
         raceCardPayload(interaction,{
           result,
-          headline: '次に第2枠を選択してください。',
+          headline: t('race_schedule.headlines.frame_pick_second', null, loc),
           actionRows: [
         buildSelectionRow({
           customId: lastMenuCustomId,
-          placeholder: '第2枠を選択',
+          placeholder: ph('second_frame', loc),
           options,
           minValues: 1,
           maxValues: 1,
         }),
-        backButtonRow(raceId, bi),
-        scheduleRaceListBackIfScheduled(userId, raceId),
+        backButtonRow(raceId, bi, loc),
+        scheduleRaceListBackIfScheduled(userId, raceId, loc),
         ].filter(Boolean),
         }),
       );
@@ -2159,24 +2252,23 @@ export default async function raceScheduleMenu(interaction) {
       !frameAllowsWakurenSamePair(result.horses, first)
     ) {
       const omitFrames = [String(first)];
-      const options = frameOptionsFromResult(result, 25, { omitFrames });
+      const options = frameOptionsFromResult(result, 25, { omitFrames }, loc);
       const lastMenuCustomId = `race_bet_frame_pair_normal_second|${raceId}`;
       const bi = setupHorseStepBack(userId, raceId, 'frame_pair', lastMenuCustomId);
       await interaction.editReply(
         raceCardPayload(interaction, {
           result,
-          headline:
-            '同枠に2頭以上いないため、同枠同士は選べません。第2枠を選び直してください。',
+          headline: t('race_schedule.headlines.frame_same_wakuren_error', null, loc),
           actionRows: [
             buildSelectionRow({
               customId: lastMenuCustomId,
-              placeholder: '第2枠を選択',
+              placeholder: ph('second_frame', loc),
               options,
               minValues: 1,
               maxValues: 1,
             }),
-            backButtonRow(raceId, bi),
-            scheduleRaceListBackIfScheduled(userId, raceId),
+            backButtonRow(raceId, bi, loc),
+            scheduleRaceListBackIfScheduled(userId, raceId, loc),
           ].filter(Boolean),
         }),
       );
@@ -2184,12 +2276,20 @@ export default async function raceScheduleMenu(interaction) {
     }
 
     const points = 1;
-    const selectionLine = `選択: 枠連（通常） => ${formatFrames(result, [first, second])}`;
+    const selectionLine = t(
+      'race_schedule.selection.frame_pair_normal',
+      {
+        betType: betTypeLabel('frame_pair', loc),
+        mode: t('bet_flow.pair_modes.normal', null, loc),
+        summary: formatFrames(result, [first, second], loc),
+      },
+      loc,
+    );
     const omitFrames =
       first != null && !frameAllowsWakurenSamePair(result.horses, first)
         ? [String(first)]
         : [];
-    const options = frameOptionsFromResult(result, 25, { omitFrames });
+    const options = frameOptionsFromResult(result, 25, { omitFrames }, loc);
 
     const firstMenuCustomId = `race_bet_frame_pair_normal_first|${raceId}`;
     // 最終確定側の renderFinalSelection で lastMenu 以外も保持したいので先に stepSelections を埋める
@@ -2211,7 +2311,7 @@ export default async function raceScheduleMenu(interaction) {
       flowUnitYen: flow.unitYen,
       lastMenu: {
         customId: `race_bet_frame_pair_normal_second|${raceId}`,
-        placeholder: '第2枠を選択',
+        placeholder: ph('second_frame', loc),
         options,
         minValues: 1,
         maxValues: 1,
@@ -2232,24 +2332,28 @@ export default async function raceScheduleMenu(interaction) {
     patchBetFlow(userId, raceId, { pairAxis: axis });
     const result = flow.result;
     const isFrame = betType === 'frame_pair';
-    const options = isFrame ? frameOptionsFromResult(result) : horseOptionsFromResult(result);
+    const options = isFrame ? frameOptionsFromResult(result, 25, {}, loc) : horseOptionsFromResult(result);
 
     const lastMenuCustomId = `race_bet_pair_nagashi_opponent|${raceId}|${betType}`;
     const bi = setupHorseStepBack(userId, raceId, betType, lastMenuCustomId);
     await interaction.editReply(
         raceCardPayload(interaction,{
           result,
-          headline: `「ながし」: 相手を${isFrame ? '枠' : '馬番'}で選択してください。`,
+          headline: t('race_schedule.headlines.pair_nagashi_opponent', {
+            unit: isFrame
+              ? t('race_schedule.display.unit_frame', null, loc)
+              : t('race_schedule.display.unit_horse', null, loc),
+          }, loc),
           actionRows: [
         buildSelectionRow({
           customId: lastMenuCustomId,
-          placeholder: '相手を選択（複数可）',
+          placeholder: ph('opponents_multi', loc),
           options,
           minValues: 1,
           maxValues: Math.min(options.length, 25),
         }),
-        backButtonRow(raceId, bi),
-        scheduleRaceListBackIfScheduled(userId, raceId),
+        backButtonRow(raceId, bi, loc),
+        scheduleRaceListBackIfScheduled(userId, raceId, loc),
         ].filter(Boolean),
         }),
       );
@@ -2269,14 +2373,36 @@ export default async function raceScheduleMenu(interaction) {
     const axis = flow.pairAxis;
 
     const summary = isFrame
-      ? `軸: ${formatFrames(result, [axis])} / 相手: ${formatFrames(result, opponents)}`
-      : `軸: ${formatNamesByNums(result, [axis])} / 相手: ${formatNamesByNums(result, opponents)}`;
+      ? t(
+          'race_schedule.selection_snippets.axis_opp',
+          {
+            axis: formatFrames(result, [axis], loc),
+            opp: formatFrames(result, opponents, loc),
+          },
+          loc,
+        )
+      : t(
+          'race_schedule.selection_snippets.axis_opp',
+          {
+            axis: formatNamesByNums(result, [axis], loc),
+            opp: formatNamesByNums(result, opponents, loc),
+          },
+          loc,
+        );
     const points = isFrame
       ? countFramePairNagashiPoints(axis, opponents, result)
       : distinctCountExcluding(opponents, [axis]);
-    const selectionLine = `選択: ${BET_TYPE_LABEL[betType]}（ながし） => ${summary}`;
+    const selectionLine = t(
+      'race_schedule.selection.with_mode',
+      {
+        betType: betTypeLabel(betType, loc),
+        mode: t('bet_flow.pair_modes.nagashi', null, loc),
+        summary,
+      },
+      loc,
+    );
 
-    const options = isFrame ? frameOptionsFromResult(result) : horseOptionsFromResult(result);
+    const options = isFrame ? frameOptionsFromResult(result, 25, {}, loc) : horseOptionsFromResult(result);
     await renderFinalSelection({
       interaction,
       userId,
@@ -2288,7 +2414,7 @@ export default async function raceScheduleMenu(interaction) {
       flowUnitYen: flow.unitYen,
       lastMenu: {
         customId: `race_bet_pair_nagashi_opponent|${raceId}|${betType}`,
-        placeholder: '相手を選択（複数可）',
+        placeholder: ph('opponents_multi', loc),
         options,
         minValues: 1,
         maxValues: Math.min(options.length, 25),
@@ -2309,13 +2435,31 @@ export default async function raceScheduleMenu(interaction) {
     const result = flow.result;
     const isFrame = betType === 'frame_pair';
 
-    const summary = isFrame ? `枠: ${formatFrames(result, picks)}` : `馬番: ${formatNamesByNums(result, picks)}`;
+    const summary = isFrame
+      ? t(
+          'race_schedule.selection_snippets.frames_colon',
+          { list: formatFrames(result, picks, loc) },
+          loc,
+        )
+      : t(
+          'race_schedule.selection_snippets.horses_colon',
+          { list: formatNamesByNums(result, picks, loc) },
+          loc,
+        );
     const points = isFrame
       ? countFramePairBoxPoints(picks, result)
       : calcComb2(uniqValues(picks).length);
-    const selectionLine = `選択: ${BET_TYPE_LABEL[betType]}（ボックス） => ${summary}`;
+    const selectionLine = t(
+      'race_schedule.selection.with_mode',
+      {
+        betType: betTypeLabel(betType, loc),
+        mode: t('bet_flow.pair_modes.box', null, loc),
+        summary,
+      },
+      loc,
+    );
 
-    const options = isFrame ? frameOptionsFromResult(result) : horseOptionsFromResult(result);
+    const options = isFrame ? frameOptionsFromResult(result, 25, {}, loc) : horseOptionsFromResult(result);
     await renderFinalSelection({
       interaction,
       userId,
@@ -2327,7 +2471,7 @@ export default async function raceScheduleMenu(interaction) {
       flowUnitYen: flow.unitYen,
       lastMenu: {
         customId: `race_bet_pair_box|${raceId}|${betType}`,
-        placeholder: isFrame ? '枠を選択' : '馬番を選択',
+        placeholder: isFrame ? ph('frame_pick', loc) : ph('horse_pick', loc),
         options,
         minValues: 2,
         maxValues: Math.min(options.length, 25),
@@ -2348,24 +2492,30 @@ export default async function raceScheduleMenu(interaction) {
     patchBetFlow(userId, raceId, { pairFormA: picks });
     const result = flow.result;
     const isFrame = betType === 'frame_pair';
-    const options = isFrame ? frameOptionsFromResult(result) : horseOptionsFromResult(result);
+    const options = isFrame ? frameOptionsFromResult(result, 25, {}, loc) : horseOptionsFromResult(result);
 
     const lastMenuCustomId = `race_bet_pair_formB|${raceId}|${betType}`;
     const bi = setupHorseStepBack(userId, raceId, betType, lastMenuCustomId);
     await interaction.editReply(
         raceCardPayload(interaction,{
           result,
-          headline: `「フォーメーション」: 第2群（${isFrame ? '枠' : '馬番'}）を選択してください。`,
+          headline: t('race_schedule.headlines.pair_form_second', {
+            unit: isFrame
+              ? t('race_schedule.display.unit_frame', null, loc)
+              : t('race_schedule.display.unit_horse', null, loc),
+          }, loc),
           actionRows: [
         buildSelectionRow({
           customId: lastMenuCustomId,
-          placeholder: `第2群${isFrame ? '枠' : '馬番'}`,
+          placeholder: isFrame
+            ? ph('pair_form_group2_frame', loc)
+            : ph('pair_form_group2_horse', loc),
           options,
           minValues: 1,
           maxValues: Math.min(options.length, 25),
         }),
-        backButtonRow(raceId, bi),
-        scheduleRaceListBackIfScheduled(userId, raceId),
+        backButtonRow(raceId, bi, loc),
+        scheduleRaceListBackIfScheduled(userId, raceId, loc),
         ].filter(Boolean),
         }),
       );
@@ -2385,14 +2535,36 @@ export default async function raceScheduleMenu(interaction) {
     const picksA = flow.pairFormA || [];
 
     const summary = isFrame
-      ? `第1群: ${formatFrames(result, picksA)} / 第2群: ${formatFrames(result, picksB)}`
-      : `第1群: ${formatNamesByNums(result, picksA)} / 第2群: ${formatNamesByNums(result, picksB)}`;
+      ? t(
+          'race_schedule.selection_snippets.form_two_groups',
+          {
+            g1: formatFrames(result, picksA, loc),
+            g2: formatFrames(result, picksB, loc),
+          },
+          loc,
+        )
+      : t(
+          'race_schedule.selection_snippets.form_two_groups',
+          {
+            g1: formatNamesByNums(result, picksA, loc),
+            g2: formatNamesByNums(result, picksB, loc),
+          },
+          loc,
+        );
     const points = isFrame
       ? countFramePairFormationPoints(picksA, picksB, result)
       : countUniquePairsUnordered(picksA, picksB);
-    const selectionLine = `選択: ${BET_TYPE_LABEL[betType]}（フォーメーション） => ${summary}`;
+    const selectionLine = t(
+      'race_schedule.selection.with_mode',
+      {
+        betType: betTypeLabel(betType, loc),
+        mode: t('bet_flow.pair_modes.formation', null, loc),
+        summary,
+      },
+      loc,
+    );
 
-    const options = isFrame ? frameOptionsFromResult(result) : horseOptionsFromResult(result);
+    const options = isFrame ? frameOptionsFromResult(result, 25, {}, loc) : horseOptionsFromResult(result);
     await renderFinalSelection({
       interaction,
       userId,
@@ -2404,7 +2576,9 @@ export default async function raceScheduleMenu(interaction) {
       flowUnitYen: flow.unitYen,
       lastMenu: {
         customId: `race_bet_pair_formB|${raceId}|${betType}`,
-        placeholder: `第2群${isFrame ? '枠' : '馬番'}`,
+        placeholder: isFrame
+          ? ph('pair_form_group2_frame', loc)
+          : ph('pair_form_group2_horse', loc),
         options,
         minValues: 1,
         maxValues: Math.min(options.length, 25),
@@ -2432,17 +2606,17 @@ export default async function raceScheduleMenu(interaction) {
       await interaction.editReply(
         raceCardPayload(interaction,{
           result,
-          headline: '「馬単 通常」: まず1着を選択してください。',
+          headline: t('race_schedule.headlines.umatan_normal_first', null, loc),
           actionRows: [
         buildSelectionRow({
             customId: lastId,
-            placeholder: '1着（1頭）',
+            placeholder: ph('umatan_place_1', loc),
             options,
             minValues: 1,
             maxValues: 1,
           }),
-          backButtonRow(raceId, bi),
-          scheduleRaceListBackIfScheduled(userId, raceId),
+          backButtonRow(raceId, bi, loc),
+          scheduleRaceListBackIfScheduled(userId, raceId, loc),
         ].filter(Boolean),
         }),
       );
@@ -2455,17 +2629,17 @@ export default async function raceScheduleMenu(interaction) {
       await interaction.editReply(
         raceCardPayload(interaction,{
           result,
-          headline: '「1着ながし」: 軸（1着）を選択してください。',
+          headline: t('race_schedule.headlines.umatan_nagashi1_axis', null, loc),
           actionRows: [
         buildSelectionRow({
             customId: lastId,
-            placeholder: '軸（1着）',
+            placeholder: ph('axis_place_1', loc),
             options,
             minValues: 1,
             maxValues: 1,
           }),
-          backButtonRow(raceId, bi),
-          scheduleRaceListBackIfScheduled(userId, raceId),
+          backButtonRow(raceId, bi, loc),
+          scheduleRaceListBackIfScheduled(userId, raceId, loc),
         ].filter(Boolean),
         }),
       );
@@ -2478,17 +2652,17 @@ export default async function raceScheduleMenu(interaction) {
       await interaction.editReply(
         raceCardPayload(interaction,{
           result,
-          headline: '「2着ながし」: 軸（2着）を選択してください。',
+          headline: t('race_schedule.headlines.umatan_nagashi2_axis', null, loc),
           actionRows: [
         buildSelectionRow({
             customId: lastId,
-            placeholder: '軸（2着）',
+            placeholder: ph('axis_place_2', loc),
             options,
             minValues: 1,
             maxValues: 1,
           }),
-          backButtonRow(raceId, bi),
-          scheduleRaceListBackIfScheduled(userId, raceId),
+          backButtonRow(raceId, bi, loc),
+          scheduleRaceListBackIfScheduled(userId, raceId, loc),
         ].filter(Boolean),
         }),
       );
@@ -2501,17 +2675,17 @@ export default async function raceScheduleMenu(interaction) {
       await interaction.editReply(
         raceCardPayload(interaction,{
           result,
-          headline: '「馬単 ボックス」: 馬番を必要数選択してください。',
+          headline: t('race_schedule.headlines.umatan_box', null, loc),
           actionRows: [
         buildSelectionRow({
             customId: lastId,
-            placeholder: '馬番を選択（複数可）',
+            placeholder: ph('horses_multi', loc),
             options,
             minValues: 2,
             maxValues: Math.min(options.length, 25),
           }),
-          backButtonRow(raceId, bi),
-          scheduleRaceListBackIfScheduled(userId, raceId),
+          backButtonRow(raceId, bi, loc),
+          scheduleRaceListBackIfScheduled(userId, raceId, loc),
         ].filter(Boolean),
         }),
       );
@@ -2524,17 +2698,17 @@ export default async function raceScheduleMenu(interaction) {
       await interaction.editReply(
         raceCardPayload(interaction,{
           result,
-          headline: '「馬単 フォーメーション」: 第1群（1着候補）を選択してください。',
+          headline: t('race_schedule.headlines.umatan_form_a', null, loc),
           actionRows: [
         buildSelectionRow({
             customId: lastId,
-            placeholder: '第1群（1着）',
+            placeholder: ph('group_a_umatan', loc),
             options,
             minValues: 1,
             maxValues: Math.min(options.length, 25),
           }),
-          backButtonRow(raceId, bi),
-          scheduleRaceListBackIfScheduled(userId, raceId),
+          backButtonRow(raceId, bi, loc),
+          scheduleRaceListBackIfScheduled(userId, raceId, loc),
         ].filter(Boolean),
         }),
       );
@@ -2559,17 +2733,17 @@ export default async function raceScheduleMenu(interaction) {
     await interaction.editReply(
         raceCardPayload(interaction,{
           result,
-          headline: '次に2着を選択してください。',
+          headline: t('race_schedule.headlines.umatan_pick_second', null, loc),
           actionRows: [
         buildSelectionRow({
           customId: lastId,
-          placeholder: '2着（1頭）',
+          placeholder: ph('umatan_place_2', loc),
           options,
           minValues: 1,
           maxValues: 1,
         }),
-        backButtonRow(raceId, bi),
-        scheduleRaceListBackIfScheduled(userId, raceId),
+        backButtonRow(raceId, bi, loc),
+        scheduleRaceListBackIfScheduled(userId, raceId, loc),
         ].filter(Boolean),
         }),
       );
@@ -2588,7 +2762,16 @@ export default async function raceScheduleMenu(interaction) {
 
     const betType = 'umatan';
     const points = first !== two ? 1 : 0;
-    const selectionLine = `選択: 馬単（通常） => 1着: ${formatNamesByNums(result, [first])} / 2着: ${formatNamesByNums(result, [two])}`;
+    const selectionLine = t(
+      'race_schedule.selection.umatan_normal',
+      {
+        betType: betTypeLabel('umatan', loc),
+        mode: t('bet_flow.umatan_modes.normal', null, loc),
+        p1: formatNamesByNums(result, [first], loc),
+        p2: formatNamesByNums(result, [two], loc),
+      },
+      loc,
+    );
 
     const options = horseOptionsFromResult(result);
     await renderFinalSelection({
@@ -2602,7 +2785,7 @@ export default async function raceScheduleMenu(interaction) {
       flowUnitYen: flow.unitYen,
       lastMenu: {
         customId: `race_bet_umatan_normal_2|${raceId}`,
-        placeholder: '2着（1頭）',
+        placeholder: ph('umatan_place_2', loc),
         options,
         minValues: 1,
         maxValues: 1,
@@ -2629,17 +2812,17 @@ export default async function raceScheduleMenu(interaction) {
     await interaction.editReply(
         raceCardPayload(interaction,{
           result,
-          headline: '相手（2着）を選択してください（複数可）。',
+          headline: t('race_schedule.headlines.umatan_opp_second', null, loc),
           actionRows: [
         buildSelectionRow({
           customId: lastId,
-          placeholder: '相手（2着）',
+          placeholder: ph('opp_place_2', loc),
           options,
           minValues: 1,
           maxValues: Math.min(options.length, 25),
         }),
-        backButtonRow(raceId, bi),
-        scheduleRaceListBackIfScheduled(userId, raceId),
+        backButtonRow(raceId, bi, loc),
+        scheduleRaceListBackIfScheduled(userId, raceId, loc),
         ].filter(Boolean),
         }),
       );
@@ -2657,7 +2840,16 @@ export default async function raceScheduleMenu(interaction) {
 
     const betType = 'umatan';
     const points = distinctCountExcluding(opp, [axis]);
-    const selectionLine = `選択: 馬単（1着ながし） => 軸(1着): ${formatNamesByNums(result, [axis])} / 相手(2着): ${formatNamesByNums(result, opp)}`;
+    const selectionLine = t(
+      'race_schedule.selection.umatan_nagashi1',
+      {
+        betType: betTypeLabel('umatan', loc),
+        mode: t('bet_flow.umatan_modes.nagashi1', null, loc),
+        axis: formatNamesByNums(result, [axis], loc),
+        opp: formatNamesByNums(result, opp, loc),
+      },
+      loc,
+    );
 
     const options = horseOptionsFromResult(result);
     await renderFinalSelection({
@@ -2671,7 +2863,7 @@ export default async function raceScheduleMenu(interaction) {
       flowUnitYen: flow.unitYen,
       lastMenu: {
         customId: `race_bet_umatan_nagashi1_opp|${raceId}`,
-        placeholder: '相手（2着）',
+        placeholder: ph('opp_place_2', loc),
         options,
         minValues: 1,
         maxValues: Math.min(options.length, 25),
@@ -2698,17 +2890,17 @@ export default async function raceScheduleMenu(interaction) {
     await interaction.editReply(
         raceCardPayload(interaction,{
           result,
-          headline: '相手（1着）を選択してください（複数可）。',
+          headline: t('race_schedule.headlines.umatan_opp_first', null, loc),
           actionRows: [
         buildSelectionRow({
           customId: lastId,
-          placeholder: '相手（1着）',
+          placeholder: ph('opp_place_1', loc),
           options,
           minValues: 1,
           maxValues: Math.min(options.length, 25),
         }),
-        backButtonRow(raceId, bi),
-        scheduleRaceListBackIfScheduled(userId, raceId),
+        backButtonRow(raceId, bi, loc),
+        scheduleRaceListBackIfScheduled(userId, raceId, loc),
         ].filter(Boolean),
         }),
       );
@@ -2727,7 +2919,16 @@ export default async function raceScheduleMenu(interaction) {
 
     const betType = 'umatan';
     const points = distinctCountExcluding(opp, [axis]);
-    const selectionLine = `選択: 馬単（2着ながし） => 軸(2着): ${formatNamesByNums(result, [axis])} / 相手(1着): ${formatNamesByNums(result, opp)}`;
+    const selectionLine = t(
+      'race_schedule.selection.umatan_nagashi2',
+      {
+        betType: betTypeLabel('umatan', loc),
+        mode: t('bet_flow.umatan_modes.nagashi2', null, loc),
+        axis: formatNamesByNums(result, [axis], loc),
+        opp: formatNamesByNums(result, opp, loc),
+      },
+      loc,
+    );
 
     const options = horseOptionsFromResult(result);
     await renderFinalSelection({
@@ -2741,7 +2942,7 @@ export default async function raceScheduleMenu(interaction) {
       flowUnitYen: flow.unitYen,
       lastMenu: {
         customId: `race_bet_umatan_nagashi2_opp|${raceId}`,
-        placeholder: '相手（1着）',
+        placeholder: ph('opp_place_1', loc),
         options,
         minValues: 1,
         maxValues: Math.min(options.length, 25),
@@ -2763,7 +2964,15 @@ export default async function raceScheduleMenu(interaction) {
     const betType = 'umatan';
     const uniq = uniqValues(picks).length;
     const points = uniq * (uniq - 1);
-    const selectionLine = `選択: 馬単（ボックス） => 馬番: ${formatNamesByNums(result, picks)}`;
+    const selectionLine = t(
+      'race_schedule.selection.umatan_box',
+      {
+        betType: betTypeLabel('umatan', loc),
+        mode: t('bet_flow.umatan_modes.box', null, loc),
+        horses: formatNamesByNums(result, picks, loc),
+      },
+      loc,
+    );
 
     const options = horseOptionsFromResult(result);
     await renderFinalSelection({
@@ -2777,7 +2986,7 @@ export default async function raceScheduleMenu(interaction) {
       flowUnitYen: flow.unitYen,
       lastMenu: {
         customId: `race_bet_umatan_box|${raceId}`,
-        placeholder: '馬番を選択（複数可）',
+        placeholder: ph('horses_multi', loc),
         options,
         minValues: 2,
         maxValues: Math.min(options.length, 25),
@@ -2804,17 +3013,17 @@ export default async function raceScheduleMenu(interaction) {
     await interaction.editReply(
         raceCardPayload(interaction,{
           result,
-          headline: '第2群（2着候補）を選択してください。',
+          headline: t('race_schedule.headlines.umatan_form_b', null, loc),
           actionRows: [
         buildSelectionRow({
           customId: lastId,
-          placeholder: '第2群（2着）',
+          placeholder: ph('group_b_umatan', loc),
           options,
           minValues: 1,
           maxValues: Math.min(options.length, 25),
         }),
-        backButtonRow(raceId, bi),
-        scheduleRaceListBackIfScheduled(userId, raceId),
+        backButtonRow(raceId, bi, loc),
+        scheduleRaceListBackIfScheduled(userId, raceId, loc),
         ].filter(Boolean),
         }),
       );
@@ -2833,7 +3042,16 @@ export default async function raceScheduleMenu(interaction) {
 
     const betType = 'umatan';
     const points = countCrossDistinctPairs(picksA, picksB);
-    const selectionLine = `選択: 馬単（フォーメーション） => 1着群: ${formatNamesByNums(result, picksA)} / 2着群: ${formatNamesByNums(result, picksB)}`;
+    const selectionLine = t(
+      'race_schedule.selection.umatan_form',
+      {
+        betType: betTypeLabel('umatan', loc),
+        mode: t('bet_flow.umatan_modes.formation', null, loc),
+        a: formatNamesByNums(result, picksA, loc),
+        b: formatNamesByNums(result, picksB, loc),
+      },
+      loc,
+    );
 
     const options = horseOptionsFromResult(result);
     await renderFinalSelection({
@@ -2847,7 +3065,7 @@ export default async function raceScheduleMenu(interaction) {
       flowUnitYen: flow.unitYen,
       lastMenu: {
         customId: `race_bet_umatan_formB|${raceId}`,
-        placeholder: '第2群（2着）',
+        placeholder: ph('group_b_umatan', loc),
         options,
         minValues: 1,
         maxValues: Math.min(options.length, 25),
@@ -2875,17 +3093,17 @@ export default async function raceScheduleMenu(interaction) {
       await interaction.editReply(
         raceCardPayload(interaction,{
           result,
-          headline: '「3連複 通常」: 馬番を3つ（3頭）選択してください。',
+          headline: t('race_schedule.headlines.trifuku_normal', null, loc),
           actionRows: [
         buildSelectionRow({
             customId: lastId,
-            placeholder: '3頭を選択',
+            placeholder: ph('pick_three', loc),
             options,
             minValues: 3,
             maxValues: 3,
           }),
-          backButtonRow(raceId, bi),
-          scheduleRaceListBackIfScheduled(userId, raceId),
+          backButtonRow(raceId, bi, loc),
+          scheduleRaceListBackIfScheduled(userId, raceId, loc),
         ].filter(Boolean),
         }),
       );
@@ -2898,17 +3116,17 @@ export default async function raceScheduleMenu(interaction) {
       await interaction.editReply(
         raceCardPayload(interaction,{
           result,
-          headline: '「軸1頭ながし」: 軸を1頭選択してください。',
+          headline: t('race_schedule.headlines.trifuku_n1_axis', null, loc),
           actionRows: [
         buildSelectionRow({
             customId: lastId,
-            placeholder: '軸（1頭）',
+            placeholder: ph('axis_one', loc),
             options,
             minValues: 1,
             maxValues: 1,
           }),
-          backButtonRow(raceId, bi),
-          scheduleRaceListBackIfScheduled(userId, raceId),
+          backButtonRow(raceId, bi, loc),
+          scheduleRaceListBackIfScheduled(userId, raceId, loc),
         ].filter(Boolean),
         }),
       );
@@ -2921,17 +3139,17 @@ export default async function raceScheduleMenu(interaction) {
       await interaction.editReply(
         raceCardPayload(interaction,{
           result,
-          headline: '「軸2頭ながし」: 軸を2頭選択してください。',
+          headline: t('race_schedule.headlines.trifuku_n2_axis', null, loc),
           actionRows: [
         buildSelectionRow({
             customId: lastId,
-            placeholder: '軸（2頭）',
+            placeholder: ph('axis_two', loc),
             options,
             minValues: 2,
             maxValues: 2,
           }),
-          backButtonRow(raceId, bi),
-          scheduleRaceListBackIfScheduled(userId, raceId),
+          backButtonRow(raceId, bi, loc),
+          scheduleRaceListBackIfScheduled(userId, raceId, loc),
         ].filter(Boolean),
         }),
       );
@@ -2944,17 +3162,17 @@ export default async function raceScheduleMenu(interaction) {
       await interaction.editReply(
         raceCardPayload(interaction,{
           result,
-          headline: '「3連複 ボックス」: 馬番を必要数選択してください（3頭以上）。',
+          headline: t('race_schedule.headlines.trifuku_box', null, loc),
           actionRows: [
         buildSelectionRow({
             customId: lastId,
-            placeholder: '馬番（複数可）',
+            placeholder: ph('horses_multi_short', loc),
             options,
             minValues: 3,
             maxValues: Math.min(options.length, 25),
           }),
-          backButtonRow(raceId, bi),
-          scheduleRaceListBackIfScheduled(userId, raceId),
+          backButtonRow(raceId, bi, loc),
+          scheduleRaceListBackIfScheduled(userId, raceId, loc),
         ].filter(Boolean),
         }),
       );
@@ -2967,17 +3185,17 @@ export default async function raceScheduleMenu(interaction) {
       await interaction.editReply(
         raceCardPayload(interaction,{
           result,
-          headline: '「3連複 フォーメーション」: 第1群を選択してください。',
+          headline: t('race_schedule.headlines.trifuku_form_a', null, loc),
           actionRows: [
         buildSelectionRow({
             customId: lastId,
-            placeholder: '第1群',
+            placeholder: ph('form_group_1', loc),
             options,
             minValues: 1,
             maxValues: Math.min(options.length, 25),
           }),
-          backButtonRow(raceId, bi),
-          scheduleRaceListBackIfScheduled(userId, raceId),
+          backButtonRow(raceId, bi, loc),
+          scheduleRaceListBackIfScheduled(userId, raceId, loc),
         ].filter(Boolean),
         }),
       );
@@ -2995,7 +3213,15 @@ export default async function raceScheduleMenu(interaction) {
     const result = flow.result;
     const betType = 'trifuku';
     const points = uniqValues(picks).length === 3 ? 1 : 0;
-    const selectionLine = `選択: 3連複（通常） => ${formatNamesByNums(result, picks)}`;
+    const selectionLine = t(
+      'race_schedule.selection.trifuku_normal',
+      {
+        betType: betTypeLabel('trifuku', loc),
+        mode: t('bet_flow.trifuku_modes.normal', null, loc),
+        horses: formatNamesByNums(result, picks, loc),
+      },
+      loc,
+    );
 
     const options = horseOptionsFromResult(result);
     await renderFinalSelection({
@@ -3009,7 +3235,7 @@ export default async function raceScheduleMenu(interaction) {
       flowUnitYen: flow.unitYen,
       lastMenu: {
         customId: `race_bet_trifuku_normal|${raceId}`,
-        placeholder: '3頭を選択',
+        placeholder: ph('pick_three', loc),
         options,
         minValues: 3,
         maxValues: 3,
@@ -3034,17 +3260,17 @@ export default async function raceScheduleMenu(interaction) {
     await interaction.editReply(
         raceCardPayload(interaction,{
           result,
-          headline: '相手（2頭分）を選択してください（複数可）。',
+          headline: t('race_schedule.headlines.trifuku_opp_two', null, loc),
           actionRows: [
         buildSelectionRow({
           customId: lastId,
-          placeholder: '相手（複数可）',
+          placeholder: ph('opponents_multi_short', loc),
           options,
           minValues: 1,
           maxValues: Math.min(options.length, 25),
         }),
-        backButtonRow(raceId, bi),
-        scheduleRaceListBackIfScheduled(userId, raceId),
+        backButtonRow(raceId, bi, loc),
+        scheduleRaceListBackIfScheduled(userId, raceId, loc),
         ].filter(Boolean),
         }),
       );
@@ -3061,7 +3287,16 @@ export default async function raceScheduleMenu(interaction) {
     const axis = flow.trifukuAxis1;
     const betType = 'trifuku';
     const points = calcComb2(distinctCountExcluding(opp, [axis]));
-    const selectionLine = `選択: 3連複（軸1頭ながし） => 軸: ${formatNamesByNums(result, [axis])} / 相手: ${formatNamesByNums(result, opp)}`;
+    const selectionLine = t(
+      'race_schedule.selection.trifuku_n1',
+      {
+        betType: betTypeLabel('trifuku', loc),
+        mode: t('bet_flow.trifuku_modes.nagashi1', null, loc),
+        axis: formatNamesByNums(result, [axis], loc),
+        opp: formatNamesByNums(result, opp, loc),
+      },
+      loc,
+    );
 
     const options = horseOptionsFromResult(result);
     await renderFinalSelection({
@@ -3075,7 +3310,7 @@ export default async function raceScheduleMenu(interaction) {
       flowUnitYen: flow.unitYen,
       lastMenu: {
         customId: `race_bet_trifuku_n1_opp|${raceId}`,
-        placeholder: '相手（複数可）',
+        placeholder: ph('opponents_multi_short', loc),
         options,
         minValues: 1,
         maxValues: Math.min(options.length, 25),
@@ -3100,17 +3335,17 @@ export default async function raceScheduleMenu(interaction) {
     await interaction.editReply(
         raceCardPayload(interaction,{
           result,
-          headline: '相手（残り1頭）を選択してください（複数可）。',
+          headline: t('race_schedule.headlines.trifuku_opp_one', null, loc),
           actionRows: [
         buildSelectionRow({
           customId: lastId,
-          placeholder: '相手（複数可）',
+          placeholder: ph('opponents_multi_short', loc),
           options,
           minValues: 1,
           maxValues: Math.min(options.length, 25),
         }),
-        backButtonRow(raceId, bi),
-        scheduleRaceListBackIfScheduled(userId, raceId),
+        backButtonRow(raceId, bi, loc),
+        scheduleRaceListBackIfScheduled(userId, raceId, loc),
         ].filter(Boolean),
         }),
       );
@@ -3127,7 +3362,16 @@ export default async function raceScheduleMenu(interaction) {
     const axes = flow.trifukuAxis2 || [];
     const betType = 'trifuku';
     const points = distinctCountExcluding(opp, axes);
-    const selectionLine = `選択: 3連複（軸2頭ながし） => 軸: ${formatNamesByNums(result, axes)} / 相手: ${formatNamesByNums(result, opp)}`;
+    const selectionLine = t(
+      'race_schedule.selection.trifuku_n2',
+      {
+        betType: betTypeLabel('trifuku', loc),
+        mode: t('bet_flow.trifuku_modes.nagashi2', null, loc),
+        axis: formatNamesByNums(result, axes, loc),
+        opp: formatNamesByNums(result, opp, loc),
+      },
+      loc,
+    );
 
     const options = horseOptionsFromResult(result);
     await renderFinalSelection({
@@ -3141,7 +3385,7 @@ export default async function raceScheduleMenu(interaction) {
       flowUnitYen: flow.unitYen,
       lastMenu: {
         customId: `race_bet_trifuku_n2_opp|${raceId}`,
-        placeholder: '相手（複数可）',
+        placeholder: ph('opponents_multi_short', loc),
         options,
         minValues: 1,
         maxValues: Math.min(options.length, 25),
@@ -3161,7 +3405,15 @@ export default async function raceScheduleMenu(interaction) {
     const result = flow.result;
     const betType = 'trifuku';
     const points = calcComb3(uniqValues(picks).length);
-    const selectionLine = `選択: 3連複（ボックス） => ${formatNamesByNums(result, picks)}`;
+    const selectionLine = t(
+      'race_schedule.selection.trifuku_box',
+      {
+        betType: betTypeLabel('trifuku', loc),
+        mode: t('bet_flow.trifuku_modes.box', null, loc),
+        horses: formatNamesByNums(result, picks, loc),
+      },
+      loc,
+    );
 
     const options = horseOptionsFromResult(result);
     await renderFinalSelection({
@@ -3175,7 +3427,7 @@ export default async function raceScheduleMenu(interaction) {
       flowUnitYen: flow.unitYen,
       lastMenu: {
         customId: `race_bet_trifuku_box|${raceId}`,
-        placeholder: '馬番（複数可）',
+        placeholder: ph('horses_multi_short', loc),
         options,
         minValues: 3,
         maxValues: Math.min(options.length, 25),
@@ -3200,17 +3452,17 @@ export default async function raceScheduleMenu(interaction) {
     await interaction.editReply(
         raceCardPayload(interaction,{
           result,
-          headline: '第2群を選択してください。',
+          headline: t('race_schedule.headlines.trifuku_form_b', null, loc),
           actionRows: [
         buildSelectionRow({
           customId: lastId,
-          placeholder: '第2群',
+          placeholder: ph('form_group_2', loc),
           options,
           minValues: 1,
           maxValues: Math.min(options.length, 25),
         }),
-        backButtonRow(raceId, bi),
-        scheduleRaceListBackIfScheduled(userId, raceId),
+        backButtonRow(raceId, bi, loc),
+        scheduleRaceListBackIfScheduled(userId, raceId, loc),
         ].filter(Boolean),
         }),
       );
@@ -3231,17 +3483,17 @@ export default async function raceScheduleMenu(interaction) {
     await interaction.editReply(
         raceCardPayload(interaction,{
           result,
-          headline: '第3群を選択してください。',
+          headline: t('race_schedule.headlines.trifuku_form_c', null, loc),
           actionRows: [
         buildSelectionRow({
           customId: lastId,
-          placeholder: '第3群',
+          placeholder: ph('form_group_3', loc),
           options,
           minValues: 1,
           maxValues: Math.min(options.length, 25),
         }),
-        backButtonRow(raceId, bi),
-        scheduleRaceListBackIfScheduled(userId, raceId),
+        backButtonRow(raceId, bi, loc),
+        scheduleRaceListBackIfScheduled(userId, raceId, loc),
         ].filter(Boolean),
         }),
       );
@@ -3259,7 +3511,17 @@ export default async function raceScheduleMenu(interaction) {
     const formB = flow.trifukuFormB || [];
     const betType = 'trifuku';
     const points = countUniqueTriplesUnordered(formA, formB, formC);
-    const selectionLine = `選択: 3連複（フォーメーション） => A: ${formatNamesByNums(result, formA)} / B: ${formatNamesByNums(result, formB)} / C: ${formatNamesByNums(result, formC)}`;
+    const selectionLine = t(
+      'race_schedule.selection.trifuku_form',
+      {
+        betType: betTypeLabel('trifuku', loc),
+        mode: t('bet_flow.trifuku_modes.formation', null, loc),
+        a: formatNamesByNums(result, formA, loc),
+        b: formatNamesByNums(result, formB, loc),
+        c: formatNamesByNums(result, formC, loc),
+      },
+      loc,
+    );
 
     const options = horseOptionsFromResult(result);
     await renderFinalSelection({
@@ -3273,7 +3535,7 @@ export default async function raceScheduleMenu(interaction) {
       flowUnitYen: flow.unitYen,
       lastMenu: {
         customId: `race_bet_trifuku_formC|${raceId}`,
-        placeholder: '第3群',
+        placeholder: ph('form_group_3', loc),
         options,
         minValues: 1,
         maxValues: Math.min(options.length, 25),
@@ -3301,17 +3563,17 @@ export default async function raceScheduleMenu(interaction) {
       await interaction.editReply(
         raceCardPayload(interaction,{
           result,
-          headline: '「3連単 通常」: まず1着を選択してください。',
+          headline: t('race_schedule.headlines.tritan_normal_first', null, loc),
           actionRows: [
         buildSelectionRow({
             customId: lastId,
-            placeholder: '1着（1頭）',
+            placeholder: ph('umatan_place_1', loc),
             options,
             minValues: 1,
             maxValues: 1,
           }),
-          backButtonRow(raceId, bi),
-          scheduleRaceListBackIfScheduled(userId, raceId),
+          backButtonRow(raceId, bi, loc),
+          scheduleRaceListBackIfScheduled(userId, raceId, loc),
         ].filter(Boolean),
         }),
       );
@@ -3324,17 +3586,17 @@ export default async function raceScheduleMenu(interaction) {
       await interaction.editReply(
         raceCardPayload(interaction,{
           result,
-          headline: '「1着ながし」: 軸（1着）を選択してください。',
+          headline: t('race_schedule.headlines.tritan_n1_axis', null, loc),
           actionRows: [
         buildSelectionRow({
             customId: lastId,
-            placeholder: '軸（1着）',
+            placeholder: ph('axis_place_1', loc),
             options,
             minValues: 1,
             maxValues: 1,
           }),
-          backButtonRow(raceId, bi),
-          scheduleRaceListBackIfScheduled(userId, raceId),
+          backButtonRow(raceId, bi, loc),
+          scheduleRaceListBackIfScheduled(userId, raceId, loc),
         ].filter(Boolean),
         }),
       );
@@ -3347,17 +3609,17 @@ export default async function raceScheduleMenu(interaction) {
       await interaction.editReply(
         raceCardPayload(interaction,{
           result,
-          headline: '「2着ながし」: 軸（2着）を選択してください。',
+          headline: t('race_schedule.headlines.tritan_n2_axis', null, loc),
           actionRows: [
         buildSelectionRow({
             customId: lastId,
-            placeholder: '軸（2着）',
+            placeholder: ph('axis_place_2', loc),
             options,
             minValues: 1,
             maxValues: 1,
           }),
-          backButtonRow(raceId, bi),
-          scheduleRaceListBackIfScheduled(userId, raceId),
+          backButtonRow(raceId, bi, loc),
+          scheduleRaceListBackIfScheduled(userId, raceId, loc),
         ].filter(Boolean),
         }),
       );
@@ -3370,17 +3632,17 @@ export default async function raceScheduleMenu(interaction) {
       await interaction.editReply(
         raceCardPayload(interaction,{
           result,
-          headline: '「3着ながし」: 軸（3着）を選択してください。',
+          headline: t('race_schedule.headlines.tritan_n3_axis', null, loc),
           actionRows: [
         buildSelectionRow({
             customId: lastId,
-            placeholder: '軸（3着）',
+            placeholder: ph('axis_place_3', loc),
             options,
             minValues: 1,
             maxValues: 1,
           }),
-          backButtonRow(raceId, bi),
-          scheduleRaceListBackIfScheduled(userId, raceId),
+          backButtonRow(raceId, bi, loc),
+          scheduleRaceListBackIfScheduled(userId, raceId, loc),
         ].filter(Boolean),
         }),
       );
@@ -3393,17 +3655,17 @@ export default async function raceScheduleMenu(interaction) {
       await interaction.editReply(
         raceCardPayload(interaction,{
           result,
-          headline: '「1・2着ながし」: まず1着を選択してください。',
+          headline: t('race_schedule.headlines.tritan_n12_first', null, loc),
           actionRows: [
         buildSelectionRow({
             customId: lastId,
-            placeholder: '1着（1頭）',
+            placeholder: ph('umatan_place_1', loc),
             options,
             minValues: 1,
             maxValues: 1,
           }),
-          backButtonRow(raceId, bi),
-          scheduleRaceListBackIfScheduled(userId, raceId),
+          backButtonRow(raceId, bi, loc),
+          scheduleRaceListBackIfScheduled(userId, raceId, loc),
         ].filter(Boolean),
         }),
       );
@@ -3416,17 +3678,17 @@ export default async function raceScheduleMenu(interaction) {
       await interaction.editReply(
         raceCardPayload(interaction,{
           result,
-          headline: '「1・3着ながし」: まず1着を選択してください。',
+          headline: t('race_schedule.headlines.tritan_n13_first', null, loc),
           actionRows: [
         buildSelectionRow({
             customId: lastId,
-            placeholder: '1着（1頭）',
+            placeholder: ph('umatan_place_1', loc),
             options,
             minValues: 1,
             maxValues: 1,
           }),
-          backButtonRow(raceId, bi),
-          scheduleRaceListBackIfScheduled(userId, raceId),
+          backButtonRow(raceId, bi, loc),
+          scheduleRaceListBackIfScheduled(userId, raceId, loc),
         ].filter(Boolean),
         }),
       );
@@ -3439,17 +3701,17 @@ export default async function raceScheduleMenu(interaction) {
       await interaction.editReply(
         raceCardPayload(interaction,{
           result,
-          headline: '「2・3着ながし」: まず2着を選択してください。',
+          headline: t('race_schedule.headlines.tritan_n23_first', null, loc),
           actionRows: [
         buildSelectionRow({
             customId: lastId,
-            placeholder: '2着（1頭）',
+            placeholder: ph('umatan_place_2', loc),
             options,
             minValues: 1,
             maxValues: 1,
           }),
-          backButtonRow(raceId, bi),
-          scheduleRaceListBackIfScheduled(userId, raceId),
+          backButtonRow(raceId, bi, loc),
+          scheduleRaceListBackIfScheduled(userId, raceId, loc),
         ].filter(Boolean),
         }),
       );
@@ -3462,17 +3724,17 @@ export default async function raceScheduleMenu(interaction) {
       await interaction.editReply(
         raceCardPayload(interaction,{
           result,
-          headline: '「3連単 ボックス」: 馬番を必要数選択してください（3頭以上）。',
+          headline: t('race_schedule.headlines.tritan_box', null, loc),
           actionRows: [
         buildSelectionRow({
             customId: lastId,
-            placeholder: '馬番（複数可）',
+            placeholder: ph('horses_multi_short', loc),
             options,
             minValues: 3,
             maxValues: Math.min(options.length, 25),
           }),
-          backButtonRow(raceId, bi),
-          scheduleRaceListBackIfScheduled(userId, raceId),
+          backButtonRow(raceId, bi, loc),
+          scheduleRaceListBackIfScheduled(userId, raceId, loc),
         ].filter(Boolean),
         }),
       );
@@ -3485,17 +3747,17 @@ export default async function raceScheduleMenu(interaction) {
       await interaction.editReply(
         raceCardPayload(interaction,{
           result,
-          headline: '「3連単 フォーメーション」: 第1群（1着候補）を選択してください。',
+          headline: t('race_schedule.headlines.tritan_form_a', null, loc),
           actionRows: [
         buildSelectionRow({
             customId: lastId,
-            placeholder: '第1群（1着）',
+            placeholder: ph('group_a_umatan', loc),
             options,
             minValues: 1,
             maxValues: Math.min(options.length, 25),
           }),
-          backButtonRow(raceId, bi),
-          scheduleRaceListBackIfScheduled(userId, raceId),
+          backButtonRow(raceId, bi, loc),
+          scheduleRaceListBackIfScheduled(userId, raceId, loc),
         ].filter(Boolean),
         }),
       );
@@ -3518,17 +3780,17 @@ export default async function raceScheduleMenu(interaction) {
     await interaction.editReply(
         raceCardPayload(interaction,{
           result,
-          headline: '次に2着を選択してください。',
+          headline: t('race_schedule.headlines.tritan_pick_second', null, loc),
           actionRows: [
         buildSelectionRow({
           customId: lastId,
-          placeholder: '2着（1頭）',
+          placeholder: ph('umatan_place_2', loc),
           options,
           minValues: 1,
           maxValues: 1,
         }),
-        backButtonRow(raceId, bi),
-        scheduleRaceListBackIfScheduled(userId, raceId),
+        backButtonRow(raceId, bi, loc),
+        scheduleRaceListBackIfScheduled(userId, raceId, loc),
         ].filter(Boolean),
         }),
       );
@@ -3549,17 +3811,17 @@ export default async function raceScheduleMenu(interaction) {
     await interaction.editReply(
         raceCardPayload(interaction,{
           result,
-          headline: '最後に3着を選択してください。',
+          headline: t('race_schedule.headlines.tritan_pick_third', null, loc),
           actionRows: [
         buildSelectionRow({
           customId: lastId,
-          placeholder: '3着（1頭）',
+          placeholder: ph('tritan_place_3', loc),
           options,
           minValues: 1,
           maxValues: 1,
         }),
-        backButtonRow(raceId, bi),
-        scheduleRaceListBackIfScheduled(userId, raceId),
+        backButtonRow(raceId, bi, loc),
+        scheduleRaceListBackIfScheduled(userId, raceId, loc),
         ].filter(Boolean),
         }),
       );
@@ -3577,7 +3839,17 @@ export default async function raceScheduleMenu(interaction) {
     const second = flow.tritanSecond;
     const betType = 'tritan';
     const points = first !== second && first !== third && second !== third ? 1 : 0;
-    const selectionLine = `選択: 3連単（通常） => 1着: ${formatNamesByNums(result, [first])} / 2着: ${formatNamesByNums(result, [second])} / 3着: ${formatNamesByNums(result, [third])}`;
+    const selectionLine = t(
+      'race_schedule.selection.tritan_normal',
+      {
+        betType: betTypeLabel('tritan', loc),
+        mode: t('bet_flow.tritan_modes.normal', null, loc),
+        p1: formatNamesByNums(result, [first], loc),
+        p2: formatNamesByNums(result, [second], loc),
+        p3: formatNamesByNums(result, [third], loc),
+      },
+      loc,
+    );
 
     const options = horseOptionsFromResult(result);
     await renderFinalSelection({
@@ -3591,7 +3863,7 @@ export default async function raceScheduleMenu(interaction) {
       flowUnitYen: flow.unitYen,
       lastMenu: {
         customId: `race_bet_tritan_normal_3|${raceId}`,
-        placeholder: '3着（1頭）',
+        placeholder: ph('tritan_place_3', loc),
         options,
         minValues: 1,
         maxValues: 1,
@@ -3616,17 +3888,17 @@ export default async function raceScheduleMenu(interaction) {
     await interaction.editReply(
         raceCardPayload(interaction,{
           result,
-          headline: '相手（2着・3着）を選択してください（複数可）。',
+          headline: t('race_schedule.headlines.tritan_opp_23', null, loc),
           actionRows: [
         buildSelectionRow({
           customId: lastId,
-          placeholder: '相手',
+          placeholder: ph('opponent_pick', loc),
           options,
           minValues: 1,
           maxValues: Math.min(options.length, 25),
         }),
-        backButtonRow(raceId, bi),
-        scheduleRaceListBackIfScheduled(userId, raceId),
+        backButtonRow(raceId, bi, loc),
+        scheduleRaceListBackIfScheduled(userId, raceId, loc),
         ].filter(Boolean),
         }),
       );
@@ -3643,7 +3915,16 @@ export default async function raceScheduleMenu(interaction) {
     const betType = 'tritan';
     const n = distinctCountExcluding(opp, [axis]);
     const points = n * (n - 1);
-    const selectionLine = `選択: 3連単（1着ながし） => 軸: ${formatNamesByNums(result, [axis])} / 相手: ${formatNamesByNums(result, opp)}`;
+    const selectionLine = t(
+      'race_schedule.selection.tritan_nagashi1',
+      {
+        betType: betTypeLabel('tritan', loc),
+        mode: t('bet_flow.tritan_modes.nagashi1', null, loc),
+        axis: formatNamesByNums(result, [axis], loc),
+        opp: formatNamesByNums(result, opp, loc),
+      },
+      loc,
+    );
 
     const options = horseOptionsFromResult(result);
     await renderFinalSelection({
@@ -3657,7 +3938,7 @@ export default async function raceScheduleMenu(interaction) {
       flowUnitYen: flow.unitYen,
       lastMenu: {
         customId: `race_bet_tritan_nagashi1_opp|${raceId}`,
-        placeholder: '相手',
+        placeholder: ph('opponent_pick', loc),
         options,
         minValues: 1,
         maxValues: Math.min(options.length, 25),
@@ -3682,17 +3963,17 @@ export default async function raceScheduleMenu(interaction) {
     await interaction.editReply(
         raceCardPayload(interaction,{
           result,
-          headline: '相手（1着・3着）を選択してください（複数可）。',
+          headline: t('race_schedule.headlines.tritan_opp_13', null, loc),
           actionRows: [
         buildSelectionRow({
           customId: lastId,
-          placeholder: '相手',
+          placeholder: ph('opponent_pick', loc),
           options,
           minValues: 1,
           maxValues: Math.min(options.length, 25),
         }),
-        backButtonRow(raceId, bi),
-        scheduleRaceListBackIfScheduled(userId, raceId),
+        backButtonRow(raceId, bi, loc),
+        scheduleRaceListBackIfScheduled(userId, raceId, loc),
         ].filter(Boolean),
         }),
       );
@@ -3709,7 +3990,16 @@ export default async function raceScheduleMenu(interaction) {
     const betType = 'tritan';
     const n = distinctCountExcluding(opp, [axis]);
     const points = n * (n - 1);
-    const selectionLine = `選択: 3連単（2着ながし） => 軸: ${formatNamesByNums(result, [axis])} / 相手: ${formatNamesByNums(result, opp)}`;
+    const selectionLine = t(
+      'race_schedule.selection.tritan_nagashi2',
+      {
+        betType: betTypeLabel('tritan', loc),
+        mode: t('bet_flow.tritan_modes.nagashi2', null, loc),
+        axis: formatNamesByNums(result, [axis], loc),
+        opp: formatNamesByNums(result, opp, loc),
+      },
+      loc,
+    );
 
     const options = horseOptionsFromResult(result);
     await renderFinalSelection({
@@ -3723,7 +4013,7 @@ export default async function raceScheduleMenu(interaction) {
       flowUnitYen: flow.unitYen,
       lastMenu: {
         customId: `race_bet_tritan_nagashi2_opp|${raceId}`,
-        placeholder: '相手',
+        placeholder: ph('opponent_pick', loc),
         options,
         minValues: 1,
         maxValues: Math.min(options.length, 25),
@@ -3748,17 +4038,17 @@ export default async function raceScheduleMenu(interaction) {
     await interaction.editReply(
         raceCardPayload(interaction,{
           result,
-          headline: '相手（1着・2着）を選択してください（複数可）。',
+          headline: t('race_schedule.headlines.tritan_opp_12', null, loc),
           actionRows: [
         buildSelectionRow({
           customId: lastId,
-          placeholder: '相手',
+          placeholder: ph('opponent_pick', loc),
           options,
           minValues: 1,
           maxValues: Math.min(options.length, 25),
         }),
-        backButtonRow(raceId, bi),
-        scheduleRaceListBackIfScheduled(userId, raceId),
+        backButtonRow(raceId, bi, loc),
+        scheduleRaceListBackIfScheduled(userId, raceId, loc),
         ].filter(Boolean),
         }),
       );
@@ -3775,7 +4065,16 @@ export default async function raceScheduleMenu(interaction) {
     const betType = 'tritan';
     const n = distinctCountExcluding(opp, [axis]);
     const points = n * (n - 1);
-    const selectionLine = `選択: 3連単（3着ながし） => 軸: ${formatNamesByNums(result, [axis])} / 相手: ${formatNamesByNums(result, opp)}`;
+    const selectionLine = t(
+      'race_schedule.selection.tritan_nagashi3',
+      {
+        betType: betTypeLabel('tritan', loc),
+        mode: t('bet_flow.tritan_modes.nagashi3', null, loc),
+        axis: formatNamesByNums(result, [axis], loc),
+        opp: formatNamesByNums(result, opp, loc),
+      },
+      loc,
+    );
 
     const options = horseOptionsFromResult(result);
     await renderFinalSelection({
@@ -3789,7 +4088,7 @@ export default async function raceScheduleMenu(interaction) {
       flowUnitYen: flow.unitYen,
       lastMenu: {
         customId: `race_bet_tritan_nagashi3_opp|${raceId}`,
-        placeholder: '相手',
+        placeholder: ph('opponent_pick', loc),
         options,
         minValues: 1,
         maxValues: Math.min(options.length, 25),
@@ -3814,17 +4113,17 @@ export default async function raceScheduleMenu(interaction) {
     await interaction.editReply(
         raceCardPayload(interaction,{
           result,
-          headline: '次に2着を選択してください。',
+          headline: t('race_schedule.headlines.tritan_pick_second', null, loc),
           actionRows: [
         buildSelectionRow({
           customId: lastId,
-          placeholder: '2着（1頭）',
+          placeholder: ph('umatan_place_2', loc),
           options,
           minValues: 1,
           maxValues: 1,
         }),
-        backButtonRow(raceId, bi),
-        scheduleRaceListBackIfScheduled(userId, raceId),
+        backButtonRow(raceId, bi, loc),
+        scheduleRaceListBackIfScheduled(userId, raceId, loc),
         ].filter(Boolean),
         }),
       );
@@ -3844,17 +4143,17 @@ export default async function raceScheduleMenu(interaction) {
     await interaction.editReply(
         raceCardPayload(interaction,{
           result,
-          headline: '次に3着（相手）を選択してください（複数可）。',
+          headline: t('race_schedule.headlines.tritan_opp_third_multi', null, loc),
           actionRows: [
         buildSelectionRow({
           customId: lastId,
-          placeholder: '3着相手',
+          placeholder: ph('opp_3rd_multi', loc),
           options,
           minValues: 1,
           maxValues: Math.min(options.length, 25),
         }),
-        backButtonRow(raceId, bi),
-        scheduleRaceListBackIfScheduled(userId, raceId),
+        backButtonRow(raceId, bi, loc),
+        scheduleRaceListBackIfScheduled(userId, raceId, loc),
         ].filter(Boolean),
         }),
       );
@@ -3871,7 +4170,17 @@ export default async function raceScheduleMenu(interaction) {
     const a2 = flow.tritanN12A2;
     const betType = 'tritan';
     const points = a1 === a2 ? 0 : distinctCountExcluding(opp3, [a1, a2]);
-    const selectionLine = `選択: 3連単（1・2着ながし） => 1着: ${formatNamesByNums(result, [a1])} / 2着: ${formatNamesByNums(result, [a2])} / 3着相手: ${formatNamesByNums(result, opp3)}`;
+    const selectionLine = t(
+      'race_schedule.selection.tritan_n12',
+      {
+        betType: betTypeLabel('tritan', loc),
+        mode: t('bet_flow.tritan_modes.nagashi12', null, loc),
+        a1: formatNamesByNums(result, [a1], loc),
+        a2: formatNamesByNums(result, [a2], loc),
+        opp: formatNamesByNums(result, opp3, loc),
+      },
+      loc,
+    );
 
     const options = horseOptionsFromResult(result);
     await renderFinalSelection({
@@ -3885,7 +4194,7 @@ export default async function raceScheduleMenu(interaction) {
       flowUnitYen: flow.unitYen,
       lastMenu: {
         customId: `race_bet_tritan_n12_opp3|${raceId}`,
-        placeholder: '3着相手',
+        placeholder: ph('opp_3rd_multi', loc),
         options,
         minValues: 1,
         maxValues: Math.min(options.length, 25),
@@ -3910,17 +4219,17 @@ export default async function raceScheduleMenu(interaction) {
     await interaction.editReply(
         raceCardPayload(interaction,{
           result,
-          headline: '次に3着を選択してください。',
+          headline: t('race_schedule.headlines.tritan_pick_third_plain', null, loc),
           actionRows: [
         buildSelectionRow({
           customId: lastId,
-          placeholder: '3着（1頭）',
+          placeholder: ph('tritan_place_3', loc),
           options,
           minValues: 1,
           maxValues: 1,
         }),
-        backButtonRow(raceId, bi),
-        scheduleRaceListBackIfScheduled(userId, raceId),
+        backButtonRow(raceId, bi, loc),
+        scheduleRaceListBackIfScheduled(userId, raceId, loc),
         ].filter(Boolean),
         }),
       );
@@ -3940,17 +4249,17 @@ export default async function raceScheduleMenu(interaction) {
     await interaction.editReply(
         raceCardPayload(interaction,{
           result,
-          headline: '次に2着（相手）を選択してください（複数可）。',
+          headline: t('race_schedule.headlines.tritan_opp_second_multi', null, loc),
           actionRows: [
         buildSelectionRow({
           customId: lastId,
-          placeholder: '2着相手',
+          placeholder: ph('opp_2nd_multi', loc),
           options,
           minValues: 1,
           maxValues: Math.min(options.length, 25),
         }),
-        backButtonRow(raceId, bi),
-        scheduleRaceListBackIfScheduled(userId, raceId),
+        backButtonRow(raceId, bi, loc),
+        scheduleRaceListBackIfScheduled(userId, raceId, loc),
         ].filter(Boolean),
         }),
       );
@@ -3967,7 +4276,17 @@ export default async function raceScheduleMenu(interaction) {
     const a3 = flow.tritanN13A3;
     const betType = 'tritan';
     const points = a1 === a3 ? 0 : distinctCountExcluding(opp2, [a1, a3]);
-    const selectionLine = `選択: 3連単（1・3着ながし） => 1着: ${formatNamesByNums(result, [a1])} / 3着: ${formatNamesByNums(result, [a3])} / 2着相手: ${formatNamesByNums(result, opp2)}`;
+    const selectionLine = t(
+      'race_schedule.selection.tritan_n13',
+      {
+        betType: betTypeLabel('tritan', loc),
+        mode: t('bet_flow.tritan_modes.nagashi13', null, loc),
+        a1: formatNamesByNums(result, [a1], loc),
+        a3: formatNamesByNums(result, [a3], loc),
+        opp: formatNamesByNums(result, opp2, loc),
+      },
+      loc,
+    );
 
     const options = horseOptionsFromResult(result);
     await renderFinalSelection({
@@ -3981,7 +4300,7 @@ export default async function raceScheduleMenu(interaction) {
       flowUnitYen: flow.unitYen,
       lastMenu: {
         customId: `race_bet_tritan_n13_opp2|${raceId}`,
-        placeholder: '2着相手',
+        placeholder: ph('opp_2nd_multi', loc),
         options,
         minValues: 1,
         maxValues: Math.min(options.length, 25),
@@ -4006,17 +4325,17 @@ export default async function raceScheduleMenu(interaction) {
     await interaction.editReply(
         raceCardPayload(interaction,{
           result,
-          headline: '次に3着を選択してください。',
+          headline: t('race_schedule.headlines.tritan_pick_third_plain', null, loc),
           actionRows: [
         buildSelectionRow({
           customId: lastId,
-          placeholder: '3着（1頭）',
+          placeholder: ph('tritan_place_3', loc),
           options,
           minValues: 1,
           maxValues: 1,
         }),
-        backButtonRow(raceId, bi),
-        scheduleRaceListBackIfScheduled(userId, raceId),
+        backButtonRow(raceId, bi, loc),
+        scheduleRaceListBackIfScheduled(userId, raceId, loc),
         ].filter(Boolean),
         }),
       );
@@ -4036,17 +4355,17 @@ export default async function raceScheduleMenu(interaction) {
     await interaction.editReply(
         raceCardPayload(interaction,{
           result,
-          headline: '次に1着（相手）を選択してください（複数可）。',
+          headline: t('race_schedule.headlines.tritan_opp_first_multi', null, loc),
           actionRows: [
         buildSelectionRow({
           customId: lastId,
-          placeholder: '1着相手',
+          placeholder: ph('opp_1st_multi', loc),
           options,
           minValues: 1,
           maxValues: Math.min(options.length, 25),
         }),
-        backButtonRow(raceId, bi),
-        scheduleRaceListBackIfScheduled(userId, raceId),
+        backButtonRow(raceId, bi, loc),
+        scheduleRaceListBackIfScheduled(userId, raceId, loc),
         ].filter(Boolean),
         }),
       );
@@ -4063,7 +4382,17 @@ export default async function raceScheduleMenu(interaction) {
     const a3 = flow.tritanN23A3;
     const betType = 'tritan';
     const points = a2 === a3 ? 0 : distinctCountExcluding(opp1, [a2, a3]);
-    const selectionLine = `選択: 3連単（2・3着ながし） => 2着: ${formatNamesByNums(result, [a2])} / 3着: ${formatNamesByNums(result, [a3])} / 1着相手: ${formatNamesByNums(result, opp1)}`;
+    const selectionLine = t(
+      'race_schedule.selection.tritan_n23',
+      {
+        betType: betTypeLabel('tritan', loc),
+        mode: t('bet_flow.tritan_modes.nagashi23', null, loc),
+        a2: formatNamesByNums(result, [a2], loc),
+        a3: formatNamesByNums(result, [a3], loc),
+        opp: formatNamesByNums(result, opp1, loc),
+      },
+      loc,
+    );
 
     const options = horseOptionsFromResult(result);
     await renderFinalSelection({
@@ -4077,7 +4406,7 @@ export default async function raceScheduleMenu(interaction) {
       flowUnitYen: flow.unitYen,
       lastMenu: {
         customId: `race_bet_tritan_n23_opp1|${raceId}`,
-        placeholder: '1着相手',
+        placeholder: ph('opp_1st_multi', loc),
         options,
         minValues: 1,
         maxValues: Math.min(options.length, 25),
@@ -4098,7 +4427,15 @@ export default async function raceScheduleMenu(interaction) {
     const betType = 'tritan';
     const uniq = uniqValues(picks).length;
     const points = uniq * (uniq - 1) * (uniq - 2);
-    const selectionLine = `選択: 3連単（ボックス） => ${formatNamesByNums(result, picks)}`;
+    const selectionLine = t(
+      'race_schedule.selection.tritan_box',
+      {
+        betType: betTypeLabel('tritan', loc),
+        mode: t('bet_flow.tritan_modes.box', null, loc),
+        horses: formatNamesByNums(result, picks, loc),
+      },
+      loc,
+    );
 
     const options = horseOptionsFromResult(result);
     await renderFinalSelection({
@@ -4112,7 +4449,7 @@ export default async function raceScheduleMenu(interaction) {
       flowUnitYen: flow.unitYen,
       lastMenu: {
         customId: `race_bet_tritan_box|${raceId}`,
-        placeholder: '馬番（複数可）',
+        placeholder: ph('horses_multi_short', loc),
         options,
         minValues: 3,
         maxValues: Math.min(options.length, 25),
@@ -4137,17 +4474,17 @@ export default async function raceScheduleMenu(interaction) {
     await interaction.editReply(
         raceCardPayload(interaction,{
           result,
-          headline: '第2群（2着候補）を選択してください。',
+          headline: t('race_schedule.headlines.tritan_form_b_group', null, loc),
           actionRows: [
         buildSelectionRow({
           customId: lastId,
-          placeholder: '第2群（2着）',
+          placeholder: ph('tritan_form_group2_place', loc),
           options,
           minValues: 1,
           maxValues: Math.min(options.length, 25),
         }),
-        backButtonRow(raceId, bi),
-        scheduleRaceListBackIfScheduled(userId, raceId),
+        backButtonRow(raceId, bi, loc),
+        scheduleRaceListBackIfScheduled(userId, raceId, loc),
         ].filter(Boolean),
         }),
       );
@@ -4167,17 +4504,17 @@ export default async function raceScheduleMenu(interaction) {
     await interaction.editReply(
         raceCardPayload(interaction,{
           result,
-          headline: '第3群（3着候補）を選択してください。',
+          headline: t('race_schedule.headlines.tritan_form_c_group', null, loc),
           actionRows: [
         buildSelectionRow({
           customId: lastId,
-          placeholder: '第3群（3着）',
+          placeholder: ph('tritan_form_group3_place', loc),
           options,
           minValues: 1,
           maxValues: Math.min(options.length, 25),
         }),
-        backButtonRow(raceId, bi),
-        scheduleRaceListBackIfScheduled(userId, raceId),
+        backButtonRow(raceId, bi, loc),
+        scheduleRaceListBackIfScheduled(userId, raceId, loc),
         ].filter(Boolean),
         }),
       );
@@ -4194,7 +4531,17 @@ export default async function raceScheduleMenu(interaction) {
     const formB = flow.tritanFormB || [];
     const betType = 'tritan';
     const points = countOrderedTriplesDistinct(formA, formB, formC);
-    const selectionLine = `選択: 3連単（フォーメーション） => 1着群: ${formatNamesByNums(result, formA)} / 2着群: ${formatNamesByNums(result, formB)} / 3着群: ${formatNamesByNums(result, formC)}`;
+    const selectionLine = t(
+      'race_schedule.selection.tritan_form',
+      {
+        betType: betTypeLabel('tritan', loc),
+        mode: t('bet_flow.tritan_modes.formation', null, loc),
+        a: formatNamesByNums(result, formA, loc),
+        b: formatNamesByNums(result, formB, loc),
+        c: formatNamesByNums(result, formC, loc),
+      },
+      loc,
+    );
 
     const options = horseOptionsFromResult(result);
     await renderFinalSelection({
@@ -4208,7 +4555,7 @@ export default async function raceScheduleMenu(interaction) {
       flowUnitYen: flow.unitYen,
       lastMenu: {
         customId: `race_bet_tritan_formC|${raceId}`,
-        placeholder: '第3群（3着）',
+        placeholder: ph('tritan_form_group3_place', loc),
         options,
         minValues: 1,
         maxValues: Math.min(options.length, 25),

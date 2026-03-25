@@ -295,15 +295,19 @@ export function parseRaceListSub(html, kaisaiDateYmd) {
 }
 
 /**
- * 発売状態（発走2分前で締切、確定・発走後は締切扱い）
+ * @typedef {{ code: 'result_final' | 'time_unknown' | 'time_parse_error' | 'posted' | 'sales_closed' | 'open', closed: boolean }} RaceSalesStatus
+ */
+/**
+ * 発売状態（発走2分前で締切、確定・発走後は締切扱い）。表示文言は `race_schedule.sales_status` でロケール化。
+ * @returns {RaceSalesStatus}
  */
 export function getRaceSalesStatus(race, kaisaiDateYmd, now = new Date()) {
   if (race.isResult) {
-    return { shortLabel: '確定', detail: '結果確定', closed: true };
+    return { code: 'result_final', closed: true };
   }
   const tm = race.timeText.match(/(\d{1,2})\s*:\s*(\d{2})/);
   if (!tm) {
-    return { shortLabel: '—', detail: '時刻不明', closed: false };
+    return { code: 'time_unknown', closed: false };
   }
   const hh = parseInt(tm[1], 10);
   const mm = parseInt(tm[2], 10);
@@ -313,17 +317,17 @@ export function getRaceSalesStatus(race, kaisaiDateYmd, now = new Date()) {
   const postIso = `${y}-${String(mo).padStart(2, '0')}-${String(d).padStart(2, '0')}T${String(hh).padStart(2, '0')}:${String(mm).padStart(2, '0')}:00+09:00`;
   const postMs = Date.parse(postIso);
   if (Number.isNaN(postMs)) {
-    return { shortLabel: '—', detail: '時刻解析エラー', closed: false };
+    return { code: 'time_parse_error', closed: false };
   }
   const closeMs = postMs - 2 * 60 * 1000;
   const nowMs = now.getTime();
   if (nowMs >= postMs) {
-    return { shortLabel: '発走済', detail: '発走済み（発売終了）', closed: true };
+    return { code: 'posted', closed: true };
   }
   if (nowMs >= closeMs) {
-    return { shortLabel: '締切', detail: '発売締切（発走2分前）', closed: true };
+    return { code: 'sales_closed', closed: true };
   }
-  return { shortLabel: '発売中', detail: '発売中（発走約2分前まで）', closed: false };
+  return { code: 'open', closed: false };
 }
 
 /**

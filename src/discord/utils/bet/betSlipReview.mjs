@@ -160,7 +160,7 @@ function slipReviewActionRows(anchorRaceId, items, { pageIndex, totalPages }) {
     new ButtonBuilder()
       .setCustomId(`race_bet_slip_confirm|${anchorRaceId}`)
       .setLabel('この内容で確定')
-      .setEmoji(botingEmoji('kakutei'))
+      .setEmoji(botingEmoji('naiyoukakutei'))
       .setStyle(ButtonStyle.Success),
   );
 

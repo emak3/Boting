@@ -12,7 +12,6 @@ import {
   findAdjacentHoldYmdWithBets,
   resolveDefaultRaceHistoryHoldYmd,
 } from './raceBetRecords.mjs';
-import { isDebugSalesBypassEnabled } from '../debug/raceDebugBypass.mjs';
 import { runPendingRaceRefundsForUser } from './raceBetRefundSweep.mjs';
 import {
   addJstCalendarDays,
@@ -26,7 +25,10 @@ import {
   historyRaceHeadingLine,
   venuePrefixForHistoryBet,
 } from '../bet/betPurchaseEmbed.mjs';
-import { DISCORD_SELECT_OPTION_LABEL_MAX } from './raceNumberEmoji.mjs';
+import {
+  DISCORD_SELECT_OPTION_DESCRIPTION_MAX,
+  DISCORD_SELECT_OPTION_LABEL_MAX,
+} from './raceNumberEmoji.mjs';
 import { V2_SINGLE_CHUNK, V2_TEXT_TOTAL_MAX } from './raceCardDisplay.mjs';
 import { buildBotingMenuBackRow } from './raceCommandHub.mjs';
 import {
@@ -217,23 +219,25 @@ function isSettledHitBet(bet) {
   return Math.round(Number(bet.refundBp) || 0) > 0;
 }
 
-/** 例: 3点`500bp` 合計`1500bp`（costBp = points × 1点あたり） */
+/**
+ * `1点`100bp` 合計`3点` `300bp`（1点＝1点あたりのbp、合計＝点数と総額）。全券種共通。
+ */
 function betCostBpLine(bet) {
   const costBp = Math.max(0, Math.round(Number(bet.costBp) || 0));
   const points = Math.max(0, Math.round(Number(bet.points) || 0));
+  const unitYen = Math.max(1, Math.round(Number(bet.unitYen) || 100));
   if (points <= 0) {
     return `合計\`${costBp}bp\``;
   }
-  const perPoint = Math.round(costBp / points);
-  return `${points}点\`${perPoint}bp\` 合計\`${costBp}bp\``;
+  return `1点\`${unitYen}bp\` 合計${points}点 \`${costBp}bp\``;
 }
 
 /**
  * 例:
- * 単勝 1点`100bp` 合計`100bp`
+ * 単勝 1点`100bp` 合計`1点` `100bp`
  * > <絵文字> `未確定`
  *
- * ワイド（ボックス）3点`500bp` 合計`1500bp`
+ * ワイド（ボックス）1点`500bp` 合計`3点` `1500bp`
  * > <絵文字> - <絵文字> `未確定`
  *
  * 馬単（1着ながし）
@@ -322,19 +326,17 @@ function flattenBetsByRace(bets) {
 }
 
 /**
- * 見出し用（レース名の後に `10:20`）
  * @param {object} bet
- * @param {Map<string, string>} timeByRaceId rid → oddsOfficialTime 生文字列
+ * @param {Map<string, string>} timeByRaceId
+ * @returns {string} 空なら時刻なし
  */
-function historyRaceHeadingLineWithPostTime(bet, timeByRaceId) {
-  const base = historyRaceHeadingLine(bet);
+function historyPostTimeCompactHm(bet, timeByRaceId) {
   const rid = String(bet.raceId || '');
   const raw =
     (bet.oddsOfficialTime && String(bet.oddsOfficialTime).trim()) ||
     (rid && timeByRaceId?.get(rid)) ||
     '';
-  const short = formatCompactPostTimeForHistory(raw);
-  return short ? `${base} \`${short}\`` : base;
+  return formatCompactPostTimeForHistory(raw);
 }
 
 /**
@@ -378,16 +380,18 @@ function buildHistoryResultPickRow(slice, pickCustomId, timeByRaceId) {
     const row = slice.find((s) => s.rid === rid);
     if (!row) continue;
     const { bet } = row;
-    const label = historyRaceHeadingLineWithPostTime(bet, timeByRaceId).slice(
-      0,
-      DISCORD_SELECT_OPTION_LABEL_MAX,
-    );
+    const label = historyRaceHeadingLine(bet).slice(0, DISCORD_SELECT_OPTION_LABEL_MAX);
     const settled = String(bet.status || 'open') === 'settled';
-    opts.push(
-      new StringSelectMenuOptionBuilder()
-        .setLabel(label || rid)
-        .setValue(`${rid}|${settled ? 1 : 0}`),
-    );
+    const hm = historyPostTimeCompactHm(bet, timeByRaceId);
+    const desc = hm
+      ? `${hm} 発走`.slice(0, DISCORD_SELECT_OPTION_DESCRIPTION_MAX)
+      : null;
+    const b = new StringSelectMenuOptionBuilder()
+      .setLabel(label || rid)
+      .setValue(`${rid}|${settled ? 1 : 0}`);
+    if (settled) b.setEmoji(botingEmoji('kakutei'));
+    if (desc) b.setDescription(desc);
+    opts.push(b);
   }
   if (!opts.length) return null;
 
@@ -418,8 +422,14 @@ function buildHistoryRaceTextChunks(slice, timeByRaceId) {
     if (rid !== currentRid) {
       flushRace();
       currentRid = rid;
-      const title = historyRaceHeadingLineWithPostTime(bet, timeByRaceId);
-      raceHead = `**${title}**`;
+      const base = historyRaceHeadingLine(bet);
+      const settled = String(bet.status || 'open') === 'settled';
+      const hm = historyPostTimeCompactHm(bet, timeByRaceId);
+      raceHead = settled
+        ? `**${base}** ${botingEmojiMarkdown('kaku')}${botingEmojiMarkdown('tei')}`
+        : hm
+          ? `**${base}** \`${hm} 発走\``
+          : `**${base}**`;
     }
     entries.push(formatBetEntryForHistory(bet));
   }
@@ -608,12 +618,10 @@ export async function buildRacePurchaseHistoryV2Payload({
   bpRankProfileUserId = null,
   rankLeaderboardReturn = null,
 }) {
-  if (isDebugSalesBypassEnabled()) {
-    try {
-      await runPendingRaceRefundsForUser(userId);
-    } catch (e) {
-      console.warn('runPendingRaceRefundsForUser', e);
-    }
+  try {
+    await runPendingRaceRefundsForUser(userId);
+  } catch (e) {
+    console.warn('runPendingRaceRefundsForUser', e);
   }
 
   let periodKey =

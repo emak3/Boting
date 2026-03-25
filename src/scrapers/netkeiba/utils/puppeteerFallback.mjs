@@ -1,4 +1,5 @@
 import {
+  extractShutubaPostTimeText,
   normalizeRaceScrapedText,
   splitCourseAndPrize,
 } from './raceTextNormalize.mjs';
@@ -124,12 +125,14 @@ function parseHorseDataFromHtml($) {
     }
   });
 
+  const postTime = extractShutubaPostTimeText($);
   return {
     raceInfo,
     horses,
     totalHorses: horses.length,
     scrapedAt: new Date().toISOString(),
     method: 'puppeteer',
+    ...(postTime ? { oddsOfficialTime: postTime } : {}),
   };
 }
 

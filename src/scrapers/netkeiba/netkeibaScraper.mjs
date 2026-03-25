@@ -5,6 +5,7 @@ import { axiosKeepAlive } from './utils/httpAgents.mjs';
 import { createTtlMemo } from '../../utils/cache/ttlMemo.mjs';
 import { scrapWithPuppeteer } from './utils/puppeteerFallback.mjs';
 import {
+  extractShutubaPostTimeText,
   normalizeRaceScrapedText,
   splitCourseAndPrize,
 } from './utils/raceTextNormalize.mjs';
@@ -941,12 +942,14 @@ class NetkeibaScraper {
       }
     });
 
+    const postTime = extractShutubaPostTimeText($);
     return {
       raceInfo,
       horses,
       totalHorses: horses.length,
       scrapedAt: new Date().toISOString(),
-      method: 'cheerio'
+      method: 'cheerio',
+      ...(postTime ? { oddsOfficialTime: postTime } : {}),
     };
   }
 
@@ -1130,7 +1133,7 @@ class NetkeibaScraper {
         timeout: 15000,
         ...axiosKeepAlive,
       });
-      if (data?.status === 'NG' || !data?.data?.odds) {
+      if (data?.status === 'NG' || !data?.data) {
         return null;
       }
       return data.data;
@@ -1149,7 +1152,12 @@ class NetkeibaScraper {
       console.warn('JRA odds API failed:', e.message);
       return;
     }
-    if (!payload?.odds) return;
+    if (!payload) return;
+    const od = payload.official_datetime;
+    if (od != null && String(od).trim()) {
+      result.oddsOfficialTime = String(od).replace(/\s+/g, ' ').trim();
+    }
+    if (!payload.odds) return;
 
     const win = payload.odds['1'] || {};
     const place = payload.odds['2'] || {};
@@ -1169,7 +1177,6 @@ class NetkeibaScraper {
         horse.placeOddsMin = String(placeRow[0]).trim();
       }
     }
-    result.oddsOfficialTime = payload.official_datetime || null;
   }
 
   /**

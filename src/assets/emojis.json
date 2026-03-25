@@ -263,8 +263,20 @@
       "name": "kakunin",
       "id": "1485543265687310346"
     },
+    "kaku": {
+      "name": "kaku",
+      "id": "1486256993231704074"
+    },
+    "tei": {
+      "name": "tei",
+      "id": "1486257023300538368"
+    },
     "kakutei": {
       "name": "kakutei",
+      "id": "1486254345103081573"
+    },
+    "naiyoukakutei": {
+      "name": "naiyoukakutei",
       "id": "1485543263925440644"
     },
     "textdelete": {

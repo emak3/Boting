@@ -28,7 +28,10 @@ import {
   buildRaceResultV2Payload,
   buildTextAndRowsV2Payload,
 } from '../../utils/race/raceCardDisplay.mjs';
-import { canBypassSalesClosed } from '../../utils/debug/raceDebugBypass.mjs';
+import {
+  canBypassSalesClosed,
+  isDebugSalesBypassEnabled,
+} from '../../utils/debug/raceDebugBypass.mjs';
 import {
   selectHorseLabel,
   selectFrameLabel,
@@ -1088,7 +1091,9 @@ export async function buildRaceMenuSelectionPayload(interaction, { raceId, isRes
   if (resultSnap.confirmed) {
     let bpFooter = null;
     try {
-      const pay = await settleOpenRaceBetsForUser(userId, raceId, resultSnap);
+      const pay = await settleOpenRaceBetsForUser(userId, raceId, resultSnap, {
+        reconcileSettledRows: isDebugSalesBypassEnabled(),
+      });
       const adj = pay.reconcileBalanceDelta || 0;
       const net = pay.totalRefund + adj;
       if (pay.settled > 0 || adj !== 0) {

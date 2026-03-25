@@ -214,9 +214,11 @@ export async function tryConfirmRacePurchase(userId, items) {
  * @param {string} userId
  * @param {string} raceId
  * @param {{ payouts?: object[] }} parsedResult scrapeRaceResult の戻り
+ * @param {{ reconcileSettledRows?: boolean }} [opts] `reconcileSettledRows` が true のときだけ、既に精算済みの行の refundBp・残高を結果に合わせて再調整する（デバッグ販売バイパス ON 想定）。
  * @returns {Promise<{ settled: number, totalRefund: number, reconcileBalanceDelta: number, balance: number | null }>}
  */
-export async function settleOpenRaceBetsForUser(userId, raceId, parsedResult) {
+export async function settleOpenRaceBetsForUser(userId, raceId, parsedResult, opts = {}) {
+  const reconcileSettledRows = opts.reconcileSettledRows === true;
   const rid = String(raceId || '');
   if (!/^\d{12}$/.test(rid)) {
     return {
@@ -273,37 +275,39 @@ export async function settleOpenRaceBetsForUser(userId, raceId, parsedResult) {
       }
     }
 
-    const settledRows = await RaceBet.findAll({
-      where: { userId, raceId: rid, status: 'settled' },
-      transaction: t,
-      lock: t.LOCK.UPDATE,
-    });
-
     let reconcileBalanceDelta = 0;
-    for (const doc of settledRows) {
-      const d = doc.get({ plain: true });
-      const unitYen = Math.max(1, Math.round(Number(d.unitYen) || 100));
-      const newRefund = sumRefundBpForTickets(d.tickets || [], payouts, unitYen, {
-        ...passBaseOpts,
-        horseNumToFrame: d.horseNumToFrame || {},
+    if (reconcileSettledRows) {
+      const settledRows = await RaceBet.findAll({
+        where: { userId, raceId: rid, status: 'settled' },
+        transaction: t,
+        lock: t.LOCK.UPDATE,
       });
-      const oldRefund = Math.max(0, Math.round(Number(d.refundBp) || 0));
-      if (newRefund === oldRefund) continue;
-      const [affected] = await RaceBet.update(
-        { refundBp: newRefund },
-        {
-          where: {
-            id: d.id,
-            userId,
-            raceId: rid,
-            status: 'settled',
-            refundBp: oldRefund,
+
+      for (const doc of settledRows) {
+        const d = doc.get({ plain: true });
+        const unitYen = Math.max(1, Math.round(Number(d.unitYen) || 100));
+        const newRefund = sumRefundBpForTickets(d.tickets || [], payouts, unitYen, {
+          ...passBaseOpts,
+          horseNumToFrame: d.horseNumToFrame || {},
+        });
+        const oldRefund = Math.max(0, Math.round(Number(d.refundBp) || 0));
+        if (newRefund === oldRefund) continue;
+        const [affected] = await RaceBet.update(
+          { refundBp: newRefund },
+          {
+            where: {
+              id: d.id,
+              userId,
+              raceId: rid,
+              status: 'settled',
+              refundBp: oldRefund,
+            },
+            transaction: t,
           },
-          transaction: t,
-        },
-      );
-      if (affected === 1) {
-        reconcileBalanceDelta += newRefund - oldRefund;
+        );
+        if (affected === 1) {
+          reconcileBalanceDelta += newRefund - oldRefund;
+        }
       }
     }
 
@@ -360,8 +364,8 @@ export async function settleOpenRaceBetsForUser(userId, raceId, parsedResult) {
 }
 
 /**
- * 未精算の精算に加え、精算済みレースは買い目・払戻の差分があれば refundBp と残高を調整する。
- * 1 回あたり最大 maxRaces 件の raceId（未精算と精算済みの和集合、開催日の新しい順）。
+ * 未精算の精算。`reconcileSettledOnlyRaces` が true（デバッグ販売バイパス ON）のときは、精算済みのみの raceId も最大枠までスクレイプし、精算済み行の払戻差分を調整する。
+ * 1 回あたり最大 maxRaces 件（通常は未精算 raceId のみ。デバッグ ON 時は未精算＋精算のみを新しい順で埋める）。
  */
 export async function settlePendingOpenRaceBetsForUser(userId, scrapeRaceResult, opts = {}) {
   const uid = String(userId || '');
@@ -377,6 +381,7 @@ export async function settlePendingOpenRaceBetsForUser(userId, scrapeRaceResult,
   }
 
   const maxRaces = Math.max(1, Math.min(50, Math.round(Number(opts.maxRaces) || 12)));
+  const reconcileSettledOnlyRaces = opts.reconcileSettledOnlyRaces === true;
   const [openRows, settledRows] = await Promise.all([
     RaceBet.findAll({
       where: { userId: uid, status: 'open' },
@@ -412,11 +417,13 @@ export async function settlePendingOpenRaceBetsForUser(userId, scrapeRaceResult,
     };
   }
 
-  /** 未精算は古い raceId 優先。精算のみのレースは新しい順で再計算枠に回す。 */
+  /** 未精算は古い raceId 優先。デバッグ ON 時のみ精算のみのレースを新しい順で枠に回す。 */
   const openSorted = [...openRaceIdSet].sort((a, b) => a.localeCompare(b));
-  const settledOnlySorted = [...settledRaceIdSet]
-    .filter((id) => !openRaceIdSet.has(id))
-    .sort((a, b) => b.localeCompare(a));
+  const settledOnlySorted = reconcileSettledOnlyRaces
+    ? [...settledRaceIdSet]
+        .filter((id) => !openRaceIdSet.has(id))
+        .sort((a, b) => b.localeCompare(a))
+    : [];
   const toProcess = [...openSorted, ...settledOnlySorted].slice(0, maxRaces);
 
   let settledBets = 0;
@@ -446,7 +453,9 @@ export async function settlePendingOpenRaceBetsForUser(userId, scrapeRaceResult,
       continue;
     }
     try {
-      const pay = await settleOpenRaceBetsForUser(uid, raceId, parsed);
+      const pay = await settleOpenRaceBetsForUser(uid, raceId, parsed, {
+        reconcileSettledRows: reconcileSettledOnlyRaces,
+      });
       settledBets += pay.settled;
       totalRefund += pay.totalRefund;
       reconcileBalanceDelta += pay.reconcileBalanceDelta || 0;

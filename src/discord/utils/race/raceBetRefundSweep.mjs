@@ -1,12 +1,13 @@
 import { settlePendingOpenRaceBetsForUser } from './raceBetRecords.mjs';
 import NetkeibaScraper from '../../../scrapers/netkeiba/netkeibaScraper.mjs';
+import { isDebugSalesBypassEnabled } from '../debug/raceDebugBypass.mjs';
 
 /** @type {Map<string, Promise<void>>} */
 const refundSweepTailByUserId = new Map();
 
 /**
  * 未精算の競馬購入を netkeiba 結果に基づき精算（ボタン・履歴UI・スラッシュ共通）
- * 精算済み行は DB 上の買い目と結果の差分があれば refundBp・残高を調整する。
+ * デバッグ（販売バイパス）ON のときは精算済みのみのレースも枠内でスクレイプし、払戻差分を調整する。
  * 同一 userId の呼び出しは直列化し、並行実行による二重計上を防ぐ。
  * @param {string} userId
  */
@@ -18,8 +19,10 @@ export async function runPendingRaceRefundsForUser(userId) {
   const run = async () => {
     try {
       const scraper = new NetkeibaScraper();
-      await settlePendingOpenRaceBetsForUser(uid, (raceId) =>
-        scraper.scrapeRaceResult(raceId),
+      await settlePendingOpenRaceBetsForUser(
+        uid,
+        (raceId) => scraper.scrapeRaceResult(raceId),
+        { reconcileSettledOnlyRaces: isDebugSalesBypassEnabled() },
       );
     } catch (e) {
       console.warn('runPendingRaceRefundsForUser', e);

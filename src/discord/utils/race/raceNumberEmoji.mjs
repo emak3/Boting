@@ -150,6 +150,9 @@ export function formatHorseNumsCommaEmoji(nums, horseNumToFrame) {
 /** Discord String Select の option.label 上限 */
 export const DISCORD_SELECT_OPTION_LABEL_MAX = 100;
 
+/** Discord String Select の option.description 上限 */
+export const DISCORD_SELECT_OPTION_DESCRIPTION_MAX = 100;
+
 /** raceSchedule の buildSelectionRow が後から付ける「（選択中）」用の余白 */
 export const DISCORD_SELECT_OPTION_LABEL_RESERVE_POST_SELECTION =
   DISCORD_SELECT_OPTION_LABEL_MAX - '（選択中）'.length;

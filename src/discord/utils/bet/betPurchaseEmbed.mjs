@@ -24,23 +24,21 @@ const BET_TYPE_LABEL = {
 };
 
 /**
- * まとめて購入（仮）・まとめて購入内容の金額行。JRA マルチ ON のとき先頭に「マルチ」。
- * @param {{ unitYen?: number, points?: number, jraMulti?: boolean }} it
- * @param {{ batchPipeWhenNormal?: boolean }} [opts] true かつマルチでないときだけ `点数: … | …`（購入完了ヘッドラインの従来形）
+ * まとめて購入（仮）・まとめて購入内容の金額行（JRA マルチも NAR と同じ表記）。
+ * @param {{ unitYen?: number, points?: number }} it
+ * @param {{ batchPipeWhenNormal?: boolean }} [opts] true のとき `点数: … | …`（まとめ購入ヘッドライン）
  */
 function formatBetSlipMoneyLine(it, opts = {}) {
   const unitYen = it.unitYen ?? 100;
   const points = it.points ?? 0;
   const subtotal = points * unitYen;
-  const multi = it.jraMulti === true;
-  if (opts.batchPipeWhenNormal && !multi) {
+  if (opts.batchPipeWhenNormal) {
     return `点数: ${formatBpAmount(points)}点 | 1点: ${formatBpAmount(unitYen)} bp | 小計: ${formatBpAmount(subtotal)} bp`;
   }
   const p = formatBpAmount(points);
   const u = formatBpAmount(unitYen);
   const s = formatBpAmount(subtotal);
-  const core = `点数 **${p}** 点　1点 **${u}** bp　小計 **${s}** bp`;
-  return multi ? `マルチ　${core}` : core;
+  return `点数 **${p}** 点　1点 **${u}** bp　小計 **${s}** bp`;
 }
 
 /** `null` / `undefined` のみ除く（空行用の `''` は残す） */
@@ -653,122 +651,6 @@ function fallbackEmojiTicketLines(it, label) {
   return out.join('\n');
 }
 
-function uniqSortDetailNums(seg) {
-  const arr = extractHorseNumsFromSlipDetailSegment(seg);
-  return [...new Set(arr.map(String))].sort((a, b) => Number(a) - Number(b));
-}
-
-/**
- * JRA マルチ時は `=>` 以降の本文だけから馬番を描画（展開後チケットは使わない）
- */
-function formatSlipPickLinesFromDetailForJraMulti(it, detail, label) {
-  const bt = it.betType || '';
-  const d = String(detail || '').trim();
-  if (!d) return '';
-
-  if (bt === 'umatan' && label.includes('（通常）')) {
-    const m = d.match(/1着:\s*([^/]+)\s*\/\s*2着:\s*(.+)/s);
-    if (m && !/\/\s*3着/.test(d)) {
-      const a = extractHorseNumsFromSlipDetailSegment(m[1])[0];
-      const b = extractHorseNumsFromSlipDetailSegment(m[2])[0];
-      if (a && b) return `${label}：${fmtGT(it, [a, b])}`;
-    }
-    return '';
-  }
-
-  if (bt === 'umatan' && label.includes('（1着ながし）')) {
-    const m = d.match(/軸\(1着\):\s*([^/]+)\s*\/\s*相手\(2着\):\s*(.+)/s);
-    if (m) {
-      const ax = extractHorseNumsFromSlipDetailSegment(m[1])[0];
-      const op = uniqSortDetailNums(m[2]);
-      if (ax && op.length) {
-        return [
-          `【1着軸】：${fmtC(it, [ax])}`,
-          `【相手】：${fmtC(it, op)}`,
-        ].join('\n');
-      }
-    }
-    return '';
-  }
-
-  if (bt === 'umatan' && label.includes('（2着ながし）')) {
-    const m = d.match(/軸\(2着\):\s*([^/]+)\s*\/\s*相手\(1着\):\s*(.+)/s);
-    if (m) {
-      const ax = extractHorseNumsFromSlipDetailSegment(m[1])[0];
-      const op = uniqSortDetailNums(m[2]);
-      if (ax && op.length) {
-        return [
-          `【2着軸】：${fmtC(it, [ax])}`,
-          `【相手】：${fmtC(it, op)}`,
-        ].join('\n');
-      }
-    }
-    return '';
-  }
-
-  if (bt === 'umatan' && label.includes('（フォーメーション）')) {
-    const m = d.match(/1着群:\s*([^/]+)\s*\/\s*2着群:\s*(.+)/s);
-    if (m) {
-      const g1 = uniqSortDetailNums(m[1]);
-      const g2 = uniqSortDetailNums(m[2]);
-      if (g1.length && g2.length) {
-        return [
-          `${label}【1着】：${fmtC(it, g1)}`,
-          `${label}【2着】：${fmtC(it, g2)}`,
-        ].join('\n');
-      }
-    }
-    return '';
-  }
-
-  if (bt === 'tritan' && label.includes('（1着ながし）')) {
-    const m = d.match(/^\s*軸:\s*([^/]+)\s*\/\s*相手:\s*(.+)$/s);
-    if (m) {
-      const ax = extractHorseNumsFromSlipDetailSegment(m[1])[0];
-      const op = uniqSortDetailNums(m[2]);
-      if (ax && op.length) {
-        return [
-          `【1着軸】：${fmtC(it, [ax])}`,
-          `【相手】：${fmtC(it, op)}`,
-        ].join('\n');
-      }
-    }
-    return '';
-  }
-
-  if (bt === 'tritan' && label.includes('（2着ながし）')) {
-    const m = d.match(/^\s*軸:\s*([^/]+)\s*\/\s*相手:\s*(.+)$/s);
-    if (m) {
-      const ax = extractHorseNumsFromSlipDetailSegment(m[1])[0];
-      const op = uniqSortDetailNums(m[2]);
-      if (ax && op.length) {
-        return [
-          `【2着軸】：${fmtC(it, [ax])}`,
-          `【相手】：${fmtC(it, op)}`,
-        ].join('\n');
-      }
-    }
-    return '';
-  }
-
-  if (bt === 'tritan' && label.includes('（3着ながし）')) {
-    const m = d.match(/^\s*軸:\s*([^/]+)\s*\/\s*相手:\s*(.+)$/s);
-    if (m) {
-      const ax = extractHorseNumsFromSlipDetailSegment(m[1])[0];
-      const op = uniqSortDetailNums(m[2]);
-      if (ax && op.length) {
-        return [
-          `【3着軸】：${fmtC(it, [ax])}`,
-          `【相手】：${fmtC(it, op)}`,
-        ].join('\n');
-      }
-    }
-    return '';
-  }
-
-  return '';
-}
-
 /**
  * まとめて購入確認用：軸・相手・記号・絵文字
  * @param {{ selectionLine?: string, betType?: string, tickets?: Array<{ kind: string, nums: string[] }>, horseNumToFrame?: Record<string, string> }} it
@@ -781,11 +663,6 @@ export function formatSlipPickDisplayLines(it) {
     '購入予定';
   const detail = parseSelectionDetail(sel);
   const bt = it.betType || '';
-
-  if (/\sマルチ\s*=>\s*/.test(sel)) {
-    const forced = formatSlipPickLinesFromDetailForJraMulti(it, detail, label);
-    if (forced) return forced;
-  }
 
   const tickets = it.tickets || [];
 

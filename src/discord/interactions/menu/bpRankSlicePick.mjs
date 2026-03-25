@@ -5,8 +5,9 @@ import {
   BP_RANK_SLICE_PICK_PREFIX,
   loadBpRankLeaderboardState,
 } from '../../utils/bp/bpRankLeaderboardEmbed.mjs';
-import { buildRacePurchaseHistoryV2Payload } from '../../utils/race/racePurchaseHistoryUi.mjs';
 import { buildTextAndRowsV2Payload } from '../../utils/race/raceCardDisplay.mjs';
+import { buildAnnualStatsPanelPayload } from '../../utils/boting/botingStatsPanels.mjs';
+import { runPendingRaceRefundsForUser } from '../../utils/race/raceBetRefundSweep.mjs';
 
 function normalizeMode(raw) {
   const m = String(raw || '');
@@ -15,7 +16,7 @@ function normalizeMode(raw) {
 }
 
 /**
- * 表示中ランキングの String Select → 購入履歴
+ * 表示中ランキングの String Select → 年間統計（下段から購入履歴・収支・ランキングへ）
  * @param {import('discord.js').StringSelectMenuInteraction} interaction
  */
 export default async function bpRankSlicePick(interaction) {
@@ -64,11 +65,10 @@ export default async function bpRankSlicePick(interaction) {
   await interaction.deferUpdate();
 
   try {
-    const payload = await buildRacePurchaseHistoryV2Payload({
+    await runPendingRaceRefundsForUser(targetId);
+    const payload = await buildAnnualStatsPanelPayload({
       userId: targetId,
-      page: 0,
       extraFlags,
-      bpRankProfileUserId: targetId,
       rankLeaderboardReturn: { limit: lim, mode },
     });
     await interaction.editReply(payload);
@@ -76,7 +76,7 @@ export default async function bpRankSlicePick(interaction) {
     console.error('bpRankSlicePick:', e);
     await interaction.editReply(
       buildTextAndRowsV2Payload({
-        headline: `❌ 購入履歴の表示に失敗しました: ${e.message}`,
+        headline: `❌ 年間統計の表示に失敗しました: ${e.message}`,
         actionRows: [],
         extraFlags,
         withBotingMenuBack: true,

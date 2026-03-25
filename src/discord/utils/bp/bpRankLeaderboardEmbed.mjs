@@ -37,7 +37,7 @@ export const BP_RANK_SELECT_PREFIX = 'bp_rank_sel';
 export { BP_RANK_DISPLAY_MAX };
 /** String Select の最大件数（表示件数上限＝Discord の 25 オプション上限） */
 export const BP_RANK_SLICE_PICK_MAX = BP_RANK_DISPLAY_MAX;
-/** `bp_rank_slice_pick|{limit}|{mode}` — 表示中ランキングの行から選ぶ */
+/** `bp_rank_slice_pick|{limit}|{mode}` — 表示中ランキングの行から選ぶ（年間統計を開く） */
 export const BP_RANK_SLICE_PICK_PREFIX = 'bp_rank_slice_pick';
 
 export const BP_RANK_MODE = {

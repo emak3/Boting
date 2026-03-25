@@ -31,7 +31,7 @@ function injectPurchaseHistoryBack(payload, ctx) {
   const row = new ActionRowBuilder().addComponents(
     new ButtonBuilder()
       .setCustomId(buildRaceHistoryNavCustomId(ctx))
-      .setLabel('購入履歴に戻る')
+      .setLabel('購入履歴')
       .setEmoji(botingEmoji('history'))
       .setStyle(ButtonStyle.Secondary),
   );

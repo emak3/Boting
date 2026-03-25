@@ -1089,10 +1089,16 @@ export async function buildRaceMenuSelectionPayload(interaction, { raceId, isRes
     let bpFooter = null;
     try {
       const pay = await settleOpenRaceBetsForUser(userId, raceId, resultSnap);
-      if (pay.settled > 0 && pay.totalRefund > 0) {
-        bpFooter = `**あなたの競馬払戻** +${pay.totalRefund} bp（残高 ${pay.balance} bp）`;
-      } else if (pay.settled > 0) {
-        bpFooter = `**あなたの競馬払戻** 該当なし（精算 ${pay.settled} 件・残高 ${pay.balance} bp）`;
+      const adj = pay.reconcileBalanceDelta || 0;
+      const net = pay.totalRefund + adj;
+      if (pay.settled > 0 || adj !== 0) {
+        if (net > 0) {
+          bpFooter = `**あなたの競馬払戻** +${net} bp（残高 ${pay.balance} bp）`;
+        } else if (net < 0) {
+          bpFooter = `**あなたの競馬払戻（調整）** ${net} bp（残高 ${pay.balance} bp）`;
+        } else if (pay.settled > 0) {
+          bpFooter = `**あなたの競馬払戻** 該当なし（精算 ${pay.settled} 件・残高 ${pay.balance} bp）`;
+        }
       }
     } catch (e) {
       console.warn('settleOpenRaceBetsForUser', e);

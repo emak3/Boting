@@ -23,6 +23,7 @@ import {
   WEEKLY_CHALLENGE_LABEL_JA,
 } from '../challenge/weeklyChallengeSettle.mjs';
 import { betTypeDisplayLabelJa } from '../bet/betTypeLabels.mjs';
+import { buildBpRankLbAnnualViewFooterRow } from '../bp/bpRankUiButtons.mjs';
 
 function pct1(x) {
   if (x == null || !Number.isFinite(x)) return '—';
@@ -59,13 +60,27 @@ function formatPrevWeekChallengeLine(it) {
 }
 
 /**
- * @param {{ userId: string, year?: number, extraFlags?: number }} opts
+ * @param {{
+ *   userId: string,
+ *   year?: number,
+ *   extraFlags?: number,
+ *   rankLeaderboardReturn?: { limit: number, mode: string } | null,
+ * }} opts
  */
 export async function buildAnnualStatsPanelPayload(opts) {
   const extraFlags = opts.extraFlags ?? 0;
-  const s = await fetchUserAnnualRaceStats(opts.userId, opts.year);
+  const uid = String(opts.userId || '');
+  const s = await fetchUserAnnualRaceStats(uid, opts.year);
+  const rk = opts.rankLeaderboardReturn ?? null;
+  const fromRankLb =
+    rk?.limit != null &&
+    rk.mode &&
+    uid &&
+    /^\d{17,20}$/.test(uid);
 
+  const head = fromRankLb ? [`対象: <@${uid}>`, ''] : [];
   const lines = [
+    ...head,
     `**年間スタッツ（JST ${s.year}年・購入時刻ベース）**`,
     '',
     `・購入件数: **${s.purchaseCount.toLocaleString('ja-JP')}** 件`,
@@ -80,9 +95,13 @@ export async function buildAnnualStatsPanelPayload(opts) {
     `**連続不的中（精算済の連続で払戻0）最大**: **${s.maxConsecutiveMisses}** 回`,
   ];
 
+  const footer = fromRankLb
+    ? buildBpRankLbAnnualViewFooterRow(rk.limit, rk.mode, uid)
+    : buildBotingMenuBackRow();
+
   return buildTextAndRowsV2Payload({
     headline: lines.join('\n'),
-    actionRows: [buildBotingMenuBackRow()],
+    actionRows: [footer],
     extraFlags,
   });
 }

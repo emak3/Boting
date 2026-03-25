@@ -36,6 +36,7 @@ import {
   BP_RANK_BACK_LB_PREFIX,
   BP_RANK_LB_HIST_PREFIX,
   BP_RANK_LB_LEDG_PREFIX,
+  BP_RANK_LB_ANNUAL_PREFIX,
   buildBpRankProfileButtonsRow,
   buildBpRankProfileBackButtonRow,
 } from '../../utils/bp/bpRankUiButtons.mjs';
@@ -302,6 +303,40 @@ export default async function raceHubButtons(interaction) {
         .editReply(
           buildTextAndRowsV2Payload({
             headline: `❌ 収支の表示に失敗しました: ${e.message}`,
+            actionRows: [],
+            extraFlags,
+            withBotingMenuBack: true,
+          }),
+        )
+        .catch(() => {});
+    }
+    return;
+  }
+
+  if (id.startsWith(`${BP_RANK_LB_ANNUAL_PREFIX}|`)) {
+    const parts = id.split('|');
+    if (parts.length < 4) return;
+    const lim = Math.min(BP_RANK_DISPLAY_MAX, Math.max(1, parseInt(parts[1], 10) || 20));
+    const mode = normalizeBpRankMode(parts[2]);
+    const targetUserId = parts[3];
+    if (!/^\d{17,20}$/.test(String(targetUserId || ''))) return;
+    const extraFlags = ephemeralExtraFromMessage(interaction.message);
+    if (!(await safeDeferUpdate(interaction))) return;
+    try {
+      await runPendingRaceRefundsForUser(targetUserId);
+      await interaction.editReply(
+        await buildAnnualStatsPanelPayload({
+          userId: targetUserId,
+          extraFlags,
+          rankLeaderboardReturn: { limit: lim, mode },
+        }),
+      );
+    } catch (e) {
+      console.error('raceHubButtons bp_rank_lb_annual', e);
+      await interaction
+        .editReply(
+          buildTextAndRowsV2Payload({
+            headline: `❌ 年間統計の表示に失敗しました: ${e.message}`,
             actionRows: [],
             extraFlags,
             withBotingMenuBack: true,

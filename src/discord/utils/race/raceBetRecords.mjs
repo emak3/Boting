@@ -214,57 +214,131 @@ export async function tryConfirmRacePurchase(userId, items) {
  * @param {string} userId
  * @param {string} raceId
  * @param {{ payouts?: object[] }} parsedResult scrapeRaceResult の戻り
+ * @returns {Promise<{ settled: number, totalRefund: number, reconcileBalanceDelta: number, balance: number | null }>}
  */
 export async function settleOpenRaceBetsForUser(userId, raceId, parsedResult) {
   const rid = String(raceId || '');
-  if (!/^\d{12}$/.test(rid)) return { settled: 0, totalRefund: 0, balance: null };
+  if (!/^\d{12}$/.test(rid)) {
+    return {
+      settled: 0,
+      totalRefund: 0,
+      reconcileBalanceDelta: 0,
+      balance: null,
+    };
+  }
 
   const payouts = parsedResult?.payouts || [];
   const period = getCurrentDailyPeriodKey();
+  const passBaseOpts = {
+    excludedHorseNumbers: parsedResult?.excludedHorseNumbers || [],
+    raceHorses: parsedResult?.horses || [],
+  };
 
   return sequelize.transaction(async (t) => {
-    const bets = await RaceBet.findAll({
-      where: { userId, raceId: rid, status: 'open' },
-      transaction: t,
-      lock: t.LOCK.UPDATE,
-    });
-
     const userRow = await UserPoint.findByPk(userId, {
       transaction: t,
       lock: t.LOCK.UPDATE,
     });
 
-    if (!bets.length) {
-      return {
-        settled: 0,
-        totalRefund: 0,
-        balance: normBalance(userRow?.get('balance')),
-      };
-    }
+    const openBets = await RaceBet.findAll({
+      where: { userId, raceId: rid, status: 'open' },
+      transaction: t,
+      lock: t.LOCK.UPDATE,
+    });
 
     let totalRefund = 0;
+    let settled = 0;
     const now = new Date();
-    for (const doc of bets) {
+    for (const doc of openBets) {
       const d = doc.get({ plain: true });
       const unitYen = Math.max(1, Math.round(Number(d.unitYen) || 100));
       const refund = sumRefundBpForTickets(d.tickets || [], payouts, unitYen, {
-        excludedHorseNumbers: parsedResult?.excludedHorseNumbers || [],
+        ...passBaseOpts,
         horseNumToFrame: d.horseNumToFrame || {},
-        raceHorses: parsedResult?.horses || [],
       });
-      totalRefund += refund;
-      await doc.update(
+      const [affected] = await RaceBet.update(
         {
           status: 'settled',
           refundBp: refund,
           settledAt: now,
         },
-        { transaction: t },
+        {
+          where: { id: d.id, userId, raceId: rid, status: 'open' },
+          transaction: t,
+        },
       );
+      if (affected === 1) {
+        settled += 1;
+        totalRefund += refund;
+      }
+    }
+
+    const settledRows = await RaceBet.findAll({
+      where: { userId, raceId: rid, status: 'settled' },
+      transaction: t,
+      lock: t.LOCK.UPDATE,
+    });
+
+    let reconcileBalanceDelta = 0;
+    for (const doc of settledRows) {
+      const d = doc.get({ plain: true });
+      const unitYen = Math.max(1, Math.round(Number(d.unitYen) || 100));
+      const newRefund = sumRefundBpForTickets(d.tickets || [], payouts, unitYen, {
+        ...passBaseOpts,
+        horseNumToFrame: d.horseNumToFrame || {},
+      });
+      const oldRefund = Math.max(0, Math.round(Number(d.refundBp) || 0));
+      if (newRefund === oldRefund) continue;
+      const [affected] = await RaceBet.update(
+        { refundBp: newRefund },
+        {
+          where: {
+            id: d.id,
+            userId,
+            raceId: rid,
+            status: 'settled',
+            refundBp: oldRefund,
+          },
+          transaction: t,
+        },
+      );
+      if (affected === 1) {
+        reconcileBalanceDelta += newRefund - oldRefund;
+      }
     }
 
     const balance = normBalance(userRow?.get('balance'));
-    const newBal = balance + totalRefund;
+    const newBal = balance + totalRefund + reconcileBalanceDelta;
+
+    if (totalRefund === 0 && reconcileBalanceDelta === 0) {
+      return {
+        settled,
+        totalRefund,
+        reconcileBalanceDelta,
+        balance,
+      };
+    }
+
+    let ledgerBal = balance;
+    if (totalRefund > 0) {
+      ledgerBal += totalRefund;
+      await appendLedgerTransaction(t, userId, {
+        delta: totalRefund,
+        balanceAfter: ledgerBal,
+        kind: 'race_refund',
+        period,
+      });
+    }
+    if (reconcileBalanceDelta !== 0) {
+      ledgerBal += reconcileBalanceDelta;
+      await appendLedgerTransaction(t, userId, {
+        delta: reconcileBalanceDelta,
+        balanceAfter: ledgerBal,
+        kind: 'race_refund_adjust',
+        period,
+      });
+    }
+
     await UserPoint.upsert(
       {
         userId,
@@ -275,25 +349,19 @@ export async function settleOpenRaceBetsForUser(userId, raceId, parsedResult) {
       },
       { transaction: t },
     );
-    if (totalRefund > 0) {
-      await appendLedgerTransaction(t, userId, {
-        delta: totalRefund,
-        balanceAfter: newBal,
-        kind: 'race_refund',
-        period,
-      });
-    }
 
     return {
-      settled: bets.length,
+      settled,
       totalRefund,
+      reconcileBalanceDelta,
       balance: newBal,
     };
   });
 }
 
 /**
- * 未精算（status open）のレースをユニークな raceId ごとに結果取得→精算する。
+ * 未精算の精算に加え、精算済みレースは買い目・払戻の差分があれば refundBp と残高を調整する。
+ * 1 回あたり最大 maxRaces 件の raceId（未精算と精算済みの和集合、開催日の新しい順）。
  */
 export async function settlePendingOpenRaceBetsForUser(userId, scrapeRaceResult, opts = {}) {
   const uid = String(userId || '');
@@ -302,38 +370,58 @@ export async function settlePendingOpenRaceBetsForUser(userId, scrapeRaceResult,
       raceIdsProcessed: 0,
       settledBets: 0,
       totalRefund: 0,
+      reconcileBalanceDelta: 0,
       balance: null,
       skippedNoResult: 0,
     };
   }
 
   const maxRaces = Math.max(1, Math.min(50, Math.round(Number(opts.maxRaces) || 12)));
-  const openRows = await RaceBet.findAll({
-    where: { userId: uid, status: 'open' },
-    attributes: ['raceId'],
-  });
+  const [openRows, settledRows] = await Promise.all([
+    RaceBet.findAll({
+      where: { userId: uid, status: 'open' },
+      attributes: ['raceId'],
+    }),
+    RaceBet.findAll({
+      where: { userId: uid, status: 'settled' },
+      attributes: ['raceId'],
+    }),
+  ]);
 
-  if (!openRows.length) {
+  const openRaceIdSet = new Set();
+  for (const r of openRows) {
+    const rid = String(r.get('raceId') || '');
+    if (/^\d{12}$/.test(rid)) openRaceIdSet.add(rid);
+  }
+  const settledRaceIdSet = new Set();
+  for (const r of settledRows) {
+    const rid = String(r.get('raceId') || '');
+    if (/^\d{12}$/.test(rid)) settledRaceIdSet.add(rid);
+  }
+  const raceIdSet = new Set([...openRaceIdSet, ...settledRaceIdSet]);
+
+  if (!raceIdSet.size) {
     const uRow = await UserPoint.findByPk(uid);
     return {
       raceIdsProcessed: 0,
       settledBets: 0,
       totalRefund: 0,
+      reconcileBalanceDelta: 0,
       balance: normBalance(uRow?.get('balance')),
       skippedNoResult: 0,
     };
   }
 
-  const raceIdSet = new Set();
-  for (const r of openRows) {
-    const rid = String(r.get('raceId') || '');
-    if (/^\d{12}$/.test(rid)) raceIdSet.add(rid);
-  }
-  const raceIds = [...raceIdSet].sort();
-  const toProcess = raceIds.slice(0, maxRaces);
+  /** 未精算は古い raceId 優先。精算のみのレースは新しい順で再計算枠に回す。 */
+  const openSorted = [...openRaceIdSet].sort((a, b) => a.localeCompare(b));
+  const settledOnlySorted = [...settledRaceIdSet]
+    .filter((id) => !openRaceIdSet.has(id))
+    .sort((a, b) => b.localeCompare(a));
+  const toProcess = [...openSorted, ...settledOnlySorted].slice(0, maxRaces);
 
   let settledBets = 0;
   let totalRefund = 0;
+  let reconcileBalanceDelta = 0;
   let skippedNoResult = 0;
   /** @type {number | null} */
   let balance = null;
@@ -361,6 +449,7 @@ export async function settlePendingOpenRaceBetsForUser(userId, scrapeRaceResult,
       const pay = await settleOpenRaceBetsForUser(uid, raceId, parsed);
       settledBets += pay.settled;
       totalRefund += pay.totalRefund;
+      reconcileBalanceDelta += pay.reconcileBalanceDelta || 0;
       if (pay.balance != null) balance = pay.balance;
     } catch (_) {
       skippedNoResult += 1;
@@ -376,6 +465,7 @@ export async function settlePendingOpenRaceBetsForUser(userId, scrapeRaceResult,
     raceIdsProcessed: toProcess.length,
     settledBets,
     totalRefund,
+    reconcileBalanceDelta,
     balance,
     skippedNoResult,
   };

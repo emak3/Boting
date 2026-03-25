@@ -12,6 +12,7 @@ import {
   findAdjacentHoldYmdWithBets,
   resolveDefaultRaceHistoryHoldYmd,
 } from './raceBetRecords.mjs';
+import { isDebugSalesBypassEnabled } from '../debug/raceDebugBypass.mjs';
 import { runPendingRaceRefundsForUser } from './raceBetRefundSweep.mjs';
 import {
   addJstCalendarDays,
@@ -126,6 +127,17 @@ export function buildRaceHistoryResultPickCustomId(opts) {
 
 /** 1ページあたりの買い目件数（レース見出しはカウントに含めない） */
 export const HISTORY_BETS_PER_PAGE = 10;
+
+/**
+ * 前後日ナビ用フィルタ（findAdjacent と同じ扱い）。無効な customId は all として探索する。
+ * @param {string} meetingFilter
+ */
+function adjacentMeetingFilterForHistory(meetingFilter) {
+  const mf = String(meetingFilter || 'all').trim() || 'all';
+  if (mf === 'all') return 'all';
+  if (!/^\d{10}$/.test(mf)) return 'all';
+  return mf;
+}
 
 const HISTORY_ACCENT = 0x9b59b6;
 const HISTORY_BTN_LABEL_MAX = 80;
@@ -596,18 +608,25 @@ export async function buildRacePurchaseHistoryV2Payload({
   bpRankProfileUserId = null,
   rankLeaderboardReturn = null,
 }) {
-  void runPendingRaceRefundsForUser(userId).catch((e) =>
-    console.warn('runPendingRaceRefundsForUser', e),
-  );
+  if (isDebugSalesBypassEnabled()) {
+    try {
+      await runPendingRaceRefundsForUser(userId);
+    } catch (e) {
+      console.warn('runPendingRaceRefundsForUser', e);
+    }
+  }
 
   let periodKey =
     periodKeyOpt != null && /^\d{8}$/.test(String(periodKeyOpt).trim())
       ? String(periodKeyOpt).trim()
       : await resolveDefaultRaceHistoryHoldYmd(userId);
 
-  const [allBets, bpBalance] = await Promise.all([
+  const adjacentMf = adjacentMeetingFilterForHistory(meetingFilter);
+  const [allBets, bpBalance, prevNavYmdRaw, nextNavYmdRaw] = await Promise.all([
     fetchUserRaceBetsForRaceHoldDateYmd(userId, periodKey),
     getBalance(userId),
+    findAdjacentHoldYmdWithBets(userId, periodKey, -1, adjacentMf),
+    findAdjacentHoldYmdWithBets(userId, periodKey, 1, adjacentMf),
   ]);
   const ymd = `${periodKey.slice(0, 4)}-${periodKey.slice(4, 6)}-${periodKey.slice(6, 8)}`;
 
@@ -616,6 +635,15 @@ export async function buildRacePurchaseHistoryV2Payload({
   let filterKey = String(meetingFilter || 'all').trim();
   if (filterKey !== 'all' && !meetingKeys.has(filterKey)) {
     filterKey = 'all';
+  }
+
+  let prevNavYmd = prevNavYmdRaw;
+  let nextNavYmd = nextNavYmdRaw;
+  if (filterKey !== adjacentMf) {
+    [prevNavYmd, nextNavYmd] = await Promise.all([
+      findAdjacentHoldYmdWithBets(userId, periodKey, -1, filterKey),
+      findAdjacentHoldYmdWithBets(userId, periodKey, 1, filterKey),
+    ]);
   }
 
   const bets =
@@ -717,10 +745,6 @@ export async function buildRacePurchaseHistoryV2Payload({
     }
   }
 
-  const [prevNavYmd, nextNavYmd] = await Promise.all([
-    findAdjacentHoldYmdWithBets(userId, periodKey, -1, filterKey),
-    findAdjacentHoldYmdWithBets(userId, periodKey, 1, filterKey),
-  ]);
   const dayRow = historyDayAndPageNavRow(
     periodKey,
     filterKey,

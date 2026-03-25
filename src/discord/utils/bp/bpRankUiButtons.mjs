@@ -1,4 +1,5 @@
 import { ActionRowBuilder, ButtonBuilder, ButtonStyle } from 'discord.js';
+import { BOTING_HUB_BUTTON_EMOJI } from '../boting/botingHubConstants.mjs';
 import { botingEmoji } from '../boting/botingEmojis.mjs';
 import { BP_RANK_DISPLAY_MAX } from './bpRankLeaderboardEmbed.mjs';
 
@@ -20,6 +21,8 @@ export const BP_RANK_BACK_LB_PREFIX = 'bp_rank_back_lb';
 export const BP_RANK_LB_HIST_PREFIX = 'bp_rank_lb_hist';
 /** `bp_rank_lb_ledg|{limit}|{mode}|{targetUserId}` — ランキングから対象の直近の収支 */
 export const BP_RANK_LB_LEDG_PREFIX = 'bp_rank_lb_ledg';
+/** `bp_rank_lb_annual|{limit}|{mode}|{targetUserId}` — ランキングから対象の年間統計 */
+export const BP_RANK_LB_ANNUAL_PREFIX = 'bp_rank_lb_annual';
 
 /** 購入予定閲覧・購入履歴の下に並べる（BP 詳細へ戻る） */
 export function buildBpRankProfileBackButtonRow(targetUserId) {
@@ -65,7 +68,7 @@ export function buildBpRankLeaderboardBackButtonRow(limit, mode) {
 }
 
 /**
- * ランキング経由の購入履歴の最下行（直近の収支へ・ランキングへ）
+ * ランキング経由の購入履歴の最下行（年間統計・直近の収支・ランキングへ）
  * @param {number} limit
  * @param {string} mode
  * @param {string} targetUserId 表示中のユーザー
@@ -76,10 +79,44 @@ export function buildBpRankLbHistoryFooterRow(limit, mode, targetUserId) {
   const uid = String(targetUserId || '');
   return new ActionRowBuilder().addComponents(
     new ButtonBuilder()
+      .setCustomId(`${BP_RANK_LB_ANNUAL_PREFIX}|${lim}|${m}|${uid}`)
+      .setLabel('年間統計')
+      .setEmoji(BOTING_HUB_BUTTON_EMOJI.annualStats)
+      .setStyle(ButtonStyle.Secondary),
+    new ButtonBuilder()
       .setCustomId(`${BP_RANK_LB_LEDG_PREFIX}|${lim}|${m}|${uid}`)
       .setLabel('直近の収支')
       .setEmoji(botingEmoji('syushi'))
       .setStyle(ButtonStyle.Primary),
+    new ButtonBuilder()
+      .setCustomId(`${BP_RANK_BACK_LB_PREFIX}|${lim}|${m}`)
+      .setLabel('ランキングに戻る')
+      .setEmoji(botingEmoji('ranking'))
+      .setStyle(ButtonStyle.Secondary),
+  );
+}
+
+/**
+ * 年間統計（ランキング経由）の下段：購入履歴・直近の収支・ランキングに戻る
+ * @param {number} limit
+ * @param {string} mode
+ * @param {string} targetUserId
+ */
+export function buildBpRankLbAnnualViewFooterRow(limit, mode, targetUserId) {
+  const lim = Math.min(BP_RANK_DISPLAY_MAX, Math.max(1, Math.round(Number(limit) || 20)));
+  const m = normalizeBpRankMode(mode);
+  const uid = String(targetUserId || '');
+  return new ActionRowBuilder().addComponents(
+    new ButtonBuilder()
+      .setCustomId(`${BP_RANK_LB_HIST_PREFIX}|${lim}|${m}|${uid}`)
+      .setLabel('購入履歴')
+      .setEmoji(botingEmoji('history'))
+      .setStyle(ButtonStyle.Primary),
+    new ButtonBuilder()
+      .setCustomId(`${BP_RANK_LB_LEDG_PREFIX}|${lim}|${m}|${uid}`)
+      .setLabel('直近の収支')
+      .setEmoji(botingEmoji('syushi'))
+      .setStyle(ButtonStyle.Secondary),
     new ButtonBuilder()
       .setCustomId(`${BP_RANK_BACK_LB_PREFIX}|${lim}|${m}`)
       .setLabel('ランキングに戻る')

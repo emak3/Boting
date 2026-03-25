@@ -11,10 +11,11 @@ import {
   kindLabelJa,
   LEDGER_PAGE_MAX_FETCH,
 } from '../user/userPointsStore.mjs';
-import { BOTING_HUB_PREFIX } from './botingHubConstants.mjs';
+import { BOTING_HUB_BUTTON_EMOJI, BOTING_HUB_PREFIX } from './botingHubConstants.mjs';
 import { botingEmoji } from './botingEmojis.mjs';
 import { BP_RANK_DISPLAY_MAX } from '../bp/bpRankLeaderboardEmbed.mjs';
 import {
+  BP_RANK_LB_ANNUAL_PREFIX,
   BP_RANK_LB_HIST_PREFIX,
   buildBpRankLeaderboardBackButtonRow,
 } from '../bp/bpRankUiButtons.mjs';
@@ -158,6 +159,11 @@ export async function buildBotingLedgerViewPayload({
       .setEmoji(botingEmoji('tsugi'))
       .setStyle(ButtonStyle.Secondary)
       .setDisabled(!hasMore),
+    new ButtonBuilder()
+      .setCustomId(`${BOTING_LEDGER_OPEN_LIM_PREFIX}|${ps}|${pi}${navSuffix}`)
+      .setLabel('表示数を変える')
+      .setEmoji(botingEmoji('hyouji'))
+      .setStyle(ButtonStyle.Secondary),
   );
 
   const menuBackBtn = new ButtonBuilder()
@@ -175,17 +181,24 @@ export async function buildBotingLedgerViewPayload({
           .setCustomId(
             `${BP_RANK_LB_HIST_PREFIX}|${rkLim}|${safeMode}|${userId}`,
           )
-          .setLabel('購入履歴に戻る')
+          .setLabel('購入履歴')
           .setEmoji(botingEmoji('history'))
           .setStyle(ButtonStyle.Secondary)
       : null;
 
+  const annualBtn =
+    lb && rkLim != null && userId && /^\d{17,20}$/.test(String(userId))
+      ? new ButtonBuilder()
+          .setCustomId(
+            `${BP_RANK_LB_ANNUAL_PREFIX}|${rkLim}|${safeMode}|${userId}`,
+          )
+          .setLabel('年間統計')
+          .setEmoji(BOTING_HUB_BUTTON_EMOJI.annualStats)
+          .setStyle(ButtonStyle.Secondary)
+      : null;
+
   const row2 = new ActionRowBuilder().addComponents(
-    new ButtonBuilder()
-      .setCustomId(`${BOTING_LEDGER_OPEN_LIM_PREFIX}|${ps}|${pi}${navSuffix}`)
-      .setLabel('表示数を変える')
-      .setEmoji(botingEmoji('hyouji'))
-      .setStyle(ButtonStyle.Secondary),
+    ...(annualBtn ? [annualBtn] : []),
     ...(histBackBtn ? [histBackBtn] : []),
     lb && rankBackBtn ? rankBackBtn : menuBackBtn,
   );

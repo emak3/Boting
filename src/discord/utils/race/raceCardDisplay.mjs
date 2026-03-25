@@ -123,7 +123,7 @@ export function buildRaceCardV2Payload({
   const meta = `**日程:** ${ri.date || 'N/A'}\n${courseBlock}`;
   const footParts = [
     `全${result.totalHorses}頭${
-      result.oddsOfficialTime ? ` · オッズ時刻 ${result.oddsOfficialTime}` : ''
+      result.oddsOfficialTime ? ` · 取得時刻 ${result.oddsOfficialTime}` : ''
     }`,
     isResult && resultUrl ? `結果: ${resultUrl}` : null,
   ].filter(Boolean);

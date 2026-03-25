@@ -60,7 +60,7 @@ export function buildBetPurchaseV2Headline({ flow }) {
     '**購入内容（確認）**',
     '',
     `レース: ${raceTitle}`,
-    oddsTime ? `オッズ時刻: ${oddsTime}` : null,
+    oddsTime ? `取得時刻: ${oddsTime}` : null,
     isResult && resultUrl ? `結果: ${resultUrl}` : null,
     '',
     selectionLine,
@@ -108,7 +108,7 @@ export function buildBetSlipBatchV2Headline({ items }) {
       '（選択なし）';
 
     lines.push(`**${i + 1}.** ${historyRaceHeadingLine(it)}`);
-    if (it.oddsOfficialTime) lines.push(`オッズ時刻: ${it.oddsOfficialTime}`);
+    if (it.oddsOfficialTime) lines.push(`取得時刻: ${it.oddsOfficialTime}`);
     if (resultUrl) lines.push(`結果: ${resultUrl}`);
     lines.push(pickText);
     lines.push(formatBetSlipMoneyLine(it, { batchPipeWhenNormal: true }));
@@ -252,7 +252,7 @@ export function historyRaceHeadingLine(bet) {
 }
 
 /**
- * netkeiba の official_datetime 等から発走/オッズ時刻の HH:MM を抜き出す（購入履歴の `10:20` 表記用）
+ * netkeiba の official_datetime 等から発走/取得時刻の HH:MM を抜き出す（購入履歴の `10:20` 表記用）
  * @param {string | null | undefined} raw
  */
 export function formatCompactPostTimeForHistory(raw) {
@@ -672,8 +672,8 @@ function formatSlipPickLinesFromDetailForJraMulti(it, detail, label) {
       const op = uniqSortDetailNums(m[2]);
       if (ax && op.length) {
         return [
-          `${label}【1着軸】：${fmtC(it, [ax])}`,
-          `${label}【相手】：${fmtC(it, op)}`,
+          `【1着軸】：${fmtC(it, [ax])}`,
+          `【相手】：${fmtC(it, op)}`,
         ].join('\n');
       }
     }
@@ -687,8 +687,8 @@ function formatSlipPickLinesFromDetailForJraMulti(it, detail, label) {
       const op = uniqSortDetailNums(m[2]);
       if (ax && op.length) {
         return [
-          `${label}【2着軸】：${fmtC(it, [ax])}`,
-          `${label}【相手】：${fmtC(it, op)}`,
+          `【2着軸】：${fmtC(it, [ax])}`,
+          `【相手】：${fmtC(it, op)}`,
         ].join('\n');
       }
     }
@@ -717,8 +717,8 @@ function formatSlipPickLinesFromDetailForJraMulti(it, detail, label) {
       const op = uniqSortDetailNums(m[2]);
       if (ax && op.length) {
         return [
-          `${label}【1着軸】：${fmtC(it, [ax])}`,
-          `${label}【相手】：${fmtC(it, op)}`,
+          `【1着軸】：${fmtC(it, [ax])}`,
+          `【相手】：${fmtC(it, op)}`,
         ].join('\n');
       }
     }
@@ -732,8 +732,8 @@ function formatSlipPickLinesFromDetailForJraMulti(it, detail, label) {
       const op = uniqSortDetailNums(m[2]);
       if (ax && op.length) {
         return [
-          `${label}【2着軸】：${fmtC(it, [ax])}`,
-          `${label}【相手】：${fmtC(it, op)}`,
+          `【2着軸】：${fmtC(it, [ax])}`,
+          `【相手】：${fmtC(it, op)}`,
         ].join('\n');
       }
     }
@@ -747,8 +747,8 @@ function formatSlipPickLinesFromDetailForJraMulti(it, detail, label) {
       const op = uniqSortDetailNums(m[2]);
       if (ax && op.length) {
         return [
-          `${label}【3着軸】：${fmtC(it, [ax])}`,
-          `${label}【相手】：${fmtC(it, op)}`,
+          `【3着軸】：${fmtC(it, [ax])}`,
+          `【相手】：${fmtC(it, op)}`,
         ].join('\n');
       }
     }
@@ -1047,7 +1047,7 @@ export function formatBetSlipItemBlock(it, i) {
     `**${i + 1}.** ${historyRaceHeadingLine(it)}`,
     pickBlock || `${label}：（チケット情報がありません）`,
   ];
-  if (it.oddsOfficialTime) lines.push(`オッズ時刻: ${it.oddsOfficialTime}`);
+  if (it.oddsOfficialTime) lines.push(`取得時刻: ${it.oddsOfficialTime}`);
   if (resultUrl) lines.push(`結果: ${resultUrl}`);
   lines.push('', formatBetSlipMoneyLine(it));
   return lines.join('\n');
@@ -1071,7 +1071,7 @@ export function buildBetPurchaseEmbed({ flow }) {
     title: '購入内容',
     description: [
       `レース: ${raceTitle}`,
-      oddsTime ? `オッズ時刻: ${oddsTime}` : null,
+      oddsTime ? `取得時刻: ${oddsTime}` : null,
       isResult && resultUrl ? `結果: ${resultUrl}` : null,
       '',
       selectionLine,

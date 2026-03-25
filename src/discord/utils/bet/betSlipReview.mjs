@@ -39,7 +39,7 @@ function stripDiscordCustomEmojiMarkup(s) {
   return t.replace(/  +/g, ' ').trim();
 }
 
-function slipItemSelectOptions(items) {
+function slipItemSelectOptions(items, locale) {
   return items.slice(0, 25).map((it, i) => {
     const title = stripDiscordCustomEmojiMarkup(historyRaceHeadingLine(it)).slice(
       0,
@@ -47,7 +47,7 @@ function slipItemSelectOptions(items) {
     );
     const label = `${i + 1}. ${title}`.slice(0, 100);
     const desc = stripDiscordCustomEmojiMarkup(
-      slipItemDescriptionForSelect(it),
+      slipItemDescriptionForSelect(it, locale),
     ).slice(0, 100);
     const o = new StringSelectMenuOptionBuilder()
       .setLabel(label)
@@ -153,7 +153,7 @@ function rebalancePagesForDiscord(pages, headerForPage) {
 
 function slipReviewActionRows(anchorRaceId, items, { pageIndex, totalPages, locale }) {
   const loc = locale;
-  const opts = slipItemSelectOptions(items);
+  const opts = slipItemSelectOptions(items, loc);
 
   const rowBtns = new ActionRowBuilder().addComponents(
     new ButtonBuilder()
@@ -278,7 +278,7 @@ export async function buildSlipReviewV2Payload({ userId, extraFlags = 0, locale 
   const balance = await getBalance(userId);
 
   const itemBlocks = pending.items.map((it, idx) =>
-    formatBetSlipItemBlock(it, idx),
+    formatBetSlipItemBlock(it, idx, locale),
   );
   let pages = partitionItemBlocks(itemBlocks, locale);
 

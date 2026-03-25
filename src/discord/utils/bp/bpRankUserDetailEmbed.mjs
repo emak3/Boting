@@ -317,7 +317,9 @@ export async function buildBpRankUserSlipReadonlyV2Payload({
     t('bp_rank.profile_detail.slip_readonly.disclaimer', null, locale),
   ].join('\n');
 
-  const itemBlocks = merged.map((it, idx) => formatBetSlipItemBlock(it, idx));
+  const itemBlocks = merged.map((it, idx) =>
+    formatBetSlipItemBlock(it, idx, locale),
+  );
   const body = itemBlocks.join('\n\n');
   const fullText = `${head}\n\n${body}`.slice(0, V2_TEXT_TOTAL_MAX);
 

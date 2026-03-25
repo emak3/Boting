@@ -19,6 +19,7 @@ import {
 import {
   formatSlipPickDisplayLines,
   BET_TYPE_LABEL,
+  parseSelectionBetKindLabel,
   formatCompactPostTimeForHistory,
   historyRaceHeadingLine,
   venuePrefixForHistoryBet,
@@ -100,6 +101,7 @@ function betAsSlipItem(bet) {
   return {
     selectionLine: bet.selectionLine,
     betType: bet.betType,
+    jraMulti: bet.jraMulti === true,
     tickets: Array.isArray(bet.tickets) ? bet.tickets : [],
     horseNumToFrame: bet.horseNumToFrame && typeof bet.horseNumToFrame === 'object'
       ? bet.horseNumToFrame
@@ -117,16 +119,22 @@ function betAsSlipItem(bet) {
  */
 function historyPickQuotedParts(bet) {
   const it = betAsSlipItem(bet);
-  const label = fullKindLabel(bet);
+  /** formatSlipPickDisplayLines 行頭と一致させる（` マルチ` は parse 側で除く） */
+  const slipLabel =
+    parseSelectionBetKindLabel(bet.selectionLine) ||
+    BET_TYPE_LABEL[bet.betType] ||
+    '';
+  const labelForAxisShorten = fullKindLabel(bet);
   const raw = formatSlipPickDisplayLines(it);
   if (!String(raw || '').trim()) return ['（内容なし）'];
   const lines = raw.split('\n').map((l) => l.trim()).filter(Boolean);
   const parts = [];
   for (const line of lines) {
-    const rest = line.startsWith(label) ? line.slice(label.length) : line;
+    const rest =
+      slipLabel && line.startsWith(slipLabel) ? line.slice(slipLabel.length) : line;
     const tm = rest.match(/^([【][^】]+[】])[\uFF1A:]\s*(.+)$/s);
     if (tm) {
-      const t = shortenAxisTagForHistory(tm[1], label);
+      const t = shortenAxisTagForHistory(tm[1], labelForAxisShorten);
       parts.push(`${t} ${tm[2].trim()}`);
       continue;
     }

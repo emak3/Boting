@@ -1,4 +1,6 @@
 summary_title: "**まとめて購入（仮）**"
+line_jra_multi: "マルチ投票"
+desc_jra_multi_suffix: " · マルチ"
 payment_header: "**お支払い**"
 line_total_at_confirm: "・合計（確定時）　**{{amount}} bp**"
 line_balance: "・bp残高　　　　　**{{amount}} bp**"

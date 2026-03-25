@@ -790,7 +790,7 @@ export default async function betFlowButtons(interaction) {
     }
 
     const headline = [
-      buildBetSlipBatchV2Headline({ items: pending.items }),
+      buildBetSlipBatchV2Headline({ items: pending.items, locale: loc }),
       '',
       t(
         'bet_flow.purchase_done.line1_suffix',

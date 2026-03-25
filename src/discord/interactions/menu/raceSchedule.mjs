@@ -708,6 +708,7 @@ export async function editReplyPurchaseSummaryFromFlow(interaction, userId, race
     betType: flowSynced.betType ?? betType,
     tickets: flowSynced.purchase?.tickets || [],
     horseNumToFrame: horseNumToFrameFromResult(result),
+    jraMulti: flowSynced.jraMulti === true,
   });
   const parts = [];
   if (slipPick) parts.push(slipPick);
@@ -829,6 +830,7 @@ async function renderFinalSelection({
     betType: flowAfter?.betType ?? betType,
     tickets: flowAfter?.purchase?.tickets || [],
     horseNumToFrame: horseNumToFrameFromResult(result),
+    jraMulti: flowAfter?.jraMulti === true,
   });
   const parts = [];
   if (slipPick) parts.push(slipPick);

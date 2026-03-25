@@ -1,4 +1,6 @@
 summary_title: "**Batch purchase (draft)**"
+line_jra_multi: "Multi　bet"
+desc_jra_multi_suffix: " · Multi"
 payment_header: "**Payment**"
 line_total_at_confirm: "· Total (at confirm) **{{amount}} bp**"
 line_balance: "· bp balance **{{amount}} bp**"

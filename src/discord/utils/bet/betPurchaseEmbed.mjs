@@ -10,6 +10,7 @@ import {
   formatWakurenNumsWithEmoji,
 } from '../race/raceNumberEmoji.mjs';
 import { formatBpAmount } from '../bp/bpFormat.mjs';
+import { t } from '../../../i18n/index.mjs';
 
 const BET_TYPE_LABEL = {
   win: '単勝',
@@ -84,9 +85,9 @@ export function buildBetPurchaseV2Headline({ flow }) {
 
 /**
  * 複数買い目をまとめた確認文（Components V2 用）
- * @param {{ items: Array<{ raceId: string, unitYen: number, points: number, selectionLine: string, raceTitle?: string, venueTitle?: string, oddsOfficialTime?: string, isResult?: boolean, netkeibaOrigin?: string, betType?: string, tickets?: Array<{ kind: string, nums: string[] }>, horseNumToFrame?: Record<string, string>, trifukuFormation?: { a: string[], b: string[], c: string[] } | null, jraMulti?: boolean }> }} opts
+ * @param {{ items: Array<{ raceId: string, unitYen: number, points: number, selectionLine: string, raceTitle?: string, venueTitle?: string, oddsOfficialTime?: string, isResult?: boolean, netkeibaOrigin?: string, betType?: string, tickets?: Array<{ kind: string, nums: string[] }>, horseNumToFrame?: Record<string, string>, trifukuFormation?: { a: string[], b: string[], c: string[] } | null, jraMulti?: boolean }>, locale?: string | null }} opts
  */
-export function buildBetSlipBatchV2Headline({ items }) {
+export function buildBetSlipBatchV2Headline({ items, locale = null }) {
   const lines = ['**まとめて購入内容**', ''];
   let grandPoints = 0;
   let grandYen = 0;
@@ -109,6 +110,7 @@ export function buildBetSlipBatchV2Headline({ items }) {
       tickets: it.tickets || [],
       horseNumToFrame: it.horseNumToFrame || {},
       trifukuFormation: it.trifukuFormation,
+      jraMulti: it.jraMulti === true,
     });
     const pickText =
       pickBlock ||
@@ -116,6 +118,9 @@ export function buildBetSlipBatchV2Headline({ items }) {
       '（選択なし）';
 
     lines.push(`**${i + 1}.** ${historyRaceHeadingLine(it)}`);
+    if (it.jraMulti === true) {
+      lines.push(t('bet_slip_review.line_jra_multi', null, locale));
+    }
     if (it.oddsOfficialTime) lines.push(`発走時刻: ${it.oddsOfficialTime}`);
     if (resultUrl) lines.push(`結果: ${resultUrl}`);
     lines.push(pickText);
@@ -630,6 +635,127 @@ function tritanN23Tickets(tickets) {
   return { a2, a3, opps };
 }
 
+function posFreqForKind(tickets, kind, pos) {
+  const m = new Map();
+  for (const t of tickets || []) {
+    if (t.kind !== kind) continue;
+    const n = t.nums?.[pos];
+    if (n == null) continue;
+    const k = String(n);
+    m.set(k, (m.get(k) || 0) + 1);
+  }
+  return m;
+}
+
+function argmaxFreqKey(m) {
+  let bestK = null;
+  let bestC = -1;
+  for (const [k, c] of m) {
+    if (c > bestC) {
+      bestC = c;
+      bestK = k;
+    }
+  }
+  return bestK;
+}
+
+/**
+ * JRA マルチ ON のとき tickets に順序逆も含まれる。表示は非マルチ相当に絞る（軸・相手のまとまり）。
+ * @param {{ tickets?: Array<{ kind: string, nums: string[] }>, betType?: string, selectionLine?: string, jraMulti?: boolean }} it
+ */
+export function ticketsForSlipPickDisplay(it) {
+  const raw = Array.isArray(it.tickets) ? it.tickets : [];
+  if (!it.jraMulti || !raw.length) return raw;
+
+  const bt = it.betType || '';
+  const label = parseSelectionBetKindLabel(it.selectionLine) || '';
+
+  if (bt === 'umatan') {
+    const ut = raw.filter((x) => x.kind === 'Umatan');
+    if (ut.length < 2) return raw;
+
+    if (label.includes('（1着ながし）')) {
+      const axis = argmaxFreqKey(posFreqForKind(raw, 'Umatan', 0));
+      if (axis == null) return raw;
+      return raw.filter(
+        (t) => t.kind !== 'Umatan' || String(t.nums[0]) === axis,
+      );
+    }
+    if (label.includes('（2着ながし）')) {
+      const axis = argmaxFreqKey(posFreqForKind(raw, 'Umatan', 1));
+      if (axis == null) return raw;
+      return raw.filter(
+        (t) => t.kind !== 'Umatan' || String(t.nums[1]) === axis,
+      );
+    }
+    if (label.includes('（フォーメーション）')) {
+      const detail = parseSelectionDetail(it.selectionLine);
+      const formAB = detail.match(/1着群:\s*([^/]+)\s*\/\s*2着群:\s*(.+)/s);
+      if (formAB) {
+        const g1 = new Set(
+          extractHorseNumsFromSlipDetailSegment(formAB[1].trim()),
+        );
+        if (g1.size) {
+          return raw.filter(
+            (t) => t.kind !== 'Umatan' || g1.has(String(t.nums[0])),
+          );
+        }
+      }
+      return raw;
+    }
+    if (label.includes('（通常）') && ut.length === 2) {
+      const detail = parseSelectionDetail(it.selectionLine);
+      const m2 = detail.match(/1着:\s*([^/]+)\s*\/\s*2着:\s*(.+)/s);
+      if (m2) {
+        const a = extractHorseNumsFromSlipDetailSegment(m2[1])[0];
+        const b = extractHorseNumsFromSlipDetailSegment(m2[2])[0];
+        if (a && b) {
+          return raw.filter(
+            (t) =>
+              t.kind !== 'Umatan' ||
+              (String(t.nums[0]) === a && String(t.nums[1]) === b),
+          );
+        }
+      }
+    }
+    return raw;
+  }
+
+  if (bt === 'tritan') {
+    const ts = raw.filter((x) => x.kind === 'Tan3');
+    if (ts.length < 2) return raw;
+
+    const is12 = label.includes('（1・2着ながし）');
+    const is13 = label.includes('（1・3着ながし）');
+    const is23 = label.includes('（2・3着ながし）');
+
+    if (!is12 && label.includes('（1着ながし）')) {
+      const axis = argmaxFreqKey(posFreqForKind(raw, 'Tan3', 0));
+      if (axis == null) return raw;
+      return raw.filter(
+        (t) => t.kind !== 'Tan3' || String(t.nums[0]) === axis,
+      );
+    }
+    if (!is12 && !is23 && !is13 && label.includes('（2着ながし）')) {
+      const axis = argmaxFreqKey(posFreqForKind(raw, 'Tan3', 1));
+      if (axis == null) return raw;
+      return raw.filter(
+        (t) => t.kind !== 'Tan3' || String(t.nums[1]) === axis,
+      );
+    }
+    if (label.includes('（3着ながし）')) {
+      const axis = argmaxFreqKey(posFreqForKind(raw, 'Tan3', 2));
+      if (axis == null) return raw;
+      return raw.filter(
+        (t) => t.kind !== 'Tan3' || String(t.nums[2]) === axis,
+      );
+    }
+    return raw;
+  }
+
+  return raw;
+}
+
 function fallbackEmojiTicketLines(it, label) {
   const tix = it.tickets || [];
   const maxShow = 15;
@@ -653,7 +779,7 @@ function fallbackEmojiTicketLines(it, label) {
 
 /**
  * まとめて購入確認用：軸・相手・記号・絵文字
- * @param {{ selectionLine?: string, betType?: string, tickets?: Array<{ kind: string, nums: string[] }>, horseNumToFrame?: Record<string, string> }} it
+ * @param {{ selectionLine?: string, betType?: string, tickets?: Array<{ kind: string, nums: string[] }>, horseNumToFrame?: Record<string, string>, trifukuFormation?: { a: string[], b: string[], c: string[] }, jraMulti?: boolean }} it
  */
 export function formatSlipPickDisplayLines(it) {
   const sel = String(it.selectionLine || '');
@@ -664,7 +790,7 @@ export function formatSlipPickDisplayLines(it) {
   const detail = parseSelectionDetail(sel);
   const bt = it.betType || '';
 
-  const tickets = it.tickets || [];
+  const tickets = ticketsForSlipPickDisplay(it);
 
   if (isPairStyleNagashiSlip(it, label)) {
     let px = tickets.length ? pairNagashiAxisAndOpps(tickets, it) : null;
@@ -898,26 +1024,33 @@ export function formatSlipPickDisplayLines(it) {
     return `${label}：${fmtGT(it, tickets[0].nums)}`;
   }
 
-  return fallbackEmojiTicketLines(it, label);
+  return fallbackEmojiTicketLines({ ...it, tickets }, label);
 }
 
 /** セレクトメニュー用（説明欄は絵文字が出ないため番号のみ1行） */
-export function slipItemDescriptionForSelect(it) {
+export function slipItemDescriptionForSelect(it, locale = null) {
   const label =
     parseSelectionBetKindLabel(it.selectionLine) ||
     BET_TYPE_LABEL[it.betType] ||
     '';
   const nums = uniqueSortedNumsFromTickets(it.tickets || []);
-  if (!nums.length) return (label || '（内容不明）').slice(0, 100);
-  return `${label} · ${nums.join(',')}`.slice(0, 100);
+  const multiSuf =
+    it.jraMulti === true
+      ? t('bet_slip_review.desc_jra_multi_suffix', null, locale)
+      : '';
+  if (!nums.length) {
+    return `${label || '（内容不明）'}${multiSuf}`.slice(0, 100);
+  }
+  return `${label} · ${nums.join(',')}${multiSuf}`.slice(0, 100);
 }
 
 /**
  * 買い目1件分（Container 内 Text Display 用）
  * @param {{ unitYen?: number, points?: number, selectionLine?: string, raceTitle?: string, venueTitle?: string, raceId?: string, oddsOfficialTime?: string, isResult?: boolean, netkeibaOrigin?: string, betType?: string, tickets?: Array<{ kind: string, nums: string[] }>, horseNumToFrame?: Record<string, string>, jraMulti?: boolean }} it
  * @param {number} i 0 始まりインデックス
+ * @param {string | null} [locale] i18n（省略時は既定言語）
  */
-export function formatBetSlipItemBlock(it, i) {
+export function formatBetSlipItemBlock(it, i, locale = null) {
   const unitYen = it.unitYen ?? 100;
   const points = it.points ?? 0;
   const raceId = it.raceId;
@@ -933,8 +1066,13 @@ export function formatBetSlipItemBlock(it, i) {
 
   const lines = [
     `**${i + 1}.** ${historyRaceHeadingLine(it)}`,
-    pickBlock || `${label}：（チケット情報がありません）`,
   ];
+  if (it.jraMulti === true) {
+    lines.push(t('bet_slip_review.line_jra_multi', null, locale));
+  }
+  lines.push(
+    pickBlock || `${label}：（チケット情報がありません）`,
+  );
   if (it.oddsOfficialTime) lines.push(`発走時刻: ${it.oddsOfficialTime}`);
   if (resultUrl) lines.push(`結果: ${resultUrl}`);
   lines.push('', formatBetSlipMoneyLine(it));

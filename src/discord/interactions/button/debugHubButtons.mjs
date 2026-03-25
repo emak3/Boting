@@ -23,6 +23,7 @@ import {
   deleteLastDigitDebugBp,
   parseDebugBpKeypadId,
 } from '../../utils/debug/debugBpKeypad.mjs';
+import { formatBpAmount } from '../../utils/bp/bpFormat.mjs';
 import {
   clearDebugBpDraft,
   getDebugBpDraft,
@@ -428,7 +429,7 @@ async function handleConfirm(interaction) {
       title: '✅ 反映しました',
       bodyLines: [
         who,
-        `${sign}${result.delta} bp → 残高 **${result.balanceAfter}** bp（調整前 ${result.balanceBefore} bp）`,
+        `${sign}${formatBpAmount(result.delta)} bp → 残高 **${formatBpAmount(result.balanceAfter)}** bp（調整前 ${formatBpAmount(result.balanceBefore)} bp）`,
       ],
       extraFlags,
     }),

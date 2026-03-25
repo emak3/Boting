@@ -24,6 +24,7 @@ import {
 } from './betSlipStore.mjs';
 import { getBalance } from '../user/userPointsStore.mjs';
 import { botingEmoji } from '../boting/botingEmojis.mjs';
+import { formatBpAmount } from '../bp/bpFormat.mjs';
 
 /** まとめて購入確認 Container のアクセント */
 const BET_SLIP_REVIEW_ACCENT = 0x2ecc71;
@@ -35,10 +36,6 @@ const SUMMARY_RESERVE = 620;
 function stripDiscordCustomEmojiMarkup(s) {
   const t = String(s || '').replace(/<a?:[^:]+:\d+>/g, '');
   return t.replace(/  +/g, ' ').trim();
-}
-
-function fmtBp(n) {
-  return Number(n).toLocaleString('ja-JP');
 }
 
 function slipItemSelectOptions(items) {
@@ -70,18 +67,18 @@ function buildMoneySummaryText({
     '**まとめて購入（仮）**',
     '',
     '**お支払い**',
-    `・合計（確定時）　**${fmtBp(grandYen)} bp**`,
-    `・bp残高　　　　　**${fmtBp(balance)} bp**`,
+    `・合計（確定時）　**${formatBpAmount(grandYen)} bp**`,
+    `・bp残高　　　　　**${formatBpAmount(balance)} bp**`,
   ];
   if (balance >= grandYen) {
-    lines.push(`・確定後の残高　　**${fmtBp(balance - grandYen)} bp**`);
+    lines.push(`・確定後の残高　　**${formatBpAmount(balance - grandYen)} bp**`);
   } else {
     lines.push(
       '',
-      `⚠️ **bp が不足**しています（不足 **${fmtBp(grandYen - balance)}** bp）。\`/boting\` の **Dailyをもらう** で受け取るか、金額・購入予定を調整してください。`,
+      `⚠️ **bp が不足**しています（不足 **${formatBpAmount(grandYen - balance)}** bp）。\`/boting\` の **Dailyをもらう** で受け取るか、金額・購入予定を調整してください。`,
     );
   }
-  lines.push('', `**合計点数**　**${fmtBp(grandPoints)}** 点`);
+  lines.push('', `**合計点数**　**${formatBpAmount(grandPoints)}** 点`);
   if (totalPages > 1) {
     lines.push(`**ページ**　${pageIndex + 1} / ${totalPages}`);
   }

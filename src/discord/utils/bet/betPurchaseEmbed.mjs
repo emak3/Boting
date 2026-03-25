@@ -9,6 +9,7 @@ import {
   formatWakurenNumsCommaEmoji,
   formatWakurenNumsWithEmoji,
 } from '../race/raceNumberEmoji.mjs';
+import { formatBpAmount } from '../bp/bpFormat.mjs';
 
 const BET_TYPE_LABEL = {
   win: '単勝',
@@ -33,22 +34,26 @@ function formatBetSlipMoneyLine(it, opts = {}) {
   const subtotal = points * unitYen;
   const multi = it.jraMulti === true;
   if (opts.batchPipeWhenNormal && !multi) {
-    return `点数: ${points}点 | 1点: ${unitYen} bp | 小計: ${subtotal} bp`;
+    return `点数: ${formatBpAmount(points)}点 | 1点: ${formatBpAmount(unitYen)} bp | 小計: ${formatBpAmount(subtotal)} bp`;
   }
-  const p = Number(points).toLocaleString('ja-JP');
-  const u = Number(unitYen).toLocaleString('ja-JP');
-  const s = Number(subtotal).toLocaleString('ja-JP');
+  const p = formatBpAmount(points);
+  const u = formatBpAmount(unitYen);
+  const s = formatBpAmount(subtotal);
   const core = `点数 **${p}** 点　1点 **${u}** bp　小計 **${s}** bp`;
   return multi ? `マルチ　${core}` : core;
 }
 
-/** Components V2 用（Text Display 1 ブロック） */
-export function buildBetPurchaseV2Headline({ flow }) {
+/** `null` / `undefined` のみ除く（空行用の `''` は残す） */
+function joinLinesOmitNull(lines) {
+  return lines.filter((line) => line != null).join('\n');
+}
+
+/** 単発購入フローの本文行（V2 テキスト・従来 Embed 共通） */
+function betFlowPurchaseCoreLines(flow) {
   const unitYen = flow?.unitYen ?? 100;
   const points = flow?.purchase?.points ?? 0;
   const selectionLine = flow?.purchase?.selectionLine ?? '（選択なし）';
   const totalYen = points * unitYen;
-
   const raceTitle = flow?.result?.raceInfo?.title || 'レース';
   const oddsTime = flow?.result?.oddsOfficialTime;
   const raceId = flow?.result?.raceId;
@@ -57,21 +62,26 @@ export function buildBetPurchaseV2Headline({ flow }) {
   const resultUrl = raceId ? netkeibaResultUrl(raceId, origin) : null;
 
   return [
-    '**購入内容（確認）**',
-    '',
     `レース: ${raceTitle}`,
-    oddsTime ? `取得時刻: ${oddsTime}` : null,
+    oddsTime ? `発走時刻: ${oddsTime}` : null,
     isResult && resultUrl ? `結果: ${resultUrl}` : null,
     '',
     selectionLine,
-    `点数: ${points}点`,
-    `1点あたり: ${unitYen} bp`,
-    `合計消費: ${totalYen} bp（${unitYen} bp/点）`,
+    `点数: ${formatBpAmount(points)}点`,
+    `1点あたり: ${formatBpAmount(unitYen)} bp`,
+    `合計消費: ${formatBpAmount(totalYen)} bp（${formatBpAmount(unitYen)} bp/点）`,
+  ];
+}
+
+/** Components V2 用（Text Display 1 ブロック） */
+export function buildBetPurchaseV2Headline({ flow }) {
+  return joinLinesOmitNull([
+    '**購入内容（確認）**',
+    '',
+    ...betFlowPurchaseCoreLines(flow),
     '',
     '*まとめて確定時に上記の bp が差し引かれます*',
-  ]
-    .filter(Boolean)
-    .join('\n');
+  ]);
 }
 
 /**
@@ -108,7 +118,7 @@ export function buildBetSlipBatchV2Headline({ items }) {
       '（選択なし）';
 
     lines.push(`**${i + 1}.** ${historyRaceHeadingLine(it)}`);
-    if (it.oddsOfficialTime) lines.push(`取得時刻: ${it.oddsOfficialTime}`);
+    if (it.oddsOfficialTime) lines.push(`発走時刻: ${it.oddsOfficialTime}`);
     if (resultUrl) lines.push(`結果: ${resultUrl}`);
     lines.push(pickText);
     lines.push(formatBetSlipMoneyLine(it, { batchPipeWhenNormal: true }));
@@ -117,7 +127,7 @@ export function buildBetSlipBatchV2Headline({ items }) {
 
   lines.push(
     `—`,
-    `**合計** 点数: ${grandPoints}点 | 合計消費: ${grandYen} bp`,
+    `**合計** 点数: ${formatBpAmount(grandPoints)}点 | 合計消費: ${formatBpAmount(grandYen)} bp`,
     '',
     '*「この内容で確定」で上記の bp が一括で差し引かれます*',
   );
@@ -144,9 +154,10 @@ export function stripJraMultiMarkerFromSelectionLine(selectionLine) {
 
 /** マルチ ON のときだけ `選択: 券種 マルチ =>` にする */
 export function applyJraMultiMarkerToSelectionLine(selectionLine, jraMulti) {
-  const stripped = stripJraMultiMarkerFromSelectionLine(String(selectionLine || ''));
+  const s = String(selectionLine || '');
+  const stripped = stripJraMultiMarkerFromSelectionLine(s);
   if (!jraMulti) return stripped;
-  if (/\sマルチ\s*=>\s*/.test(String(selectionLine || ''))) return String(selectionLine || '');
+  if (/\sマルチ\s*=>\s*/.test(s)) return s;
   return stripped.replace(/^(\s*選択:\s*.+?)(\s*=>\s*)/, '$1 マルチ$2');
 }
 
@@ -252,7 +263,7 @@ export function historyRaceHeadingLine(bet) {
 }
 
 /**
- * netkeiba の official_datetime 等から発走/取得時刻の HH:MM を抜き出す（購入履歴の `10:20` 表記用）
+ * netkeiba の official_datetime 等から発走/発走時刻の HH:MM を抜き出す（購入履歴の `10:20` 表記用）
  * @param {string | null | undefined} raw
  */
 export function formatCompactPostTimeForHistory(raw) {
@@ -1047,40 +1058,17 @@ export function formatBetSlipItemBlock(it, i) {
     `**${i + 1}.** ${historyRaceHeadingLine(it)}`,
     pickBlock || `${label}：（チケット情報がありません）`,
   ];
-  if (it.oddsOfficialTime) lines.push(`取得時刻: ${it.oddsOfficialTime}`);
+  if (it.oddsOfficialTime) lines.push(`発走時刻: ${it.oddsOfficialTime}`);
   if (resultUrl) lines.push(`結果: ${resultUrl}`);
   lines.push('', formatBetSlipMoneyLine(it));
   return lines.join('\n');
 }
 
 export function buildBetPurchaseEmbed({ flow }) {
-  const unitYen = flow?.unitYen ?? 100;
-  const points = flow?.purchase?.points ?? 0;
-  const selectionLine = flow?.purchase?.selectionLine ?? '（選択なし）';
-  const totalYen = points * unitYen;
-
-  const raceTitle = flow?.result?.raceInfo?.title || 'レース';
-  const oddsTime = flow?.result?.oddsOfficialTime;
-  const raceId = flow?.result?.raceId;
-  const isResult = !!flow?.result?.isResult;
-  const origin = netkeibaOriginFromFlow(flow);
-  const resultUrl = raceId ? netkeibaResultUrl(raceId, origin) : null;
-
   return {
     color: 0x2ecc71,
     title: '購入内容',
-    description: [
-      `レース: ${raceTitle}`,
-      oddsTime ? `取得時刻: ${oddsTime}` : null,
-      isResult && resultUrl ? `結果: ${resultUrl}` : null,
-      '',
-      selectionLine,
-      `点数: ${points}点`,
-      `1点あたり: ${unitYen} bp`,
-      `合計消費: ${totalYen} bp（${unitYen} bp/点）`,
-    ]
-      .filter(Boolean)
-      .join('\n'),
+    description: joinLinesOmitNull(betFlowPurchaseCoreLines(flow)),
     footer: { text: '確定時に bp が差し引かれます' },
   };
 }

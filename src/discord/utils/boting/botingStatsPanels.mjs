@@ -23,6 +23,7 @@ import {
   WEEKLY_CHALLENGE_LABEL_JA,
 } from '../challenge/weeklyChallengeSettle.mjs';
 import { betTypeDisplayLabelJa } from '../bet/betTypeLabels.mjs';
+import { formatBpAmount } from '../bp/bpFormat.mjs';
 import { buildBpRankLbAnnualViewFooterRow } from '../bp/bpRankUiButtons.mjs';
 
 function pct1(x) {
@@ -51,12 +52,12 @@ function formatPrevWeekChallengeLine(it) {
     return `・${it.label}: 未達成`;
   }
   if (it.status === 'claimed') {
-    return `・${it.label}: 達成（**+${it.bp.toLocaleString('ja-JP')}** bp 受取済み）`;
+    return `・${it.label}: 達成（**+${formatBpAmount(it.bp)}** bp 受取済み）`;
   }
   if (it.status === 'blocked') {
-    return `・${it.label}: 達成（**+${it.bp.toLocaleString('ja-JP')}** bp・週間CH停止中）`;
+    return `・${it.label}: 達成（**+${formatBpAmount(it.bp)}** bp・週間CH停止中）`;
   }
-  return `・${it.label}: 達成（**+${it.bp.toLocaleString('ja-JP')}** bp 未受取）`;
+  return `・${it.label}: 達成（**+${formatBpAmount(it.bp)}** bp 未受取）`;
 }
 
 /**
@@ -84,8 +85,8 @@ export async function buildAnnualStatsPanelPayload(opts) {
     `**年間スタッツ（JST ${s.year}年・購入時刻ベース）**`,
     '',
     `・購入件数: **${s.purchaseCount.toLocaleString('ja-JP')}** 件`,
-    `・購入総額: **${s.totalCostBp.toLocaleString('ja-JP')}** bp`,
-    `・払戻総額（精算済）: **${s.totalRefundSettled.toLocaleString('ja-JP')}** bp`,
+    `・購入総額: **${formatBpAmount(s.totalCostBp)}** bp`,
+    `・払戻総額（精算済）: **${formatBpAmount(s.totalRefundSettled)}** bp`,
     `・回収率（精算済）: **${pct1(s.recoveryRate)}**`,
     `・的中率（精算済）: **${pct1(s.hitRate)}**（的中 ${s.hitCount} / 精算 ${s.settledCount}）`,
     '',
@@ -139,9 +140,9 @@ export async function buildWeeklyChallengePanelPayload(opts) {
         '**今回受け取った報酬**',
         ...claimGrants.map(
           (g) =>
-            `・${WEEKLY_CHALLENGE_LABEL_JA[g.challengeKey] ?? g.challengeKey}（週始 ${g.weekMondayYmd}）: **+${g.bp.toLocaleString('ja-JP')}** bp`,
+            `・${WEEKLY_CHALLENGE_LABEL_JA[g.challengeKey] ?? g.challengeKey}（週始 ${g.weekMondayYmd}）: **+${formatBpAmount(g.bp)}** bp`,
         ),
-        `**合計 +${sum.toLocaleString('ja-JP')}** bp`,
+        `**合計 +${formatBpAmount(sum)}** bp`,
         '',
       ];
       claimBanner = `${lines.join('\n')}\n`;

@@ -60,7 +60,7 @@ export function resolveRaceHoldYmdForPurchaseItem(it) {
 }
 
 /**
- * 購入予定に載せる開催日（JRA は kaisaiDate / 取得時刻 / ページの日付、NAR は race_id 先頭8桁）
+ * 購入予定に載せる開催日（JRA は kaisaiDate / 発走時刻 / ページの日付、NAR は race_id 先頭8桁）
  * @param {object | null | undefined} flow
  * @param {string} raceId
  * @returns {string}

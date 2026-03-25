@@ -87,6 +87,7 @@ import {
   buildHubQuickRacesSelectRow,
   VENUE_QUICK_PICK_BODY_SUFFIX,
 } from '../../utils/race/raceHubQuickPick.mjs';
+import { formatBpAmount } from '../../utils/bp/bpFormat.mjs';
 
 const VENUE_MENU_ID = 'race_menu_venue';
 const RACE_MENU_ID = 'race_menu_race';
@@ -140,7 +141,7 @@ const DEFAULT_UNIT_YEN = 100;
 
 function formatBetPoints(points, unitYen = DEFAULT_UNIT_YEN) {
   const yen = points * unitYen;
-  return `点数: ${points}点 | 合計: ${yen} bp（${unitYen} bp/点）`;
+  return `点数: ${formatBpAmount(points)}点 | 合計: ${formatBpAmount(yen)} bp（${formatBpAmount(unitYen)} bp/点）`;
 }
 
 function uniqValues(arr) {
@@ -1098,11 +1099,11 @@ export async function buildRaceMenuSelectionPayload(interaction, { raceId, isRes
       const net = pay.totalRefund + adj;
       if (pay.settled > 0 || adj !== 0) {
         if (net > 0) {
-          bpFooter = `**あなたの競馬払戻** +${net} bp（残高 ${pay.balance} bp）`;
+          bpFooter = `**あなたの競馬払戻** +${formatBpAmount(net)} bp（残高 ${formatBpAmount(pay.balance)} bp）`;
         } else if (net < 0) {
-          bpFooter = `**あなたの競馬払戻（調整）** ${net} bp（残高 ${pay.balance} bp）`;
+          bpFooter = `**あなたの競馬払戻（調整）** ${formatBpAmount(net)} bp（残高 ${formatBpAmount(pay.balance)} bp）`;
         } else if (pay.settled > 0) {
-          bpFooter = `**あなたの競馬払戻** 該当なし（精算 ${pay.settled} 件・残高 ${pay.balance} bp）`;
+          bpFooter = `**あなたの競馬払戻** 該当なし（精算 ${pay.settled} 件・残高 ${formatBpAmount(pay.balance)} bp）`;
         }
       }
     } catch (e) {

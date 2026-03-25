@@ -7,6 +7,7 @@ import {
 } from 'discord.js';
 import { DEBUG_BP_KPAD_PREFIX } from './debugHubConstants.mjs';
 import { botingEmoji } from '../boting/botingEmojis.mjs';
+import { formatBpAmount } from '../bp/bpFormat.mjs';
 
 /** JS の安全な整数まで（それ以上は bufferToDebugBpAmount で丸める） */
 const MAX_BUFFER_LEN = 16;
@@ -50,7 +51,7 @@ export function buildDebugBpKeypadPayload({
   const part = buffer.length ? buffer : '_';
   const headline = [
     `**BP を${verb}（${targetLabel}）**`,
-    `入力中: \`${part}\` bp（1〜${Number.MAX_SAFE_INTEGER.toLocaleString('ja-JP')} まで）`,
+    `入力中: \`${part}\` bp（1〜${formatBpAmount(Number.MAX_SAFE_INTEGER)} まで）`,
   ].join('\n');
 
   const bid = mkId;

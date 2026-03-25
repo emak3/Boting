@@ -41,7 +41,7 @@ export function buildRaceCardEmbed(result) {
     footer: {
       text: [
         `全${result.totalHorses}頭${
-          result.oddsOfficialTime ? ` | 取得時刻 ${result.oddsOfficialTime}` : ''
+          result.oddsOfficialTime ? ` | 発走時刻 ${result.oddsOfficialTime}` : ''
         }`,
         isResult && resultUrl ? `結果: ${resultUrl}` : null,
       ]

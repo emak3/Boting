@@ -25,6 +25,7 @@ import {
   DEBUG_WEEKLY_CFG_MODAL_PREFIX,
 } from './debugHubConstants.mjs';
 import { botingEmoji } from '../boting/botingEmojis.mjs';
+import { formatBpAmount } from '../bp/bpFormat.mjs';
 import {
   formatWeeklyChallengeConfigSummary,
   getWeeklyChallengeConfig,
@@ -363,15 +364,15 @@ export function buildDebugConfirmPayload(opts) {
     '**確認**',
     `操作: BP **${verb}**`,
     `対象: ${targetLabel}`,
-    `数量: **${amount.toLocaleString('ja-JP')}** bp`,
+    `数量: **${formatBpAmount(amount)}** bp`,
     '',
-    `現在の残高: **${bal.toLocaleString('ja-JP')}** bp`,
-    `実行後の残高（予定）: **${Math.round(balanceAfter).toLocaleString('ja-JP')}** bp`,
+    `現在の残高: **${formatBpAmount(bal)}** bp`,
+    `実行後の残高（予定）: **${formatBpAmount(Math.round(balanceAfter))}** bp`,
   ];
   if (mode === 'revoke' && amount > bal) {
     lines.push(
       '',
-      `※ 残高より多いため、実際に剥奪するのは **${bal.toLocaleString('ja-JP')}** bp までです（実行後は 0 bp）。`,
+      `※ 残高より多いため、実際に剥奪するのは **${formatBpAmount(bal)}** bp までです（実行後は 0 bp）。`,
     );
   }
   lines.push('', 'この内容で実行しますか？');

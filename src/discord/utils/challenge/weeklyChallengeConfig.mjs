@@ -1,4 +1,5 @@
 import { AppKv } from '../db/models.mjs';
+import { formatBpAmount } from '../bp/bpFormat.mjs';
 
 export const WEEKLY_CHALLENGE_CONFIG_KEY = 'weekly_challenge_config_v1';
 
@@ -85,9 +86,9 @@ export async function setWeeklyChallengeConfig(config) {
 export function formatWeeklyChallengeConfigSummary(cfg) {
   return [
     `有効: **${cfg.enabled ? 'ON' : 'OFF'}**`,
-    `> 的中回数 ≥ **${cfg.hitsMin}** → **+${cfg.hitsRewardBp.toLocaleString('ja-JP')}** bp`,
-    `> 回収率 ≥ **${cfg.recoveryMinPct}%** → **+${cfg.recoveryRewardBp.toLocaleString('ja-JP')}** bp`,
-    `> 的中率 ≥ **${cfg.hitRateMinPct}%** → **+${cfg.hitRateRewardBp.toLocaleString('ja-JP')}** bp`,
-    `> 購入件数 ≥ **${cfg.purchasesMin}** → **+${cfg.purchasesRewardBp.toLocaleString('ja-JP')}** bp`,
+    `> 的中回数 ≥ **${cfg.hitsMin}** → **+${formatBpAmount(cfg.hitsRewardBp)}** bp`,
+    `> 回収率 ≥ **${cfg.recoveryMinPct}%** → **+${formatBpAmount(cfg.recoveryRewardBp)}** bp`,
+    `> 的中率 ≥ **${cfg.hitRateMinPct}%** → **+${formatBpAmount(cfg.hitRateRewardBp)}** bp`,
+    `> 購入件数 ≥ **${cfg.purchasesMin}** → **+${formatBpAmount(cfg.purchasesRewardBp)}** bp`,
   ].join('\n');
 }

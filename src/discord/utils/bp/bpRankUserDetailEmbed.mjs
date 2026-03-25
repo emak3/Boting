@@ -19,6 +19,7 @@ import {
   buildBpRankProfileBackButtonRow,
   buildBpRankProfileButtonsRow,
 } from './bpRankUiButtons.mjs';
+import { formatBpAmount } from './bpFormat.mjs';
 
 export {
   BP_RANK_USER_HISTORY_PREFIX,
@@ -103,7 +104,7 @@ function formatBpRankUserDetailMarkdown(targetUser, d) {
   return [
     `**BP 詳細 — ${targetUser.username}**`,
     '',
-    `**現在の BP**　**${balance}** bp`,
+    `**現在の BP**　**${formatBpAmount(balance)}** bp`,
     `**順位**　${rankLine}`,
     '',
     '**サーバー参加日**',
@@ -115,10 +116,10 @@ function formatBpRankUserDetailMarkdown(targetUser, d) {
     '**競馬購入**',
     `的中件数: **${agg.hitCount}** 件`,
     `購入件数: **${agg.purchaseCount}** 件`,
-    `購入金額合計: **${agg.totalCostBp}** bp`,
-    `1点あたり最大金額: **${agg.maxCostBp}** bp`,
+    `購入金額合計: **${formatBpAmount(agg.totalCostBp)}** bp`,
+    `1点あたり最大金額: **${formatBpAmount(agg.maxCostBp)}** bp`,
     `精算済み件数: **${agg.settledCount}** 件`,
-    `トータル回収率（精算済み合計）: **${pct(agg.totalRecoveryRate)}**（払戻 **${agg.totalRefundBpSettled}** bp / 購入 **${agg.totalCostBpSettled}** bp）`,
+    `トータル回収率（精算済み合計）: **${pct(agg.totalRecoveryRate)}**（払戻 **${formatBpAmount(agg.totalRefundBpSettled)}** bp / 購入 **${formatBpAmount(agg.totalCostBpSettled)}** bp）`,
     `最大回収率（精算済み1件あたり）: **${pct(agg.maxRecoveryRate)}**`,
     `最低回収率（精算済み1件あたり）: **${pct(agg.minRecoveryRate)}**`,
     '',
@@ -227,8 +228,8 @@ export async function buildBpRankUserSlipReadonlyV2Payload({
   const head = [
     `**${targetUser?.username ?? 'ユーザー'} の購入予定（閲覧のみ）**`,
     '',
-    `対象の bp 残高 **${balance.toLocaleString('ja-JP')}** bp`,
-    `合計 **${grandPoints.toLocaleString('ja-JP')}** 点　合計 **${grandYen.toLocaleString('ja-JP')}** bp（確定時の目安）`,
+    `対象の bp 残高 **${formatBpAmount(balance)}** bp`,
+    `合計 **${formatBpAmount(grandPoints)}** 点　合計 **${formatBpAmount(grandYen)}** bp（確定時の目安）`,
     '',
     '*他のユーザーの購入予定は閲覧のみです。編集・購入は /boting から行えます。*',
   ].join('\n');

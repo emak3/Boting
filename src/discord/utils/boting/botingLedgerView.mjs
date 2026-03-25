@@ -19,6 +19,7 @@ import {
   BP_RANK_LB_HIST_PREFIX,
   buildBpRankLeaderboardBackButtonRow,
 } from '../bp/bpRankUiButtons.mjs';
+import { formatBpAmount } from '../bp/bpFormat.mjs';
 
 export const BOTING_LEDGER_NAV_PREFIX = 'boting_ledger_nav';
 export const BOTING_LEDGER_OPEN_LIM_PREFIX = 'boting_ledger_open_lim';
@@ -41,8 +42,8 @@ function formatLedgerLines(entries) {
   }
   const lines = entries.map((e) => {
     const t = e.at ? formatJst(e.at) : '—';
-    const sign = e.delta >= 0 ? `+${e.delta}` : `${e.delta}`;
-    return `\`${t}\` **${sign}** bp → **${e.balanceAfter}** bp（${kindLabelJa(e.kind, e.streakDay)}）`;
+    const sign = e.delta >= 0 ? `+${formatBpAmount(e.delta)}` : formatBpAmount(e.delta);
+    return `\`${t}\` **${sign}** bp → **${formatBpAmount(e.balanceAfter)}** bp（${kindLabelJa(e.kind, e.streakDay)}）`;
   });
   let text = lines.join('\n');
   if (text.length > 3500) {

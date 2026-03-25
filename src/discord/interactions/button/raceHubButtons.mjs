@@ -24,6 +24,7 @@ import { buildBotingLedgerLimitKeypadPayload } from '../../utils/boting/botingLe
 import { setBotingLedgerLimitDraft } from '../../utils/boting/botingLedgerKeypadStore.mjs';
 import { canBypassDailyCooldown } from '../../utils/debug/raceDebugBypass.mjs';
 import { kindLabelJa, tryClaimDaily } from '../../utils/user/userPointsStore.mjs';
+import { formatBpAmount } from '../../utils/bp/bpFormat.mjs';
 import { runPendingRaceRefundsForUser } from '../../utils/race/raceBetRefundSweep.mjs';
 import {
   buildBpRankUserDetailV2Container,
@@ -509,7 +510,7 @@ export default async function raceHubButtons(interaction) {
           user: interaction.user,
           guild: interaction.guild,
           extraFlags,
-          dailySuccessBanner: `✅ **+${result.granted}** bp（${kindLine}）\n残高: **${result.balance}** bp`,
+          dailySuccessBanner: `✅ **+${formatBpAmount(result.granted)}** bp（${kindLine}）\n残高: **${formatBpAmount(result.balance)}** bp`,
         }),
       );
       return;

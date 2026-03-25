@@ -1,4 +1,5 @@
 import { ContainerBuilder } from 'discord.js';
+import { formatBpAmount } from '../bp/bpFormat.mjs';
 
 const ACCENT_CLAIMED = 0xed4245;
 const ACCENT_CLAIMABLE = 0x2ecc71;
@@ -37,7 +38,7 @@ export function buildDailyAccountV2Container(view, opts) {
   }
   parts.push(title);
   parts.push('');
-  parts.push(`**残高**  **${view.balance}** bp`);
+  parts.push(`**残高**  **${formatBpAmount(view.balance)}** bp`);
   parts.push('');
   parts.push(`**いまの連続記録**  ${streakLine}`);
   parts.push('');

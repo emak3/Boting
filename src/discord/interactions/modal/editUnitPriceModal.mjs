@@ -5,6 +5,7 @@ import {
   buildTextAndRowsV2Payload,
   extractTopLevelActionRowsFromMessage,
 } from '../../utils/race/raceCardDisplay.mjs';
+import { formatBpAmount } from '../../utils/bp/bpFormat.mjs';
 
 function safeParseRaceId(customId) {
   // race_bet_unit_modal|{raceId}
@@ -14,7 +15,7 @@ function safeParseRaceId(customId) {
 
 function formatTotal(points, unitYen) {
   const yen = points * unitYen;
-  return `点数: ${points}点 | 合計: ${yen} bp（${unitYen} bp/点）`;
+  return `点数: ${formatBpAmount(points)}点 | 合計: ${formatBpAmount(yen)} bp（${formatBpAmount(unitYen)} bp/点）`;
 }
 
 export default async function editUnitPriceModal(interaction) {

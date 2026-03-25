@@ -21,6 +21,7 @@ import {
 } from '../race/raceBetRecords.mjs';
 import { runPendingRaceRefundsForUser } from '../race/raceBetRefundSweep.mjs';
 import { mapWithConcurrency } from '../../../utils/concurrency/mapWithConcurrency.mjs';
+import { formatBpAmount } from './bpFormat.mjs';
 
 /** Discord REST のバーストを抑える（表示名解決の並列度） */
 const BP_RANK_NAME_RESOLVE_CONCURRENCY = 5;
@@ -118,7 +119,7 @@ function formatLeaderboardLine(mode, row, nameMap) {
   const dn = dnRaw ? sanitizeBpRankDisplayName(dnRaw) : null;
   const who = dn ? `**${dn}**` : `<@${row.userId}>`;
   if (mode === BP_RANK_MODE.BALANCE) {
-    return `${who} — **${row.balance}** bp`;
+    return `${who} — **${formatBpAmount(row.balance)}** bp`;
   }
   if (mode === BP_RANK_MODE.RECOVERY) {
     const rate =
@@ -417,7 +418,7 @@ function formatLeaderboardPickLabel(mode, row, rankIndex, nameMap) {
     : `ID…${String(row.userId).slice(-4)}`;
   let core;
   if (mode === BP_RANK_MODE.BALANCE) {
-    core = `${row.balance} bp`;
+    core = `${formatBpAmount(row.balance)} bp`;
   } else if (mode === BP_RANK_MODE.RECOVERY) {
     const rate =
       row.agg.totalRecoveryRate != null &&

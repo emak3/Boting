@@ -15,6 +15,7 @@ import {
 } from '../boting/botingHubConstants.mjs';
 import { buildBotingMenuBackRow } from '../boting/botingBackButton.mjs';
 import { botingEmoji } from '../boting/botingEmojis.mjs';
+import { formatBpWithUnit } from '../bp/bpFormat.mjs';
 
 export { BOTING_HUB_PREFIX };
 export { buildBotingMenuBackRow };
@@ -29,7 +30,7 @@ export const VENUE_PICK_INTRO_BODY =
 
 function fmtBpLine(balance) {
   const n = Math.round(Number(balance) || 0);
-  return `bp残高：\`${n.toLocaleString('ja-JP')}bp\``;
+  return `bp残高：\`${formatBpWithUnit(n)}\``;
 }
 
 /**

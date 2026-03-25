@@ -57,6 +57,7 @@ import {
 import { tryConfirmRacePurchase } from '../../utils/race/raceBetRecords.mjs';
 import { deriveRaceHoldYmdFromFlow } from '../../utils/race/raceHoldDate.mjs';
 import { getBalance } from '../../utils/user/userPointsStore.mjs';
+import { formatBpAmount } from '../../utils/bp/bpFormat.mjs';
 import {
   buildPayoutTicketsFromFlow,
   jraMultiEligibleLastMenu,
@@ -677,7 +678,7 @@ export default async function betFlowButtons(interaction) {
       const extraFlags = slipReviewExtraFlags();
       await interaction.editReply(
         buildTextAndRowsV2Payload({
-          headline: `❌ **bp が不足**しています（必要 **${totalBp}** bp / 残高 **${bal}** bp）。\n\`/boting\` の **Dailyをもらう** で受け取るか、購入予定を減らす・1点あたりの金額を下げてください。`,
+          headline: `❌ **bp が不足**しています（必要 **${formatBpAmount(totalBp)}** bp / 残高 **${formatBpAmount(bal)}** bp）。\n\`/boting\` の **Dailyをもらう** で受け取るか、購入予定を減らす・1点あたりの金額を下げてください。`,
           actionRows: [],
           extraFlags,
           withBotingMenuBack: true,
@@ -707,7 +708,7 @@ export default async function betFlowButtons(interaction) {
       const extraFlags = slipReviewExtraFlags();
       let msg = '❌ 購入を完了できませんでした。';
       if (purchase.reason === 'insufficient') {
-        msg = `❌ **bp が不足**しています（必要 **${purchase.need}** bp / 残高 **${purchase.balance}** bp）。`;
+        msg = `❌ **bp が不足**しています（必要 **${formatBpAmount(purchase.need)}** bp / 残高 **${formatBpAmount(purchase.balance)}** bp）。`;
       } else if (purchase.reason === 'bad_tickets') {
         msg =
           '❌ 購入予定データが不正です。出馬表からやり直し、**購入予定に追加** し直してください。';
@@ -733,7 +734,7 @@ export default async function betFlowButtons(interaction) {
     const headline = [
       buildBetSlipBatchV2Headline({ items: pending.items }),
       '',
-      `**購入完了** −**${purchase.spent}** bp（残高 **${purchase.balance}** bp）`,
+      `**購入完了** −**${formatBpAmount(purchase.spent)}** bp（残高 **${formatBpAmount(purchase.balance)}** bp）`,
       'レース結果が出たら `/boting` の馬券購入メニューや開催メニューで結果を表示すると、netkeiba の払戻に基づき bp が自動加算されます。',
     ].join('\n');
     const anchor = pending.anchorRaceId || raceId;

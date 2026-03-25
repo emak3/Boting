@@ -37,6 +37,7 @@ import {
 } from '../bp/bpRankUiButtons.mjs';
 import { BP_RANK_DISPLAY_MAX } from '../bp/bpRankLeaderboardEmbed.mjs';
 import { botingEmoji, botingEmojiMarkdown } from '../boting/botingEmojis.mjs';
+import { formatBpAmount, formatBpWithUnit } from '../bp/bpFormat.mjs';
 
 /** `|bpctx|{discordUserId}`（任意で `|rklb|{limit}|{mode}`）— 他人の履歴ナビ・ランキング戻り用 */
 export function stripRaceHistoryBpCtx(customId) {
@@ -210,7 +211,7 @@ function refundSuffix(bet) {
   const st = String(bet.status || 'open');
   if (st !== 'settled') return '`未確定`';
   const r = Math.round(Number(bet.refundBp) || 0);
-  return r > 0 ? `\`${r}bp\`` : '`0bp`';
+  return r > 0 ? `\`${formatBpWithUnit(r)}\`` : `\`${formatBpWithUnit(0)}\``;
 }
 
 /** 精算済みかつ払戻 bp が 1 以上＝的中（購入履歴サマリと同じ） */
@@ -227,9 +228,9 @@ function betCostBpLine(bet) {
   const points = Math.max(0, Math.round(Number(bet.points) || 0));
   const unitYen = Math.max(1, Math.round(Number(bet.unitYen) || 100));
   if (points <= 0) {
-    return `合計\`${costBp}bp\``;
+    return `合計\`${formatBpWithUnit(costBp)}\``;
   }
-  return `1点\`${unitYen}bp\` 合計${points}点 \`${costBp}bp\``;
+  return `1点\`${formatBpWithUnit(unitYen)}\` 合計${formatBpAmount(points)}点 \`${formatBpWithUnit(costBp)}\``;
 }
 
 /**
@@ -426,9 +427,9 @@ function buildHistoryRaceTextChunks(slice, timeByRaceId) {
       const settled = String(bet.status || 'open') === 'settled';
       const hm = historyPostTimeCompactHm(bet, timeByRaceId);
       raceHead = settled
-        ? `**${base}** ${botingEmojiMarkdown('kaku')}${botingEmojiMarkdown('tei')}`
+        ? `${botingEmojiMarkdown('kaku')}${botingEmojiMarkdown('tei')} **${base}**`
         : hm
-          ? `**${base}** \`${hm} 発走\``
+          ? `**${base}**  \`${hm} 発走\``
           : `**${base}**`;
     }
     entries.push(formatBetEntryForHistory(bet));
@@ -712,10 +713,10 @@ export async function buildRacePurchaseHistoryV2Payload({
     historyTitleLineForHoldYmd(periodKey),
     `対象: **${ymd}** 開催（中央は開催日を保存、地方はレースID先頭の日付でも照合。前日購入分も含みます）`,
     '',
-    `現在のBP残高 **${bpBalance}** bp`,
+    `現在のBP残高 **${formatBpAmount(bpBalance)}** bp`,
     '',
     `的中 **${hits}** 件　不的中 **${misses}** 件　未決着 **${pending}** 件`,
-    `回収率 **${returnRateStr}**（払い戻し **${totalRefundBp}** bp ÷ 投資 **${totalInvestBp}** bp）`,
+    `回収率 **${returnRateStr}**（払い戻し **${formatBpAmount(totalRefundBp)}** bp ÷ 投資 **${formatBpAmount(totalInvestBp)}** bp）`,
   ];
   if (filterKey !== 'all') {
     const labelHit = bets.find(

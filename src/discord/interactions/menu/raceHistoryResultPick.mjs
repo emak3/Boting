@@ -2,10 +2,12 @@ import {
   ActionRowBuilder,
   ButtonBuilder,
   ButtonStyle,
+  ComponentType,
   MessageFlags,
 } from 'discord.js';
 import { buildRaceMenuSelectionPayload } from './raceSchedule.mjs';
 import { botingEmoji } from '../../utils/boting/botingEmojis.mjs';
+import { RACE_PURCHASE_HISTORY_CUSTOM_ID } from '../../utils/bet/betSlipViewUi.mjs';
 import {
   RACE_HISTORY_RESULT_PICK_PREFIX,
   buildRaceHistoryNavCustomId,
@@ -24,10 +26,34 @@ function v2ExtraFlags(interaction) {
 }
 
 /**
+ * 出馬表などで `maybeInsertRaceBetUtilityRow` 済みのときは券種セレクト直下に
+ * `race_bet_purchase_history` があり、その上に同ラベル行を足すと二重になるため挿入しない。
+ */
+function payloadHasUtilityPurchaseHistoryButton(payload) {
+  for (const row of payload.components || []) {
+    const t = row.type ?? row.data?.type;
+    if (t !== ComponentType.ActionRow) continue;
+    for (const c of row.components || []) {
+      const id = c.customId ?? c.data?.custom_id;
+      if (
+        typeof id === 'string' &&
+        id.startsWith(`${RACE_PURCHASE_HISTORY_CUSTOM_ID}|`)
+      ) {
+        return true;
+      }
+    }
+  }
+  return false;
+}
+
+/**
  * レース結果・出馬表ペイロードの本文ブロック直下に「購入履歴に戻る」を差し込む
  * @param {import('discord.js').BaseMessageOptions} payload
  */
 function injectPurchaseHistoryBack(payload, ctx) {
+  if (payloadHasUtilityPurchaseHistoryButton(payload)) {
+    return payload;
+  }
   const row = new ActionRowBuilder().addComponents(
     new ButtonBuilder()
       .setCustomId(buildRaceHistoryNavCustomId(ctx))

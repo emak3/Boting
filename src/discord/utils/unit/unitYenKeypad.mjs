@@ -6,6 +6,7 @@ import {
   TextDisplayBuilder,
 } from 'discord.js';
 import { botingEmoji } from '../boting/botingEmojis.mjs';
+import { formatBpAmount } from '../bp/bpFormat.mjs';
 
 /** テンキー・正規化で扱える 1点あたり bp の上限（JS の安全な整数。業務上の上限は設けない） */
 const MAX_UNIT_YEN_SAFE = Math.floor(Number.MAX_SAFE_INTEGER / 100) * 100;
@@ -67,11 +68,10 @@ export function deleteLastDigit(buffer) {
  * @param {{ buffer: string, subtitle?: string | null }} opts
  */
 export function formatUnitKeypadHeadline({ buffer, subtitle }) {
-  const part = buffer.length ? buffer : '_';
   const lines = [
     '**1点あたりの金額（100 bp 単位）**',
     subtitle ? String(subtitle) : null,
-    `# \`${part}\`00 bp`,
+    `# **${formatBpAmount(bufferToUnitYen(buffer))}** bp`,
   ].filter(Boolean);
   return lines.join('\n');
 }

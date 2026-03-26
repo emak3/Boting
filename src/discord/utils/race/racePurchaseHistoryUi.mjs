@@ -454,9 +454,36 @@ function computeHistoryPagePlan(flat, summaryLinesWithoutPagination, locale) {
   };
 }
 
+/** `oddsOfficialTime` から発走の「分」キー（0–1439）。取れなければ null */
+function postTimeMinutesFromBet(bet) {
+  const raw = bet?.oddsOfficialTime && String(bet.oddsOfficialTime).trim();
+  if (!raw) return null;
+  const m = raw.match(/(\d{1,2})\s*[:：]\s*(\d{2})/);
+  if (!m) return null;
+  const h = parseInt(m[1], 10);
+  const min = parseInt(m[2], 10);
+  if (!Number.isFinite(h) || !Number.isFinite(min) || h < 0 || h > 23 || min < 0 || min > 59) {
+    return null;
+  }
+  return h * 60 + min;
+}
+
+function racePostTimeMinutes(betsForRace) {
+  for (const b of betsForRace) {
+    const x = postTimeMinutesFromBet(b);
+    if (x != null) return x;
+  }
+  return null;
+}
+
+function raceIsResultPending(betsForRace) {
+  return betsForRace.some((b) => String(b.status || 'open') === 'open');
+}
+
 /**
- * 購入が新しい順（レース単位でまとめる）。
- * 各レースブロックの並びは「そのレースで最も遅い purchasedAt」が新しいほど上。
+ * レース単位でまとめる。
+ * レースブロック順: 結果未確定（いずれかの買い目が open）を上、確定（settled）を下。
+ * 未確定同士は発走時刻が早い順、確定同士は発走時刻が遅い順。時刻不明は各グループの末尾寄り。
  * 同一レース内は purchasedAt 降順（新しい買い目が上）。
  */
 function flattenBetsByRace(bets) {
@@ -469,12 +496,27 @@ function flattenBetsByRace(bets) {
   for (const arr of byRace.values()) {
     arr.sort((a, b) => betPurchasedAtMs(b) - betPurchasedAtMs(a));
   }
-  const sortedRids = [...byRace.keys()].sort((ra, rb) => {
-    const maxA = Math.max(...byRace.get(ra).map(betPurchasedAtMs));
-    const maxB = Math.max(...byRace.get(rb).map(betPurchasedAtMs));
-    if (maxB !== maxA) return maxB - maxA;
+  const rids = [...byRace.keys()];
+  const pending = rids.filter((rid) => raceIsResultPending(byRace.get(rid)));
+  const settled = rids.filter((rid) => !raceIsResultPending(byRace.get(rid)));
+  const NO_TIME_PENDING = 24 * 60 + 1;
+  pending.sort((ra, rb) => {
+    const ma = racePostTimeMinutes(byRace.get(ra));
+    const mb = racePostTimeMinutes(byRace.get(rb));
+    const va = ma == null ? NO_TIME_PENDING : ma;
+    const vb = mb == null ? NO_TIME_PENDING : mb;
+    if (va !== vb) return va - vb;
+    return ra.localeCompare(rb);
+  });
+  settled.sort((ra, rb) => {
+    const ma = racePostTimeMinutes(byRace.get(ra));
+    const mb = racePostTimeMinutes(byRace.get(rb));
+    const va = ma == null ? -1 : ma;
+    const vb = mb == null ? -1 : mb;
+    if (vb !== va) return vb - va;
     return rb.localeCompare(ra);
   });
+  const sortedRids = [...pending, ...settled];
   const flat = [];
   for (const rid of sortedRids) {
     for (const bet of byRace.get(rid)) {

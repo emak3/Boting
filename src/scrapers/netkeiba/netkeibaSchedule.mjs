@@ -356,13 +356,15 @@ export async function fetchTodayVenuesAndRaces() {
 }
 
 /**
- * 発走の暦日（JST）に使う YYYYMMDD。
- * JRA: race_id 先頭8桁が開催日。NAR: race_id 先頭は暦日と一致しないことがあるため **開催ページの kaisai_date のみ**を使う。
+ * 発走の暦日（JST）に使う YYYYMMDD（スケジュール一覧の「操作日」との突き合わせ用）。
+ * JRA・NAR とも、netkeiba の race_id 先頭が暦日と一致しないことがあるため
+ * **race_list_sub を kaisai_date で取ったときはその kaisai_date** を使う。
+ * opts.source 未指定時のみ従来どおり JRA race_id 先頭8桁にフォールバック。
  * @param {{ source?: 'jra' | 'nar' }} [opts]
  * @returns {string} YYYYMMDD
  */
 export function racePostDateYmdJst(race, kaisaiDateYmd, opts = {}) {
-  if (opts.source === 'nar') {
+  if (opts.source === 'nar' || opts.source === 'jra') {
     return String(kaisaiDateYmd || '');
   }
   const id = String(race?.raceId || '');

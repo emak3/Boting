@@ -488,6 +488,7 @@ export default async function raceHubButtons(interaction) {
   try {
     if (part === 'back') {
       abandonSlipReviewToSavedState(userId);
+      await runPendingRaceRefundsForUser(userId);
       await interaction.editReply(
         await buildBotingPanelPayload({
           user: interaction.user,

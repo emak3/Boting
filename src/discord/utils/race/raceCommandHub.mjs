@@ -6,7 +6,8 @@ import {
   MessageFlags,
 } from 'discord.js';
 import { canBypassDailyCooldown } from '../debug/raceDebugBypass.mjs';
-import { getBalance, getDailyAccountView } from '../user/userPointsStore.mjs';
+import { getDailyAccountView } from '../user/userPointsStore.mjs';
+import { getBalanceAfterPendingRaceRefunds } from './raceBetRefundSweep.mjs';
 import { scheduleKindSelectRow } from './scheduleKindUi.mjs';
 import { buildDailyAccountV2Container } from '../daily/dailyAccountDisplay.mjs';
 import {
@@ -127,7 +128,7 @@ export async function buildBotingPanelPayload({
  * @param {{ userId: string, extraFlags?: number, locale?: string | null }} opts
  */
 export async function buildRaceScheduleIntroV2Payload({ userId, extraFlags = 0, locale = null }) {
-  const balance = await getBalance(userId);
+  const balance = await getBalanceAfterPendingRaceRefunds(userId);
   const container = new ContainerBuilder().setAccentColor(HUB_ACCENT);
   const intro = t('boting_hub.schedule_kind_intro', null, locale);
   const body = [fmtBpLine(balance, locale), '', intro].join('\n');
@@ -151,7 +152,7 @@ export async function buildVenuePickIntroV2Payload({
   introBodySuffix = '',
   locale = null,
 }) {
-  const balance = await getBalance(userId);
+  const balance = await getBalanceAfterPendingRaceRefunds(userId);
   const container = new ContainerBuilder().setAccentColor(HUB_ACCENT);
   const intro = t('boting_hub.venue_pick_intro', null, locale);
   const bodyParts = [fmtBpLine(balance, locale), '', intro];

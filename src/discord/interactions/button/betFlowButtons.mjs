@@ -57,7 +57,7 @@ import {
 } from '../../utils/jra/jraBetAvailability.mjs';
 import { tryConfirmRacePurchase } from '../../utils/race/raceBetRecords.mjs';
 import { deriveRaceHoldYmdFromFlow } from '../../utils/race/raceHoldDate.mjs';
-import { getBalance } from '../../utils/user/userPointsStore.mjs';
+import { getBalanceAfterPendingRaceRefunds } from '../../utils/race/raceBetRefundSweep.mjs';
 import { formatBpAmount } from '../../utils/bp/bpFormat.mjs';
 import {
   buildPayoutTicketsFromFlow,
@@ -721,7 +721,7 @@ export default async function betFlowButtons(interaction) {
       (s, it) => s + Math.round(Number(it.points) || 0) * Math.max(1, Math.round(Number(it.unitYen) || 100)),
       0,
     );
-    const bal = await getBalance(userId);
+    const bal = await getBalanceAfterPendingRaceRefunds(userId);
     if (bal < totalBp) {
       const extraFlags = slipReviewExtraFlags();
       await interaction.editReply(

@@ -23,7 +23,7 @@ import {
   getSlipPendingReview,
   setSlipPendingReviewPage,
 } from './betSlipStore.mjs';
-import { getBalance } from '../user/userPointsStore.mjs';
+import { getBalanceAfterPendingRaceRefunds } from '../race/raceBetRefundSweep.mjs';
 import { botingEmoji } from '../boting/botingEmojis.mjs';
 import { formatBpAmount } from '../bp/bpFormat.mjs';
 
@@ -275,7 +275,7 @@ export async function buildSlipReviewV2Payload({ userId, extraFlags = 0, locale 
         Math.max(1, Math.round(Number(it.unitYen) || 100)),
     0,
   );
-  const balance = await getBalance(userId);
+  const balance = await getBalanceAfterPendingRaceRefunds(userId);
 
   const itemBlocks = pending.items.map((it, idx) =>
     formatBetSlipItemBlock(it, idx, locale),

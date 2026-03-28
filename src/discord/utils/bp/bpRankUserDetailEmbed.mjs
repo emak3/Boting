@@ -1,11 +1,14 @@
 import { ContainerBuilder, MessageFlags, SeparatorSpacingSize } from 'discord.js';
-import { fetchFirstLedgerAt, getBalance } from '../user/userPointsStore.mjs';
+import { fetchFirstLedgerAt } from '../user/userPointsStore.mjs';
 import { fetchUserRaceBetAggregates } from '../race/raceBetRecords.mjs';
 import {
   fetchAllUsersByBalanceDesc,
   computeBpRank,
 } from './bpLeaderboard.mjs';
-import { runPendingRaceRefundsForUser } from '../race/raceBetRefundSweep.mjs';
+import {
+  getBalanceAfterPendingRaceRefunds,
+  runPendingRaceRefundsForUser,
+} from '../race/raceBetRefundSweep.mjs';
 import { getBetFlow } from '../bet/betFlowStore.mjs';
 import { msgSlipTooManyForOtherUser } from '../bet/betSlipCopy.mjs';
 import { getSlipSavedItems, SLIP_MAX_ITEMS } from '../bet/betSlipStore.mjs';
@@ -280,7 +283,7 @@ export async function buildBpRankUserSlipReadonlyV2Payload({
     });
   }
 
-  const balance = await getBalance(uid);
+  const balance = await getBalanceAfterPendingRaceRefunds(uid);
   const grandPoints = merged.reduce(
     (s, it) => s + Math.round(Number(it.points) || 0),
     0,

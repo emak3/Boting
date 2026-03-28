@@ -710,11 +710,7 @@ export async function buildRacePurchaseHistoryV2Payload({
   rankLeaderboardReturn = null,
   locale = null,
 }) {
-  try {
-    await runPendingRaceRefundsForUser(userId);
-  } catch (e) {
-    console.warn('runPendingRaceRefundsForUser', e);
-  }
+  await runPendingRaceRefundsForUser(userId);
 
   let periodKey =
     periodKeyOpt != null && /^\d{8}$/.test(String(periodKeyOpt).trim())

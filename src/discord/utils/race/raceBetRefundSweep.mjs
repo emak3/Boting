@@ -1,6 +1,7 @@
 import { settlePendingOpenRaceBetsForUser } from './raceBetRecords.mjs';
 import NetkeibaScraper from '../../../scrapers/netkeiba/netkeibaScraper.mjs';
 import { isDebugSalesBypassEnabled } from '../debug/raceDebugBypass.mjs';
+import { getBalance } from '../user/userPointsStore.mjs';
 
 /** @type {Map<string, Promise<void>>} */
 const refundSweepTailByUserId = new Map();
@@ -37,4 +38,14 @@ export async function runPendingRaceRefundsForUser(userId) {
       refundSweepTailByUserId.delete(uid);
     }
   }
+}
+
+/**
+ * 未精算馬券を精算したうえで残高を返す（BP を表示する UI 用の共通入口）
+ * @param {string} userId
+ * @returns {Promise<number>}
+ */
+export async function getBalanceAfterPendingRaceRefunds(userId) {
+  await runPendingRaceRefundsForUser(userId);
+  return getBalance(userId);
 }

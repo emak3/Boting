@@ -47,6 +47,23 @@ import {
 const VENUE_BACK_PREFIX = 'race_sched_back_to_venue|';
 const RACE_LIST_BACK_PREFIX = 'race_sched_back_to_race_list|';
 
+/**
+ * 二重クリック・期限切れ (10062) で落ちないようにする。
+ * @param {import('discord.js').ButtonInteraction} interaction
+ * @returns {Promise<boolean>}
+ */
+async function safeDeferUpdate(interaction) {
+  if (interaction.deferred || interaction.replied) return false;
+  try {
+    await interaction.deferUpdate();
+    return true;
+  } catch (e) {
+    const code = e?.code ?? e?.rawError?.code;
+    if (code === 10062) return false;
+    throw e;
+  }
+}
+
 function venueSelectRow(scheduleKind, kaisaiDateYmd, currentGroup, venues, locale = null) {
   const menu = new StringSelectMenuBuilder()
     .setCustomId('race_menu_venue')
@@ -107,7 +124,7 @@ export default async function scheduleBackButtons(interaction) {
   const isKindBack = customId === SCHEDULE_KIND_BACK_BUTTON_ID;
   if (!isVenueBack && !isRaceListBack && !isKindBack) return;
 
-  await interaction.deferUpdate();
+  if (!(await safeDeferUpdate(interaction))) return;
 
   const loc = resolveLocaleFromInteraction(interaction);
 

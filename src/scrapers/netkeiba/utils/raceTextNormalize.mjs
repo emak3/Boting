@@ -67,6 +67,15 @@ function postTimeFromRaceDataText(text, opts = {}) {
   return null;
 }
 
+/**
+ * raceInfo.date（RaceData01 相当の1行）から発走 HH:MM を抜く。オッズ API よりページ表記を優先するときの補助。
+ * @param {string | null | undefined} text
+ * @returns {string | null}
+ */
+export function postTimeHmFromRaceData01PlainText(text) {
+  return postTimeFromRaceDataText(text, { timeBeforeSlash: true });
+}
+
 export function extractShutubaPostTimeText($) {
   const rd01 = $('.RaceData01').first().text();
   const from01 = postTimeFromRaceDataText(rd01, { timeBeforeSlash: true });

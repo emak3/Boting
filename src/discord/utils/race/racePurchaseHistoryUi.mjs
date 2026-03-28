@@ -21,6 +21,7 @@ import {
   BET_TYPE_LABEL,
   parseSelectionBetKindLabel,
   formatCompactPostTimeForHistory,
+  postTimeMinutesFromOddsOfficialForHistory,
   historyRaceHeadingLine,
   venuePrefixForHistoryBet,
 } from '../bet/betPurchaseEmbed.mjs';
@@ -458,14 +459,7 @@ function computeHistoryPagePlan(flat, summaryLinesWithoutPagination, locale) {
 function postTimeMinutesFromBet(bet) {
   const raw = bet?.oddsOfficialTime && String(bet.oddsOfficialTime).trim();
   if (!raw) return null;
-  const m = raw.match(/(\d{1,2})\s*[:：]\s*(\d{2})/);
-  if (!m) return null;
-  const h = parseInt(m[1], 10);
-  const min = parseInt(m[2], 10);
-  if (!Number.isFinite(h) || !Number.isFinite(min) || h < 0 || h > 23 || min < 0 || min > 59) {
-    return null;
-  }
-  return h * 60 + min;
+  return postTimeMinutesFromOddsOfficialForHistory(raw);
 }
 
 function racePostTimeMinutes(betsForRace) {

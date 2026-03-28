@@ -7,9 +7,14 @@ import { scrapWithPuppeteer } from './utils/puppeteerFallback.mjs';
 import {
   extractShutubaPostTimeText,
   normalizeRaceScrapedText,
+  postTimeHmFromRaceData01PlainText,
   splitCourseAndPrize,
 } from './utils/raceTextNormalize.mjs';
-import { shutubaHorseRowSelector } from './utils/shutubaDom.mjs';
+import {
+  shutubaHorseRowSelector,
+  shutubaPast5HorseRowSelector,
+  extractHorseIntervalRestText,
+} from './utils/shutubaDom.mjs';
 
 const NAR_BASE_URL = 'https://nar.netkeiba.com';
 
@@ -139,7 +144,7 @@ class NetkeibaScraper {
         ) {
           jraOkEarly.netkeibaOrigin = 'jra';
           await this.mergeJraOddsFromApi(raceId, jraOkEarly);
-          return jraOkEarly;
+          return this.returnRaceCardWithShutubaPast(raceId, jraOkEarly);
         }
         narCheerio = await this.scrapeWithCheerio(narUrl, { headers: narHeaders });
       } else {
@@ -150,7 +155,7 @@ class NetkeibaScraper {
           scoreScrapedRaceQuality(narOkEarly) >= SHUTUBA_SKIP_SECOND_FETCH_MIN_SCORE
         ) {
           narOkEarly.netkeibaOrigin = 'nar';
-          return narOkEarly;
+          return this.returnRaceCardWithShutubaPast(raceId, narOkEarly);
         }
         jraCheerio = await this.scrapeWithCheerio(jraUrl, { headers: jraHeaders });
       }
@@ -163,16 +168,16 @@ class NetkeibaScraper {
         const picked = pickJra ? jraOk : narOk;
         picked.netkeibaOrigin = pickJra ? 'jra' : 'nar';
         if (pickJra) await this.mergeJraOddsFromApi(raceId, picked);
-        return picked;
+        return this.returnRaceCardWithShutubaPast(raceId, picked);
       }
       if (jraOk) {
         jraOk.netkeibaOrigin = 'jra';
         await this.mergeJraOddsFromApi(raceId, jraOk);
-        return jraOk;
+        return this.returnRaceCardWithShutubaPast(raceId, jraOk);
       }
       if (narOk) {
         narOk.netkeibaOrigin = 'nar';
-        return narOk;
+        return this.returnRaceCardWithShutubaPast(raceId, narOk);
       }
     } catch (error) {
       lastErr = error;
@@ -191,7 +196,7 @@ class NetkeibaScraper {
         if (result && result.horses.length > 0) {
           result.netkeibaOrigin = origin;
           if (origin === 'jra') await this.mergeJraOddsFromApi(raceId, result);
-          return result;
+          return this.returnRaceCardWithShutubaPast(raceId, result);
         }
       } catch (error) {
         lastErr = error;
@@ -201,6 +206,106 @@ class NetkeibaScraper {
 
     console.error('Error scraping race card:', lastErr);
     throw new Error(`Failed to scrape race data: ${lastErr?.message || 'no data'}`);
+  }
+
+  /**
+   * 出馬表レスポンスに netkeiba の shutuba_past（近5走）着順を付与して返す
+   * @param {string} raceId
+   * @param {object} result
+   */
+  async returnRaceCardWithShutubaPast(raceId, result) {
+    await this.enrichWithShutubaPast(raceId, result);
+    return result;
+  }
+
+  /**
+   * race.netkeiba / nar.netkeiba の shutuba_past.html を取得し、各行 td.Past 内 .Data01 span.Num を近走着順として付与
+   * @param {string} raceId
+   * @param {{ netkeibaOrigin?: string, horses?: object[] }} result
+   */
+  async enrichWithShutubaPast(raceId, result) {
+    if (!result?.horses?.length) return;
+    const origin = result.netkeibaOrigin === 'nar' ? 'nar' : 'jra';
+    const base = origin === 'nar' ? NAR_BASE_URL : this.baseUrl;
+    const headers = this.requestHeadersForBase(base);
+    const url = `${base}/race/shutuba_past.html?race_id=${encodeURIComponent(String(raceId))}`;
+    try {
+      const response = await axios.get(url, {
+        headers,
+        responseType: 'arraybuffer',
+        timeout: 12000,
+        maxRedirects: 5,
+        ...axiosKeepAlive,
+      });
+      const decodedData = handleEncoding(response.data, response, {
+        label: 'shutubaPast',
+        url,
+      });
+      const $ = cheerio.load(decodedData);
+      const { finishMap, intervalMap } = NetkeibaScraper.parseShutubaPastRowMaps($);
+      if (finishMap.size === 0 && intervalMap.size === 0) {
+        console.warn('enrichWithShutubaPast: no past rows parsed', url);
+        return;
+      }
+      result.horses.forEach((h, i) => {
+        const id = h.horseId != null ? String(h.horseId) : null;
+        let arr = id && finishMap.has(id) ? finishMap.get(id) : finishMap.get(`_row${i}`);
+        if (!arr) arr = [];
+        h.recentFinishes = arr;
+
+        const intervalFromPast =
+          id && intervalMap.has(id) ? intervalMap.get(id) : intervalMap.get(`_row${i}`);
+        const iv = intervalFromPast != null ? String(intervalFromPast).trim() : '';
+        if (iv) h.intervalRestText = iv;
+      });
+    } catch (e) {
+      console.warn('enrichWithShutubaPast:', url, e?.message ?? e);
+    }
+  }
+
+  /**
+   * shutuba_past.html の馬行から近走着順・休み間隔（中N週）を馬ID（または行インデックス）ごとに取得。
+   * 通常の shutuba.html では .Horse06 が空のことが多く、5走表示ページ側にだけ間隔が載る。
+   * @returns {{ finishMap: Map<string, string[]>, intervalMap: Map<string, string> }}
+   */
+  static parseShutubaPastRowMaps($) {
+    const finishMap = new Map();
+    const intervalMap = new Map();
+    let rowIdx = 0;
+    const $rows = $(shutubaPast5HorseRowSelector);
+    const $iter = $rows.length ? $rows : $(NetkeibaScraper.shutubaHorseRowSelector);
+    $iter.each((_, element) => {
+      const $row = $(element);
+      if ($row.find('th').length) return;
+
+      const $horseName = $row
+        .find('.HorseName a, .HorseInfo .HorseName a, td a[href*="/horse/"]')
+        .first();
+      if (!$horseName.length) return;
+
+      const href = $horseName.attr('href') || '';
+      const m = href.match(/horse\/(\d+)/);
+      const horseId = m ? m[1] : null;
+
+      const finishes = [];
+      $row.find('td.Past').each((_, td) => {
+        const num = $(td)
+          .find('.Data01 span.Num')
+          .first()
+          .text()
+          .replace(/\s+/g, ' ')
+          .trim();
+        if (num) finishes.push(num);
+      });
+
+      const key = horseId ?? `_row${rowIdx}`;
+      finishMap.set(key, finishes);
+      const intervalRaw = extractHorseIntervalRestText($row, $);
+      const interval = intervalRaw != null ? String(intervalRaw).replace(/\s+/g, ' ').trim() : '';
+      if (interval) intervalMap.set(key, interval);
+      rowIdx += 1;
+    });
+    return { finishMap, intervalMap };
   }
 
   /**
@@ -975,6 +1080,7 @@ class NetkeibaScraper {
         popularity: this.extractPopularity($row, $),
         jockey: this.extractJockey($row, $),
         trainer: this.extractTrainer($row, $),
+        intervalRestText: extractHorseIntervalRestText($row, $),
         excluded,
       };
 
@@ -1186,18 +1292,43 @@ class NetkeibaScraper {
    */
   async mergeJraOddsFromApi(raceId, result) {
     if (!result?.horses?.length) return;
+
+    const fillPostTimeFromRaceInfoDate = () => {
+      if (
+        (result.oddsOfficialTime == null ||
+          !String(result.oddsOfficialTime).trim()) &&
+        result.raceInfo?.date
+      ) {
+        const hm = postTimeHmFromRaceData01PlainText(result.raceInfo.date);
+        if (hm) result.oddsOfficialTime = hm;
+      }
+    };
+
     let payload;
     try {
       payload = await this.fetchJraOddsPayload(raceId);
     } catch (e) {
       console.warn('JRA odds API failed:', e.message);
+      fillPostTimeFromRaceInfoDate();
       return;
     }
-    if (!payload) return;
-    const od = payload.official_datetime;
-    if (od != null && String(od).trim()) {
-      result.oddsOfficialTime = String(od).replace(/\s+/g, ' ').trim();
+    if (!payload) {
+      fillPostTimeFromRaceInfoDate();
+      return;
     }
+    const hadShutubaPostTime =
+      result.oddsOfficialTime != null &&
+      String(result.oddsOfficialTime).trim() !== '';
+    const od = payload.official_datetime;
+    const fromApi =
+      od != null && String(od).trim()
+        ? String(od).replace(/\s+/g, ' ').trim()
+        : '';
+    // 出馬表 HTML で取れた発走を優先。official_datetime はオッズ確定時刻等とズレることがある。
+    if (!hadShutubaPostTime && fromApi) {
+      result.oddsOfficialTime = fromApi;
+    }
+    fillPostTimeFromRaceInfoDate();
     if (!payload.odds) return;
 
     const win = payload.odds['1'] || {};

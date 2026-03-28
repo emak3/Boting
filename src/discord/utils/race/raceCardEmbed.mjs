@@ -1,5 +1,6 @@
 import { wakuUmaEmoji, jogaiEmoji } from './raceNumberEmoji.mjs';
 import { netkeibaResultUrl } from '../netkeiba/netkeibaUrls.mjs';
+import { formatCompactPostTimeForHistory } from '../bet/betPurchaseEmbed.mjs';
 
 /** @param {{ raceInfo?: object, horses: object[], totalHorses: number, oddsOfficialTime?: string }} result */
 export function buildRaceCardEmbed(result) {
@@ -21,6 +22,12 @@ export function buildRaceCardEmbed(result) {
   const courseBlock = ri.prizeMoney
     ? `**コース:** ${ri.course || 'N/A'}\n${ri.prizeMoney}`
     : `**コース:** ${ri.course || 'N/A'}`;
+  const postRaw = result.oddsOfficialTime
+    ? String(result.oddsOfficialTime).trim()
+    : '';
+  const postDisp = postRaw
+    ? formatCompactPostTimeForHistory(postRaw) || postRaw
+    : '';
   const embed = {
     color: isResult ? 0xed4245 : 0x0099ff,
     title: `${isResult ? '🏁' : '🐎'} ${ri.title || 'レース情報'}`,
@@ -41,7 +48,7 @@ export function buildRaceCardEmbed(result) {
     footer: {
       text: [
         `全${result.totalHorses}頭${
-          result.oddsOfficialTime ? ` | 発走時刻 ${result.oddsOfficialTime}` : ''
+          postDisp ? ` | 発走時刻 ${postDisp}` : ''
         }`,
         isResult && resultUrl ? `結果: ${resultUrl}` : null,
       ]

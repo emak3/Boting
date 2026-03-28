@@ -11,6 +11,8 @@ import { netkeibaResultUrl } from '../netkeiba/netkeibaUrls.mjs';
 import { buildRaceResultV2Sections } from './raceResultEmbed.mjs';
 import { maybeInsertRaceBetUtilityRow } from '../bet/betSlipViewUi.mjs';
 import { buildBotingMenuBackRow } from '../boting/botingBackButton.mjs';
+import { t, getDefaultLocale } from '../../../i18n/index.mjs';
+import { formatCompactPostTimeForHistory } from '../bet/betPurchaseEmbed.mjs';
 
 /** Discord Display Components: 全 Text Display 合計 4000 文字まで */
 export const V2_TEXT_TOTAL_MAX = 3900;
@@ -25,7 +27,37 @@ export const RACE_RESULT_ACCENT_RED = 0xed4245;
 /** 購入サマリー・完了・エラー案内など、本文のみの V2 パネル（まとめ購入確認と同系の緑帯） */
 export const V2_TEXT_PANEL_ACCENT = 0x2ecc71;
 
-function horseBlock(horse) {
+/** 間隔「中N週」が本文に含まれるか（netkeiba 出馬表・5走表の .Horse06 想定） */
+function hasChuWeekIntervalText(text) {
+  return /中\s*\d+\s*週/.test(String(text || ''));
+}
+
+/** @param {{ recentFinishes?: string[], intervalRestText?: string }} horse */
+function formatRecentFinishesSuffix(horse, locale) {
+  if (!Object.prototype.hasOwnProperty.call(horse, 'recentFinishes')) return '';
+  const runs = horse.recentFinishes;
+  if (!Array.isArray(runs)) return '';
+  const rest = horse.intervalRestText ? String(horse.intervalRestText).trim() : '';
+  const loc = locale != null ? locale : getDefaultLocale();
+  const hasFinishes = runs.length > 0;
+  const hasChu = hasChuWeekIntervalText(rest);
+  // 近5走着順が無く、かつ「中N週」も無いときだけ初出走表示（着順があるのに初出走は付けない）
+  const debut = !hasFinishes && !hasChu;
+  const debutLabel = debut ? t('race_card.recent_finishes.debut', {}, loc) : '';
+
+  const parts = [];
+  if (rest) parts.push(rest);
+  if (hasFinishes) {
+    const bracket = t('race_card.recent_finishes.bracket', { runs: runs.join('-') }, loc);
+    parts.push(`\`${bracket}\``);
+  }
+  if (debutLabel) parts.push(debutLabel);
+
+  if (parts.length === 0) return '';
+  return parts.join(' ');
+}
+
+function horseBlock(horse, locale = null) {
   const place = horse.placeOddsMin ? ` / 複勝〜${horse.placeOddsMin}` : '';
   const ninki =
     horse.popularity && horse.popularity !== 'N/A'
@@ -35,8 +67,12 @@ function horseBlock(horse) {
   const numLabel = wu ? `${wu}` : `${horse.horseNumber}.`;
   const wakuPart = wu ? '' : `枠${horse.frameNumber} | `;
   const jog = horse.excluded ? jogaiEmoji() : null;
+  const recent = formatRecentFinishesSuffix(horse, locale);
   const head = `**${numLabel} ${horse.name}${jog ? ` ${jog}` : ''}**`.trim();
-  const body = `${wakuPart}${horse.age} | ${horse.weight}kg · ${horse.jockey}${ninki}\n単勝 ${horse.odds}${place}`;
+  const oddsLine = recent
+    ? `${recent} 単勝 ${horse.odds}${place}`
+    : `単勝 ${horse.odds}${place}`;
+  const body = `${wakuPart}${horse.age} | ${horse.weight}kg · ${horse.jockey}${ninki}\n${oddsLine}`;
   return `${head}\n${body}`;
 }
 
@@ -82,6 +118,7 @@ export function buildRaceCardV2Payload({
   actionRows = [],
   extraFlags = 0,
   utilityContext = null,
+  locale = null,
 }) {
   let rows = actionRows.filter(Boolean);
   if (utilityContext?.userId && result?.raceId) {
@@ -121,16 +158,22 @@ export function buildRaceCardV2Payload({
     ? `**コース:** ${ri.course || 'N/A'}\n${ri.prizeMoney}`
     : `**コース:** ${ri.course || 'N/A'}`;
   const meta = `**日程:** ${ri.date || 'N/A'}\n${courseBlock}`;
+  const postRaw = result.oddsOfficialTime
+    ? String(result.oddsOfficialTime).trim()
+    : '';
+  const postDisp = postRaw
+    ? formatCompactPostTimeForHistory(postRaw) || postRaw
+    : '';
   const footParts = [
     `全${result.totalHorses}頭${
-      result.oddsOfficialTime ? ` · 発走時刻 ${result.oddsOfficialTime}` : ''
+      postDisp ? ` · 発走時刻 ${postDisp}` : ''
     }`,
     isResult && resultUrl ? `結果: ${resultUrl}` : null,
   ].filter(Boolean);
   const footerLine = footParts.join(' · ');
 
   const slice = result.horses.slice(0, 18);
-  const horseLines = slice.map(horseBlock);
+  const horseLines = slice.map((h) => horseBlock(h, locale));
   if (result.horses.length > 18) {
     horseLines.push(
       `*※ 表示は先頭18頭まで（全${result.totalHorses}頭取得済み）*`,

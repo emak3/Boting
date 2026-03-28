@@ -3,7 +3,10 @@ import {
   normalizeRaceScrapedText,
   splitCourseAndPrize,
 } from './raceTextNormalize.mjs';
-import { shutubaHorseRowSelector } from './shutubaDom.mjs';
+import {
+  shutubaHorseRowSelector,
+  extractHorseIntervalRestText,
+} from './shutubaDom.mjs';
 import { withPuppeteerPage } from './puppeteerBrowserPool.mjs';
 
 /**
@@ -117,6 +120,7 @@ function parseHorseDataFromHtml($) {
       popularity: extractPopularity($row, $),
       jockey: extractJockey($row),
       trainer: extractTrainer($row),
+      intervalRestText: extractHorseIntervalRestText($row, $),
       excluded,
     };
 

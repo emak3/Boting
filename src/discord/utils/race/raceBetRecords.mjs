@@ -15,6 +15,7 @@ import { sumRefundBpForTickets } from './raceBetPayout.mjs';
 import { ticketCountForValidation } from './raceBetTickets.mjs';
 import { resolveRaceHoldYmdForPurchaseItem } from './raceHoldDate.mjs';
 import { inferNetkeibaOriginForPurchaseItem } from '../netkeiba/netkeibaUrls.mjs';
+import { formatCompactPostTimeForHistory } from '../bet/betPurchaseEmbed.mjs';
 
 /**
  * 中央など: race_id 先頭8桁が YYYYMMDD の12桁帯（例 202603220405）
@@ -119,6 +120,12 @@ export async function tryConfirmRacePurchase(userId, items) {
       it.oddsOfficialTime != null && String(it.oddsOfficialTime).trim()
         ? String(it.oddsOfficialTime).replace(/\s+/g, ' ').trim().slice(0, 128)
         : '';
+    const oddsTimeStored =
+      oddsTimeRaw === ''
+        ? ''
+        : (
+            formatCompactPostTimeForHistory(oddsTimeRaw) || oddsTimeRaw
+          ).slice(0, 128);
     normalized.push({
       raceId,
       raceTitle: it.raceTitle != null ? String(it.raceTitle).slice(0, 200) : '',
@@ -140,7 +147,7 @@ export async function tryConfirmRacePurchase(userId, items) {
       jraMultiOffered: it.jraMultiOffered === true,
       pickCompact:
         it.pickCompact != null ? String(it.pickCompact).slice(0, 500) : '',
-      oddsOfficialTime: oddsTimeRaw || null,
+      oddsOfficialTime: oddsTimeStored || null,
     });
   }
 

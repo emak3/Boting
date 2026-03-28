@@ -175,6 +175,7 @@ export async function renderBetFlowResumeView(interaction, { userId, raceId, flo
       actionRows: components.filter(Boolean),
       extraFlags: extraCard,
       utilityContext: { userId, flow },
+      locale: loc,
     }),
   );
 }
@@ -319,6 +320,7 @@ export default async function betFlowButtons(interaction) {
         actionRows: components.filter(Boolean),
         extraFlags,
         utilityContext: { userId, flow },
+        locale: loc,
       }),
     );
     return;
@@ -937,6 +939,7 @@ export default async function betFlowButtons(interaction) {
         actionRows: components.filter(Boolean),
         extraFlags,
         utilityContext: { userId, flow: flowNext },
+        locale: loc,
       }),
     );
     return;
@@ -1067,6 +1070,7 @@ export default async function betFlowButtons(interaction) {
           actionRows: components.filter(Boolean),
           extraFlags: extraRoot,
           utilityContext: { userId, flow: flowRoot },
+          locale: loc,
         }),
       );
       return;

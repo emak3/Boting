@@ -54,7 +54,10 @@ function betFlowPurchaseCoreLines(flow) {
   const selectionLine = flow?.purchase?.selectionLine ?? '（選択なし）';
   const totalYen = points * unitYen;
   const raceTitle = flow?.result?.raceInfo?.title || 'レース';
-  const oddsTime = flow?.result?.oddsOfficialTime;
+  const oddsTimeRaw = flow?.result?.oddsOfficialTime;
+  const oddsTime = oddsTimeRaw
+    ? oddsOfficialTimeForPurchaseDisplay(oddsTimeRaw)
+    : null;
   const raceId = flow?.result?.raceId;
   const isResult = !!flow?.result?.isResult;
   const origin = netkeibaOriginFromFlow(flow);
@@ -121,7 +124,10 @@ export function buildBetSlipBatchV2Headline({ items, locale = null }) {
     if (it.jraMulti === true) {
       lines.push(t('bet_slip_review.line_jra_multi', null, locale));
     }
-    if (it.oddsOfficialTime) lines.push(`発走時刻: ${it.oddsOfficialTime}`);
+    const postDisp = it.oddsOfficialTime
+      ? oddsOfficialTimeForPurchaseDisplay(it.oddsOfficialTime)
+      : '';
+    if (postDisp) lines.push(`発走時刻: ${postDisp}`);
     if (resultUrl) lines.push(`結果: ${resultUrl}`);
     lines.push(pickText);
     lines.push(formatBetSlipMoneyLine(it, { batchPipeWhenNormal: true }));
@@ -265,15 +271,110 @@ export function historyRaceHeadingLine(bet) {
   return `${v}${core}`;
 }
 
+function hasExplicitIsoTimezone(s) {
+  const t = String(s).trim();
+  if (!t) return false;
+  if (/Z\s*$/i.test(t)) return true;
+  return /[+-]\d{2}:?\d{2}\s*$/.test(t);
+}
+
+function jstHmFromUtcMs(ms) {
+  return new Intl.DateTimeFormat('en-GB', {
+    timeZone: 'Asia/Tokyo',
+    hour: '2-digit',
+    minute: '2-digit',
+    hour12: false,
+    hourCycle: 'h23',
+  }).format(new Date(ms));
+}
+
+/**
+ * netkeiba の official_datetime（UTC+Z や +09:00 付き）を JST の HH:MM に直しつつ、
+ * タイムゾーンなしの文字列は従来どおり先頭の H:MM を採用（サーバ TZ に依存させない）。
+ * @param {string | null | undefined} raw
+ * @returns {{ text: string, minutes: number | null }}
+ */
+function resolveRacePostTimeForHistory(raw) {
+  const s = String(raw ?? '').trim();
+  if (!s) return { text: '', minutes: null };
+
+  const bareCompact = s.replace(/\s/g, '');
+  if (/^\d{1,2}[:：]\d{2}$/.test(bareCompact)) {
+    const m = s.match(/(\d{1,2})\s*[:：]\s*(\d{2})/);
+    if (!m) return { text: '', minutes: null };
+    const h = parseInt(m[1], 10);
+    const min = parseInt(m[2], 10);
+    if (
+      !Number.isFinite(h) ||
+      !Number.isFinite(min) ||
+      h < 0 ||
+      h > 23 ||
+      min < 0 ||
+      min > 59
+    ) {
+      return { text: '', minutes: null };
+    }
+    return { text: `${m[1]}:${m[2]}`, minutes: h * 60 + min };
+  }
+
+  const ms = Date.parse(s);
+  if (!Number.isNaN(ms) && hasExplicitIsoTimezone(s)) {
+    const text = jstHmFromUtcMs(ms);
+    const pm = text.match(/^(\d{1,2}):(\d{2})$/);
+    if (!pm) return { text, minutes: null };
+    const h = parseInt(pm[1], 10);
+    const mi = parseInt(pm[2], 10);
+    if (
+      !Number.isFinite(h) ||
+      !Number.isFinite(mi) ||
+      h < 0 ||
+      h > 23 ||
+      mi < 0 ||
+      mi > 59
+    ) {
+      return { text, minutes: null };
+    }
+    return { text, minutes: h * 60 + mi };
+  }
+
+  const m = s.match(/(\d{1,2})\s*[:：]\s*(\d{2})/);
+  if (!m) return { text: '', minutes: null };
+  const h = parseInt(m[1], 10);
+  const min = parseInt(m[2], 10);
+  if (
+    !Number.isFinite(h) ||
+    !Number.isFinite(min) ||
+    h < 0 ||
+    h > 23 ||
+    min < 0 ||
+    min > 59
+  ) {
+    return { text: '', minutes: null };
+  }
+  return { text: `${m[1]}:${m[2]}`, minutes: h * 60 + min };
+}
+
 /**
  * netkeiba の official_datetime 等から発走/発走時刻の HH:MM を抜き出す（購入履歴の `10:20` 表記用）
  * @param {string | null | undefined} raw
  */
 export function formatCompactPostTimeForHistory(raw) {
-  const s = String(raw || '').trim();
+  return resolveRacePostTimeForHistory(raw).text;
+}
+
+/**
+ * 購入履歴の発走時刻ソート用（0–1439）。取れなければ null。
+ * @param {string | null | undefined} raw oddsOfficialTime
+ */
+export function postTimeMinutesFromOddsOfficialForHistory(raw) {
+  return resolveRacePostTimeForHistory(raw).minutes;
+}
+
+/** 購入確認・まとめ購入の「発走時刻」行用（JST の HH:MM に寄せ、無理なら生文字列） */
+function oddsOfficialTimeForPurchaseDisplay(raw) {
+  const s = String(raw ?? '').trim();
   if (!s) return '';
-  const m = s.match(/(\d{1,2})\s*[:：]\s*(\d{2})/);
-  return m ? `${m[1]}:${m[2]}` : '';
+  return formatCompactPostTimeForHistory(s) || s;
 }
 
 function isWakurenSlip(it) {
@@ -1073,7 +1174,10 @@ export function formatBetSlipItemBlock(it, i, locale = null) {
   lines.push(
     pickBlock || `${label}：（チケット情報がありません）`,
   );
-  if (it.oddsOfficialTime) lines.push(`発走時刻: ${it.oddsOfficialTime}`);
+  const postDisp = it.oddsOfficialTime
+    ? oddsOfficialTimeForPurchaseDisplay(it.oddsOfficialTime)
+    : '';
+  if (postDisp) lines.push(`発走時刻: ${postDisp}`);
   if (resultUrl) lines.push(`結果: ${resultUrl}`);
   lines.push('', formatBetSlipMoneyLine(it));
   return lines.join('\n');

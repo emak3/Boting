@@ -1,4 +1,5 @@
-# develop へ push するたび、main 向けの PR が無ければ自動で作成する。
+# develop へ push するたび、main 向けの PR が無ければ作成し、
+# 既に PR がある場合はタイトルを先端コミット件名に合わせて更新する（新コミットは PR に自動で載る）。
 # main は直接 push せず、PR マージのみにすると履歴と品質を揃えやすい。
 #
 # PR 作成で「GitHub Actions is not permitted to create or approve pull requests」と出る場合:
@@ -6,7 +7,7 @@
 #   「Allow GitHub Actions to create and approve pull requests」を有効にする。
 #   組織ポリシーで不可なら、Fine-grained PAT（Contents+Pull requests）を
 #   リポジトリシークレット PR_CREATE_TOKEN に入れ、下記 env がそれを使う。
-name: Open PR develop → main
+name: Sync PR develop → main
 
 on:
   push:
@@ -26,26 +27,30 @@ jobs:
           ref: develop
           fetch-depth: 1
 
-      - name: Ensure open pull request to main
+      - name: Ensure or update pull request to main
         env:
           # 既定トークンはリポジトリ設定で PR 作成が禁止されていることがある。そのときは PR_CREATE_TOKEN を設定。
           GH_TOKEN: ${{ secrets.PR_CREATE_TOKEN || github.token }}
         run: |
           set -e
-          count=$(gh pr list --repo "${{ github.repository }}" --base main --head develop --state open --json number --jq 'length')
-          if [ "$count" -gt 0 ]; then
-            echo "Open PR from develop to main already exists."
-            exit 0
-          fi
+          repo="${{ github.repository }}"
           title=$(git log -1 --pretty=%s)
           if [ -z "$title" ]; then
             title="develop → main"
           fi
-          body="develop の変更を main に取り込みます。レビュー後にマージしてください。"
-          jq -n \
-            --arg title "$title" \
-            --arg body "$body" \
-            --arg head "develop" \
-            --arg base "main" \
-            '{title:$title, body:$body, head:$head, base:$base}' | \
-            gh api "repos/${{ github.repository }}/pulls" --method POST --input -
+          count=$(gh pr list --repo "$repo" --base main --head develop --state open --json number --jq 'length')
+          if [ "$count" -eq 0 ]; then
+            body="develop の変更を main に取り込みます。レビュー後にマージしてください。"
+            jq -n \
+              --arg title "$title" \
+              --arg body "$body" \
+              --arg head "develop" \
+              --arg base "main" \
+              '{title:$title, body:$body, head:$head, base:$base}' | \
+              gh api "repos/$repo/pulls" --method POST --input -
+            exit 0
+          fi
+          pr_number=$(gh pr list --repo "$repo" --base main --head develop --state open --json number --jq '.[0].number')
+          jq -n --arg title "$title" '{title:$title}' | \
+            gh api "repos/$repo/pulls/$pr_number" --method PATCH --input -
+          echo "Updated PR #$pr_number title to match latest commit."

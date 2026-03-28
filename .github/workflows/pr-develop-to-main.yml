@@ -1,0 +1,33 @@
+# develop へ push するたび、main 向けの PR が無ければ自動で作成する。
+# main は直接 push せず、PR マージのみにすると履歴と品質を揃えやすい。
+name: Open PR develop → main
+
+on:
+  push:
+    branches:
+      - develop
+
+permissions:
+  contents: read
+  pull-requests: write
+
+jobs:
+  ensure-pr:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Ensure open pull request to main
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -e
+          count=$(gh pr list --repo "${{ github.repository }}" --base main --head develop --state open --json number --jq 'length')
+          if [ "$count" -gt 0 ]; then
+            echo "Open PR from develop to main already exists."
+            exit 0
+          fi
+          gh pr create \
+            --repo "${{ github.repository }}" \
+            --base main \
+            --head develop \
+            --title "develop → main" \
+            --body "develop の変更を main に取り込みます。レビュー後にマージしてください。"

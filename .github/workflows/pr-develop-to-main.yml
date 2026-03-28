@@ -1,5 +1,11 @@
 # develop へ push するたび、main 向けの PR が無ければ自動で作成する。
 # main は直接 push せず、PR マージのみにすると履歴と品質を揃えやすい。
+#
+# PR 作成で「GitHub Actions is not permitted to create or approve pull requests」と出る場合:
+#   リポジトリ Settings → Actions → General → Workflow permissions で
+#   「Allow GitHub Actions to create and approve pull requests」を有効にする。
+#   組織ポリシーで不可なら、Fine-grained PAT（Contents+Pull requests）を
+#   リポジトリシークレット PR_CREATE_TOKEN に入れ、下記 env がそれを使う。
 name: Open PR develop → main
 
 on:

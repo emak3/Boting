@@ -21,9 +21,14 @@ jobs:
   ensure-pr:
     runs-on: ubuntu-latest
     steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: develop
+          fetch-depth: 1
+
       - name: Ensure open pull request to main
         env:
-          GH_TOKEN: ${{ github.token }}
+          GH_TOKEN: ${{ secrets.PR_CREATE_TOKEN || github.token }}
         run: |
           set -e
           count=$(gh pr list --repo "${{ github.repository }}" --base main --head develop --state open --json number --jq 'length')
@@ -31,9 +36,15 @@ jobs:
             echo "Open PR from develop to main already exists."
             exit 0
           fi
-          gh pr create \
-            --repo "${{ github.repository }}" \
-            --base main \
-            --head develop \
-            --title "develop → main" \
-            --body "develop の変更を main に取り込みます。レビュー後にマージしてください。"
+          title=$(git log -1 --pretty=%s)
+          if [ -z "$title" ]; then
+            title="develop → main"
+          fi
+          body="develop の変更を main に取り込みます。レビュー後にマージしてください。"
+          jq -n \
+            --arg title "$title" \
+            --arg body "$body" \
+            --arg head "develop" \
+            --arg base "main" \
+            '{title:$title, body:$body, head:$head, base:$base}' | \
+            gh api "repos/${{ github.repository }}/pulls" --method POST --input -

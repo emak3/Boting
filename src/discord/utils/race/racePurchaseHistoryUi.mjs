@@ -55,17 +55,6 @@ export {
   buildRaceHistoryResultPickCustomId,
 } from '../../components/racePurchaseHistory/ids.mjs';
 
-/**
- * 前後日ナビ用フィルタ（findAdjacent と同じ扱い）。無効な customId は all として探索する。
- * @param {string} meetingFilter
- */
-function adjacentMeetingFilterForHistory(meetingFilter) {
-  const mf = String(meetingFilter || 'all').trim() || 'all';
-  if (mf === 'all') return 'all';
-  if (!/^\d{10}$/.test(mf)) return 'all';
-  return mf;
-}
-
 const HISTORY_ACCENT = 0x9b59b6;
 /**
  * Components V2: メッセージ内の Text Display 本文の合計が 4000 を超えると API エラーになる。
@@ -674,22 +663,23 @@ function meetingFilterOptionsFromBets(bets) {
  * @param {string | null} [locale]
  */
 function historyTitleLineForHoldYmd(holdYmd, locale) {
+  const hold = String(holdYmd || '').trim();
   const now = new Date();
   const todayYmd = getJstCalendarYmd(now);
   const tomorrowYmd = addJstCalendarDays(todayYmd, 1);
   const yesterdayYmd = addJstCalendarDays(todayYmd, -1);
-  if (holdYmd === todayYmd) {
+  if (hold === todayYmd) {
     return t('race_purchase_history.title.today', null, locale);
   }
-  if (holdYmd === tomorrowYmd) {
+  if (hold === tomorrowYmd) {
     return t('race_purchase_history.title.tomorrow', null, locale);
   }
-  if (holdYmd === yesterdayYmd) {
+  if (hold === yesterdayYmd) {
     return t('race_purchase_history.title.yesterday', null, locale);
   }
-  const y = holdYmd.slice(0, 4);
-  const mo = holdYmd.slice(4, 6);
-  const da = holdYmd.slice(6, 8);
+  const y = hold.slice(0, 4);
+  const mo = hold.slice(4, 6);
+  const da = hold.slice(6, 8);
   return t('race_purchase_history.title.date', { y, m: mo, d: da }, locale);
 }
 
@@ -717,30 +707,30 @@ export async function buildRacePurchaseHistoryV2Payload({
       ? String(periodKeyOpt).trim()
       : await resolveDefaultRaceHistoryHoldYmd(userId);
 
-  const adjacentMf = adjacentMeetingFilterForHistory(meetingFilter);
-  const [allBets, bpBalance, prevNavYmdRaw, nextNavYmdRaw] = await Promise.all([
+  const [allBets, bpBalance] = await Promise.all([
     fetchUserRaceBetsForRaceHoldDateYmd(userId, periodKey),
     getBalance(userId),
-    findAdjacentHoldYmdWithBets(userId, periodKey, -1, adjacentMf),
-    findAdjacentHoldYmdWithBets(userId, periodKey, 1, adjacentMf),
   ]);
   const ymd = `${periodKey.slice(0, 4)}-${periodKey.slice(4, 6)}-${periodKey.slice(6, 8)}`;
 
   const meetings = meetingFilterOptionsFromBets(allBets);
   const meetingKeys = new Set(meetings.map((m) => m.key));
-  let filterKey = String(meetingFilter || 'all').trim();
+  let filterKey = String(meetingFilter || 'all').trim() || 'all';
+  if (filterKey !== 'all' && !/^\d{10}$/.test(filterKey)) {
+    filterKey = 'all';
+  }
   if (filterKey !== 'all' && !meetingKeys.has(filterKey)) {
     filterKey = 'all';
   }
 
-  let prevNavYmd = prevNavYmdRaw;
-  let nextNavYmd = nextNavYmdRaw;
-  if (filterKey !== adjacentMf) {
-    [prevNavYmd, nextNavYmd] = await Promise.all([
-      findAdjacentHoldYmdWithBets(userId, periodKey, -1, filterKey),
-      findAdjacentHoldYmdWithBets(userId, periodKey, 1, filterKey),
-    ]);
-  }
+  const [prevNavYmd, nextNavYmdRaw] = await Promise.all([
+    findAdjacentHoldYmdWithBets(userId, periodKey, -1, filterKey),
+    findAdjacentHoldYmdWithBets(userId, periodKey, 1, filterKey),
+  ]);
+  /** 購入履歴は「これまでの開催日」中心。JST 暦の今日より後の開催日へは進めない（先行購入で明日が取れても混乱防止） */
+  const jstTodayYmd = getJstCalendarYmd(new Date());
+  const nextNavYmd =
+    nextNavYmdRaw != null && nextNavYmdRaw > jstTodayYmd ? null : nextNavYmdRaw;
 
   const bets =
     filterKey === 'all'

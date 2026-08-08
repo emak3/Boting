@@ -28,7 +28,7 @@ function normalizeYmd(ymd) {
 }
 
 function hmFromText(text) {
-  const m = String(text || '').match(/(\d{1,2})\s*[:：]\s*(\d{2})/);
+  const m = String(text || '').match(/(\d{1,2})\s*[:\uFF1A]\s*(\d{2})/);
   if (!m) return null;
   const h = Number.parseInt(m[1], 10);
   const mi = Number.parseInt(m[2], 10);
@@ -42,14 +42,51 @@ function hasExplicitTimezone(text) {
   return /Z$/i.test(s) || /[+-]\d{2}:?\d{2}$/.test(s);
 }
 
-export function discordTimestampFromJstYmdHm(ymd, hmText, style = 't') {
+function ymdFromText(text) {
+  const s = String(text || '');
+  const bare = s.match(/\b(\d{8})\b/);
+  if (bare) return normalizeYmd(bare[1]);
+  const m = s.match(/(\d{4})\D+(\d{1,2})\D+(\d{1,2})/);
+  if (!m) return '';
+  const ymd = `${m[1]}${String(m[2]).padStart(2, '0')}${String(m[3]).padStart(2, '0')}`;
+  return normalizeYmd(ymd);
+}
+
+export function dateFromJstYmdHm(ymd, hmText) {
   const day = normalizeYmd(ymd);
   const hm = hmFromText(hmText);
-  if (!day || !hm) return '';
+  if (!day || !hm) return null;
   const iso =
     `${day.slice(0, 4)}-${day.slice(4, 6)}-${day.slice(6, 8)}` +
     `T${String(hm.h).padStart(2, '0')}:${String(hm.mi).padStart(2, '0')}:00+09:00`;
-  return discordTimestamp(iso, style);
+  const d = new Date(iso);
+  return Number.isNaN(d.getTime()) ? null : d;
+}
+
+export function dateFromJstYmd(ymd) {
+  const day = normalizeYmd(ymd);
+  if (!day) return null;
+  const iso = `${day.slice(0, 4)}-${day.slice(4, 6)}-${day.slice(6, 8)}T00:00:00+09:00`;
+  const d = new Date(iso);
+  return Number.isNaN(d.getTime()) ? null : d;
+}
+
+export function dateFromRaceTime({
+  raceId = '',
+  holdYmd = '',
+  timeText = '',
+} = {}) {
+  return dateFromJstYmdHm(normalizeYmd(holdYmd) || ymdFromRaceId(raceId), timeText);
+}
+
+export function discordTimestampFromJstYmdHm(ymd, hmText, style = 't') {
+  const d = dateFromJstYmdHm(ymd, hmText);
+  return d ? discordTimestamp(d, style) : '';
+}
+
+export function discordTimestampFromJstYmd(ymd, style = 'D') {
+  const d = dateFromJstYmd(ymd);
+  return d ? discordTimestamp(d, style) : '';
 }
 
 export function discordTimestampFromRaceTime({
@@ -80,5 +117,45 @@ export function discordTimestampFromOddsOfficialTime(
     holdYmd,
     timeText: s,
     style,
+  });
+}
+
+export function discordTimestampFromRaceInfoDate(raw, style = 't') {
+  const s = String(raw || '').trim();
+  if (!s) return '';
+  const ymd = ymdFromText(s);
+  if (!ymd) return '';
+  return discordTimestampFromJstYmdHm(ymd, s, style);
+}
+
+export function replaceRaceInfoDateTimesWithDiscordTimestamps(raw, style = 't') {
+  const s = String(raw || '');
+  if (!s) return '';
+  const ymd = ymdFromText(s);
+  if (!ymd) return s;
+  return s.replace(/(\d{1,2}\s*[:\uFF1A]\s*\d{2})/g, (hm) => {
+    return discordTimestampFromJstYmdHm(ymd, hm, style) || hm;
+  });
+}
+
+export function replaceDateAndTimeWithDiscordTimestamps(raw, {
+  dateStyle = 'D',
+  timeStyle = 't',
+} = {}) {
+  let s = String(raw || '');
+  if (!s) return '';
+  const ymd = ymdFromText(s);
+  if (!ymd) return s;
+
+  const dateTs = discordTimestampFromJstYmd(ymd, dateStyle);
+  if (dateTs) {
+    s = s.replace(
+      /\b\d{8}\b|(\d{4})\D+(\d{1,2})\D+(\d{1,2})(?:\u65E5)?/,
+      dateTs,
+    );
+  }
+
+  return s.replace(/(\d{1,2}\s*[:\uFF1A]\s*\d{2})/g, (hm) => {
+    return discordTimestampFromJstYmdHm(ymd, hm, timeStyle) || hm;
   });
 }

@@ -1,7 +1,10 @@
 import { wakuUmaEmoji, jogaiEmoji } from './raceNumberEmoji.mjs';
 import { netkeibaResultUrl } from '../netkeiba/netkeibaUrls.mjs';
 import { formatCompactPostTimeForHistory } from '../bet/betPurchaseEmbed.mjs';
-import { discordTimestampFromOddsOfficialTime } from '../shared/discordTimestamp.mjs';
+import {
+  discordTimestampFromOddsOfficialTime,
+  replaceDateAndTimeWithDiscordTimestamps,
+} from '../shared/discordTimestamp.mjs';
 
 /** @param {{ raceInfo?: object, horses: object[], totalHorses: number, oddsOfficialTime?: string }} result */
 export function buildRaceCardEmbed(result) {
@@ -23,6 +26,7 @@ export function buildRaceCardEmbed(result) {
   const courseBlock = ri.prizeMoney
     ? `**コース:** ${ri.course || 'N/A'}\n${ri.prizeMoney}`
     : `**コース:** ${ri.course || 'N/A'}`;
+  const raceDateText = replaceDateAndTimeWithDiscordTimestamps(ri.date) || 'N/A';
   const postRaw = result.oddsOfficialTime
     ? String(result.oddsOfficialTime).trim()
     : '';
@@ -37,7 +41,7 @@ export function buildRaceCardEmbed(result) {
   const embed = {
     color: isResult ? 0xed4245 : 0x0099ff,
     title: `${isResult ? '🏁' : '🐎'} ${ri.title || 'レース情報'}`,
-    description: `**日程:** ${ri.date || 'N/A'}\n${courseBlock}`,
+    description: `**日程:** ${raceDateText}\n${courseBlock}`,
     fields: result.horses.slice(0, 18).map((horse) => {
       const place = horse.placeOddsMin ? ` / 複勝〜${horse.placeOddsMin}` : '';
       const ninki = horse.popularity && horse.popularity !== 'N/A' ? ` | ${horse.popularity}人気` : '';

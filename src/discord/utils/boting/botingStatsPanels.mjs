@@ -31,6 +31,7 @@ import { t, normalizeLocale } from '../../../i18n/index.mjs';
 import { renderAnnualStatsChartPng } from './annualStatsChart.mjs';
 import { getJstCalendarYear } from '../challenge/jstCalendar.mjs';
 import { botingEmoji } from './botingEmojis.mjs';
+import { discordTimestampFromJstYmd } from '../shared/discordTimestamp.mjs';
 
 export const BOTING_ANNUAL_STATS_NAV_PREFIX = 'boting_annual_nav';
 
@@ -269,7 +270,7 @@ export async function buildWeeklyChallengePanelPayload(opts) {
             'boting_stats.weekly.claim_line',
             {
               label: weeklyChallengeKeyLabel(g.challengeKey, loc),
-              week: g.weekMondayYmd,
+              week: discordTimestampFromJstYmd(g.weekMondayYmd, 'D') || g.weekMondayYmd,
               bp: formatBpAmount(g.bp),
             },
             loc,

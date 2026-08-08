@@ -4,6 +4,7 @@ import { handleEncoding } from './utils/encoding.mjs';
 import { axiosKeepAlive } from './utils/httpAgents.mjs';
 import { mapWithConcurrency } from '../../utils/concurrency/mapWithConcurrency.mjs';
 import { readThroughScheduleCache } from './cache/netkeibaScheduleCache.mjs';
+import { dateFromRaceTime } from '../../discord/utils/shared/discordTimestamp.mjs';
 
 const BASE = 'https://race.netkeiba.com';
 export const NAR_BASE = 'https://nar.netkeiba.com';
@@ -327,20 +328,18 @@ export function getRaceSalesStatus(race, kaisaiDateYmd, now = new Date()) {
   if (race.isResult) {
     return { code: 'result_final', closed: true };
   }
-  const tm = race.timeText.match(/(\d{1,2})\s*:\s*(\d{2})/);
-  if (!tm) {
+  if (!String(race?.timeText || '').match(/(\d{1,2})\s*[:\uFF1A]\s*(\d{2})/)) {
     return { code: 'time_unknown', closed: false };
   }
-  const hh = parseInt(tm[1], 10);
-  const mm = parseInt(tm[2], 10);
-  const y = parseInt(kaisaiDateYmd.slice(0, 4), 10);
-  const mo = parseInt(kaisaiDateYmd.slice(4, 6), 10);
-  const d = parseInt(kaisaiDateYmd.slice(6, 8), 10);
-  const postIso = `${y}-${String(mo).padStart(2, '0')}-${String(d).padStart(2, '0')}T${String(hh).padStart(2, '0')}:${String(mm).padStart(2, '0')}:00+09:00`;
-  const postMs = Date.parse(postIso);
-  if (Number.isNaN(postMs)) {
+  const postDate = dateFromRaceTime({
+    raceId: race?.raceId,
+    holdYmd: kaisaiDateYmd,
+    timeText: race?.timeText,
+  });
+  if (!postDate) {
     return { code: 'time_parse_error', closed: false };
   }
+  const postMs = postDate.getTime();
   const closeMs = postMs - 2 * 60 * 1000;
   const nowMs = now.getTime();
   if (nowMs >= postMs) {
@@ -360,17 +359,12 @@ export function getRaceSalesStatus(race, kaisaiDateYmd, now = new Date()) {
  */
 export function getRaceBettingCloseDeadlineMs(race, kaisaiDateYmd) {
   if (race?.isResult) return null;
-  const tm = String(race?.timeText || '').match(/(\d{1,2})\s*:\s*(\d{2})/);
-  if (!tm) return null;
-  const hh = parseInt(tm[1], 10);
-  const mm = parseInt(tm[2], 10);
-  const y = parseInt(kaisaiDateYmd.slice(0, 4), 10);
-  const mo = parseInt(kaisaiDateYmd.slice(4, 6), 10);
-  const d = parseInt(kaisaiDateYmd.slice(6, 8), 10);
-  const postIso = `${y}-${String(mo).padStart(2, '0')}-${String(d).padStart(2, '0')}T${String(hh).padStart(2, '0')}:${String(mm).padStart(2, '0')}:00+09:00`;
-  const postMs = Date.parse(postIso);
-  if (Number.isNaN(postMs)) return null;
-  return postMs - 2 * 60 * 1000;
+  const postDate = dateFromRaceTime({
+    raceId: race?.raceId,
+    holdYmd: kaisaiDateYmd,
+    timeText: race?.timeText,
+  });
+  return postDate ? postDate.getTime() - 2 * 60 * 1000 : null;
 }
 
 export async function fetchTodayVenuesAndRaces() {

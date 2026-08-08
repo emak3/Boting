@@ -13,7 +13,7 @@ title:
   today: '**今日の購入履歴**'
   tomorrow: '**明日の購入履歴**'
   yesterday: '**昨日の購入履歴**'
-  date: '**{{y}}-{{m}}-{{d}} 開催の購入履歴**'
+  date: '**{{date}} 開催の購入履歴**'
 summary:
   target_line: '対象: **{{ymd}}** 開催（中央は開催日を保存、地方はレースID先頭の日付でも照合。前日購入分も含みます）'
   bp_balance: '現在のBP残高 **{{amount}}** bp'

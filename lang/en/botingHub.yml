@@ -20,7 +20,7 @@ daily:
   streak_label: "**Current streak**"
   streak_none: "—"
   streak_bonus: "**{{n}}** days (next is day **{{next}}** bonus)"
-  foot_jst: "*Daily resets every day at **08:00 JST**.*"
+  foot_jst: "*Daily resets at {{time}} .*"
   foot_ledger: "*Use **Recent ledger** for the latest transactions.*"
 daily_success_banner: "✅ **+{{granted}}** bp ({{kind}})\nBalance: **{{balance}}** bp"
 errors:

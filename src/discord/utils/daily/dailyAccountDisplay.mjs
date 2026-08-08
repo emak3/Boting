@@ -1,6 +1,8 @@
 import { ContainerBuilder } from 'discord.js';
 import { formatBpAmount } from '../bp/bpFormat.mjs';
 import { t } from '../../../i18n/index.mjs';
+import { discordTimestamp } from '../shared/discordTimestamp.mjs';
+import { getNextDailyWindowStartDate } from '../user/userPointsStore.mjs';
 
 const ACCENT_CLAIMED = 0xed4245;
 const ACCENT_CLAIMABLE = 0x2ecc71;
@@ -30,6 +32,8 @@ export function buildDailyAccountV2Container(view, opts) {
           locale,
         )
       : t('boting_hub.daily.streak_none', null, locale);
+  const nextResetAt = view.nextClaimAt || getNextDailyWindowStartDate(view.currentPeriodKey);
+  const resetTime = discordTimestamp(nextResetAt, 't');
 
   const parts = [];
   if (successBanner && String(successBanner).trim()) {
@@ -42,7 +46,7 @@ export function buildDailyAccountV2Container(view, opts) {
   parts.push('');
   parts.push(`${t('boting_hub.daily.streak_label', null, locale)}  ${streakLine}`);
   parts.push('');
-  parts.push(t('boting_hub.daily.foot_jst', null, locale));
+  parts.push(t('boting_hub.daily.foot_jst', { time: resetTime }, locale));
   parts.push(t('boting_hub.daily.foot_ledger', null, locale));
 
   const body = parts.join('\n').slice(0, 3900);

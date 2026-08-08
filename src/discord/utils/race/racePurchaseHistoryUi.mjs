@@ -44,7 +44,10 @@ import {
   historyMeetingFilterRow,
   historyMeetingSelectMaxVenues,
 } from '../../components/racePurchaseHistory/nav.mjs';
-import { discordTimestampFromOddsOfficialTime } from '../shared/discordTimestamp.mjs';
+import {
+  discordTimestampFromJstYmd,
+  discordTimestampFromOddsOfficialTime,
+} from '../shared/discordTimestamp.mjs';
 
 export {
   stripRaceHistoryBpCtx,
@@ -697,7 +700,8 @@ function historyTitleLineForHoldYmd(holdYmd, locale) {
   const y = hold.slice(0, 4);
   const mo = hold.slice(4, 6);
   const da = hold.slice(6, 8);
-  return t('race_purchase_history.title.date', { y, m: mo, d: da }, locale);
+  const date = discordTimestampFromJstYmd(hold, 'D') || `${y}-${mo}-${da}`;
+  return t('race_purchase_history.title.date', { y, m: mo, d: da, date }, locale);
 }
 
 /**
@@ -728,7 +732,8 @@ export async function buildRacePurchaseHistoryV2Payload({
     fetchUserRaceBetsForRaceHoldDateYmd(userId, periodKey),
     getBalance(userId),
   ]);
-  const ymd = `${periodKey.slice(0, 4)}-${periodKey.slice(4, 6)}-${periodKey.slice(6, 8)}`;
+  const ymd = discordTimestampFromJstYmd(periodKey, 'D') ||
+    `${periodKey.slice(0, 4)}-${periodKey.slice(4, 6)}-${periodKey.slice(6, 8)}`;
 
   const meetings = meetingFilterOptionsFromBets(allBets);
   const meetingKeys = new Set(meetings.map((m) => m.key));

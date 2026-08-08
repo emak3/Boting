@@ -21,7 +21,7 @@ daily:
   streak_label: "**いまの連続記録**"
   streak_none: "—"
   streak_bonus: "**{{n}}** 日（次の日は {{next}} 日目のボーナス）"
-  foot_jst: "*日次は日本時間 毎日 8:00 で切り替わります*"
+  foot_jst: "*次は {{time}} に受け取れます。*"
   foot_ledger: "*直近の収支は **直近の収支** ボタンから表示できます。*"
 daily_success_banner: "✅ **+{{granted}}** bp（{{kind}}）\n残高: **{{balance}}** bp"
 errors:

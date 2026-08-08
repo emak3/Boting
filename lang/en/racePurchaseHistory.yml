@@ -12,7 +12,7 @@ title:
   today: "**Today's purchase history**"
   tomorrow: "**Tomorrow's purchase history**"
   yesterday: "**Yesterday's purchase history**"
-  date: '**Purchase history — {{y}}-{{m}}-{{d}}**'
+  date: '**Purchase history — {{date}}**'
 summary:
   target_line: 'Target: **{{ymd}}** (JRA uses saved meet date; NAR may match race ID date. Includes prior-day purchases.)'
   bp_balance: 'BP balance **{{amount}}** bp'

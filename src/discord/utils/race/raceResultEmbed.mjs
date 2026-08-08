@@ -5,6 +5,7 @@ import {
   formatWakurenNumsWithEmoji,
 } from './raceNumberEmoji.mjs';
 import { netkeibaResultUrl } from '../netkeiba/netkeibaUrls.mjs';
+import { replaceDateAndTimeWithDiscordTimestamps } from '../shared/discordTimestamp.mjs';
 
 function buildHorseNumToFrameMap(horses) {
   const horseNumToFrame = new Map();
@@ -109,8 +110,9 @@ export function buildRaceResultEmbeds(parsed) {
   const url = raceId ? netkeibaResultUrl(raceId, origin) : null;
 
   const ri = parsed.raceInfo || {};
+  const raceDateText = replaceDateAndTimeWithDiscordTimestamps(ri.date) || 'N/A';
   const descLines = [
-    `📅 **日程** ${ri.date || 'N/A'}`,
+    `📅 **日程** ${raceDateText}`,
     `🏟 **コース** ${ri.course || 'N/A'}`,
   ];
   if (ri.prizeMoney) descLines.push(ri.prizeMoney);
@@ -170,6 +172,7 @@ const V2_RESULT_TEXT_MAX = 3900;
  */
 export function buildRaceResultV2Sections(parsed) {
   const ri = parsed.raceInfo || {};
+  const raceDateText = replaceDateAndTimeWithDiscordTimestamps(ri.date) || 'N/A';
   const raceId = parsed?.raceId;
   const origin = parsed?.netkeibaOrigin === 'nar' ? 'nar' : 'jra';
   const url = raceId ? netkeibaResultUrl(raceId, origin) : null;
@@ -179,7 +182,7 @@ export function buildRaceResultV2Sections(parsed) {
   const headLines = [
     `🏁 **${ri.title || 'レース結果'}**`,
     '',
-    `📅 ${ri.date || 'N/A'}`,
+    `📅 ${raceDateText}`,
     `🏟 ${ri.course || 'N/A'}`,
   ];
   if (ri.prizeMoney) headLines.push(ri.prizeMoney);

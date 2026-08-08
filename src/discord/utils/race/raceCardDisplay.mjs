@@ -13,7 +13,10 @@ import { maybeInsertRaceBetUtilityRow } from '../bet/betSlipViewUi.mjs';
 import { buildBotingMenuBackRow } from '../boting/botingBackButton.mjs';
 import { t, getDefaultLocale } from '../../../i18n/index.mjs';
 import { formatCompactPostTimeForHistory } from '../bet/betPurchaseEmbed.mjs';
-import { discordTimestampFromOddsOfficialTime } from '../shared/discordTimestamp.mjs';
+import {
+  discordTimestampFromOddsOfficialTime,
+  replaceDateAndTimeWithDiscordTimestamps,
+} from '../shared/discordTimestamp.mjs';
 
 /** Discord Display Components: 全 Text Display 合計 4000 文字まで */
 export const V2_TEXT_TOTAL_MAX = 3900;
@@ -158,7 +161,8 @@ export function buildRaceCardV2Payload({
   const courseBlock = ri.prizeMoney
     ? `**コース:** ${ri.course || 'N/A'}\n${ri.prizeMoney}`
     : `**コース:** ${ri.course || 'N/A'}`;
-  const meta = `**日程:** ${ri.date || 'N/A'}\n${courseBlock}`;
+  const raceDateText = replaceDateAndTimeWithDiscordTimestamps(ri.date) || 'N/A';
+  const meta = `**日程:** ${raceDateText}\n${courseBlock}`;
   const postRaw = result.oddsOfficialTime
     ? String(result.oddsOfficialTime).trim()
     : '';

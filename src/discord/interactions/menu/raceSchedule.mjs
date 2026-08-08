@@ -97,6 +97,7 @@ import {
 } from '../../utils/race/raceHubQuickPick.mjs';
 import { formatBpAmount } from '../../utils/bp/bpFormat.mjs';
 import { v2ExtraFlags } from '../../utils/shared/interactionResponse.mjs';
+import { discordTimestampFromJstYmd } from '../../utils/shared/discordTimestamp.mjs';
 import {
   RACE_MENU_ID,
   VENUE_MENU_ID,
@@ -118,6 +119,10 @@ function raceCardPayload(interaction, opts) {
     locale: loc,
     utilityContext,
   });
+}
+
+function scheduleDateDisplay(ymd) {
+  return discordTimestampFromJstYmd(ymd, 'D') || String(ymd || '');
 }
 
 const BET_TYPE_MENU_PREFIX = 'race_bet_type|'; // raceId is appended after |
@@ -1249,7 +1254,11 @@ export default async function raceScheduleMenu(interaction) {
           await interaction.editReply(
             buildTextAndRowsV2Payload({
               headline: noTabForDate
-                ? t('race_schedule.errors.jra_no_meeting_date', { date: interactionYmd }, loc)
+                ? t(
+                    'race_schedule.errors.jra_no_meeting_date',
+                    { date: scheduleDateDisplay(interactionYmd) },
+                    loc,
+                  )
                 : t('race_schedule.errors.jra_no_races_post_date', null, loc),
               actionRows: [],
               extraFlags: v2ExtraFlags(interaction),
@@ -1466,7 +1475,7 @@ export default async function raceScheduleMenu(interaction) {
         '',
         description,
         '',
-        t('race_schedule.lines.race_list_kaisai', { date: kaisaiDate }, loc),
+        t('race_schedule.lines.race_list_kaisai', { date: scheduleDateDisplay(kaisaiDate) }, loc),
       ].join('\n');
 
       const vs = venueSelectionStore.get(userId);

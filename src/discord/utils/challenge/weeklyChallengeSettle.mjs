@@ -13,6 +13,7 @@ import {
 } from './jstCalendar.mjs';
 import { getWeeklyChallengeConfig } from './weeklyChallengeConfig.mjs';
 import { normalizeLocale, t as tr } from '../../../i18n/index.mjs';
+import { discordTimestampFromJstYmd } from '../shared/discordTimestamp.mjs';
 
 /** @type {Record<string, string>} */
 export const WEEKLY_CHALLENGE_LABEL_JA = {
@@ -23,6 +24,8 @@ export const WEEKLY_CHALLENGE_LABEL_JA = {
 };
 
 function fmtYmdForWeeklyRange(ymd8, locale) {
+  const ts = discordTimestampFromJstYmd(ymd8, 'D');
+  if (ts) return ts;
   const y = ymd8.slice(0, 4);
   const mo = ymd8.slice(4, 6);
   const da = ymd8.slice(6, 8);

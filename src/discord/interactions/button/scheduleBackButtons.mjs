@@ -28,6 +28,7 @@ import {
   venueQuickPickBodySuffix,
 } from '../../utils/race/raceHubQuickPick.mjs';
 import { v2ExtraFlags } from '../../utils/shared/interactionResponse.mjs';
+import { discordTimestampFromJstYmd } from '../../utils/shared/discordTimestamp.mjs';
 import { resolveLocaleFromInteraction, t } from '../../../i18n/index.mjs';
 import { raceSalesStatusDetailLabel } from '../../utils/race/raceSalesStatusLabels.mjs';
 import {
@@ -38,6 +39,10 @@ import { scheduleRaceTimeDisplay } from '../../utils/race/raceScheduleTimeDispla
 
 const VENUE_BACK_PREFIX = 'race_sched_back_to_venue|';
 const RACE_LIST_BACK_PREFIX = 'race_sched_back_to_race_list|';
+
+function scheduleDateDisplay(ymd) {
+  return discordTimestampFromJstYmd(ymd, 'D') || String(ymd || '');
+}
 
 /**
  * 二重クリック・期限切れ (10062) で落ちないようにする。
@@ -281,7 +286,11 @@ export default async function scheduleBackButtons(interaction) {
         '',
         description,
         '',
-        t('race_schedule.lines.race_list_kaisai', { date: kaisaiDateYmd }, loc),
+        t(
+          'race_schedule.lines.race_list_kaisai',
+          { date: scheduleDateDisplay(kaisaiDateYmd) },
+          loc,
+        ),
       ].join('\n');
 
       await interaction.editReply(
@@ -355,7 +364,11 @@ export default async function scheduleBackButtons(interaction) {
       '',
       description,
       '',
-      t('race_schedule.lines.race_list_kaisai', { date: kaisaiDateYmd }, loc),
+      t(
+        'race_schedule.lines.race_list_kaisai',
+        { date: scheduleDateDisplay(kaisaiDateYmd) },
+        loc,
+      ),
     ].join('\n');
 
     await interaction.editReply(

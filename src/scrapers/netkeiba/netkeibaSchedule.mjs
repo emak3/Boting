@@ -3,6 +3,7 @@ import * as cheerio from 'cheerio';
 import { handleEncoding } from './utils/encoding.mjs';
 import { axiosKeepAlive } from './utils/httpAgents.mjs';
 import { mapWithConcurrency } from '../../utils/concurrency/mapWithConcurrency.mjs';
+import { readThroughScheduleCache } from './cache/netkeibaScheduleCache.mjs';
 
 const BASE = 'https://race.netkeiba.com';
 export const NAR_BASE = 'https://nar.netkeiba.com';
@@ -188,25 +189,35 @@ export function parseJraKaisaiTabForYmd(html, desiredYmd) {
  */
 export async function fetchVenuesAndRacesForJstYmd(desiredYmd) {
   return memoSchedule(`jra:venuesJst:${desiredYmd}`, SCHEDULE_TTL_MS, async () => {
-    const url = `${BASE}/top/race_list_get_date_list.html?encoding=UTF-8`;
-    let html = await fetchHtml(url);
-    let parsed = parseJraKaisaiTabForYmd(html, desiredYmd);
-    if (!parsed) {
-      await new Promise((r) => setTimeout(r, 400));
-      html = await fetchHtml(url);
-      parsed = parseJraKaisaiTabForYmd(html, desiredYmd);
-    }
-    if (!parsed) {
-      return {
-        venues: [],
+    return readThroughScheduleCache(
+      {
+        cacheKey: `jra:venuesJst:${desiredYmd}`,
+        dataType: 'venuesForDate',
+        source: 'jra',
         kaisaiDateYmd: desiredYmd,
-        currentGroup: null,
-        noTabForDate: true,
-      };
-    }
-    const { kaisaiDate, currentGroup } = parsed;
-    const subHtml = await fetchRaceListSub(kaisaiDate, currentGroup);
-    return { ...parseRaceListSub(subHtml, kaisaiDate), currentGroup };
+      },
+      async () => {
+        const url = `${BASE}/top/race_list_get_date_list.html?encoding=UTF-8`;
+        let html = await fetchHtml(url);
+        let parsed = parseJraKaisaiTabForYmd(html, desiredYmd);
+        if (!parsed) {
+          await new Promise((r) => setTimeout(r, 400));
+          html = await fetchHtml(url);
+          parsed = parseJraKaisaiTabForYmd(html, desiredYmd);
+        }
+        if (!parsed) {
+          return {
+            venues: [],
+            kaisaiDateYmd: desiredYmd,
+            currentGroup: null,
+            noTabForDate: true,
+          };
+        }
+        const { kaisaiDate, currentGroup } = parsed;
+        const subHtml = await fetchRaceListSub(kaisaiDate, currentGroup);
+        return { ...parseRaceListSub(subHtml, kaisaiDate), currentGroup };
+      },
+    );
   });
 }
 
@@ -236,11 +247,22 @@ export async function fetchActiveKaisaiTab() {
 export async function fetchRaceListSub(kaisaiDate, currentGroup) {
   const key = `jra:list:${kaisaiDate}:${currentGroup}`;
   return memoSchedule(key, SCHEDULE_TTL_MS, async () => {
-    const q = new URLSearchParams({
-      kaisai_date: kaisaiDate,
-      current_group: currentGroup,
-    });
-    return fetchHtml(`${BASE}/top/race_list_sub.html?${q.toString()}`);
+    return readThroughScheduleCache(
+      {
+        cacheKey: key,
+        dataType: 'raceListHtml',
+        source: 'jra',
+        kaisaiDateYmd: kaisaiDate,
+        currentGroup,
+      },
+      async () => {
+        const q = new URLSearchParams({
+          kaisai_date: kaisaiDate,
+          current_group: currentGroup,
+        });
+        return fetchHtml(`${BASE}/top/race_list_sub.html?${q.toString()}`);
+      },
+    );
   });
 }
 
@@ -560,9 +582,20 @@ export async function fetchNarActiveKaisaiTab() {
 export async function fetchNarRaceListSub(kaisaiDate, kaisaiId = null) {
   const key = `nar:list:${kaisaiDate}:${kaisaiId ?? ''}`;
   return memoSchedule(key, SCHEDULE_TTL_MS, async () => {
-    const q = new URLSearchParams({ kaisai_date: kaisaiDate, rf: 'race_list' });
-    if (kaisaiId) q.set('kaisai_id', kaisaiId);
-    return fetchNarHtml(`${NAR_BASE}/top/race_list_sub.html?${q.toString()}`);
+    return readThroughScheduleCache(
+      {
+        cacheKey: key,
+        dataType: 'raceListHtml',
+        source: 'nar',
+        kaisaiDateYmd: kaisaiDate,
+        kaisaiId,
+      },
+      async () => {
+        const q = new URLSearchParams({ kaisai_date: kaisaiDate, rf: 'race_list' });
+        if (kaisaiId) q.set('kaisai_id', kaisaiId);
+        return fetchNarHtml(`${NAR_BASE}/top/race_list_sub.html?${q.toString()}`);
+      },
+    );
   });
 }
 
@@ -646,34 +679,44 @@ export function parseNarRaceListSubToVenue(html, kaisaiDateYmd) {
  */
 export async function fetchNarVenuesForDate(kaisaiDate) {
   return memoSchedule(`nar:venues:${kaisaiDate}`, SCHEDULE_TTL_MS, async () => {
-    const html0 = await fetchNarRaceListSub(kaisaiDate);
-    const provinces = extractNarProvinceKaisaiIds(html0);
-    const venues = [];
-    const loaded = new Set();
+    return readThroughScheduleCache(
+      {
+        cacheKey: `nar:venues:${kaisaiDate}`,
+        dataType: 'venuesForDate',
+        source: 'nar',
+        kaisaiDateYmd: kaisaiDate,
+      },
+      async () => {
+        const html0 = await fetchNarRaceListSub(kaisaiDate);
+        const provinces = extractNarProvinceKaisaiIds(html0);
+        const venues = [];
+        const loaded = new Set();
 
-    const v0 = parseNarRaceListSubToVenue(html0, kaisaiDate);
-    if (v0?.races?.length) {
-      venues.push(v0);
-      loaded.add(v0.kaisaiId);
-    }
+        const v0 = parseNarRaceListSubToVenue(html0, kaisaiDate);
+        if (v0?.races?.length) {
+          venues.push(v0);
+          loaded.add(v0.kaisaiId);
+        }
 
-    const toFetch = provinces.filter(({ kaisaiId }) => !loaded.has(kaisaiId));
-    const fetched = await mapWithConcurrency(
-      toFetch,
-      NAR_VENUE_FETCH_CONCURRENCY,
-      ({ kaisaiId }) =>
-        fetchNarRaceListSub(kaisaiDate, kaisaiId).then((html) => ({ kaisaiId, html })),
+        const toFetch = provinces.filter(({ kaisaiId }) => !loaded.has(kaisaiId));
+        const fetched = await mapWithConcurrency(
+          toFetch,
+          NAR_VENUE_FETCH_CONCURRENCY,
+          ({ kaisaiId }) =>
+            fetchNarRaceListSub(kaisaiDate, kaisaiId).then((html) => ({ kaisaiId, html })),
+        );
+
+        for (const { kaisaiId, html } of fetched) {
+          const v = parseNarRaceListSubToVenue(html, kaisaiDate);
+          if (v?.races?.length && !loaded.has(v.kaisaiId)) {
+            venues.push(v);
+            loaded.add(v.kaisaiId);
+          }
+        }
+
+        return { kaisaiDateYmd: kaisaiDate, venues };
+      },
     );
-
-    for (const { kaisaiId, html } of fetched) {
-      const v = parseNarRaceListSubToVenue(html, kaisaiDate);
-      if (v?.races?.length && !loaded.has(v.kaisaiId)) {
-        venues.push(v);
-        loaded.add(v.kaisaiId);
-      }
-    }
-
-    return { kaisaiDateYmd: kaisaiDate, venues };
   });
 }
 

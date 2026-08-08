@@ -13,6 +13,7 @@ import { maybeInsertRaceBetUtilityRow } from '../bet/betSlipViewUi.mjs';
 import { buildBotingMenuBackRow } from '../boting/botingBackButton.mjs';
 import { t, getDefaultLocale } from '../../../i18n/index.mjs';
 import { formatCompactPostTimeForHistory } from '../bet/betPurchaseEmbed.mjs';
+import { discordTimestampFromOddsOfficialTime } from '../shared/discordTimestamp.mjs';
 
 /** Discord Display Components: 全 Text Display 合計 4000 文字まで */
 export const V2_TEXT_TOTAL_MAX = 3900;
@@ -162,7 +163,12 @@ export function buildRaceCardV2Payload({
     ? String(result.oddsOfficialTime).trim()
     : '';
   const postDisp = postRaw
-    ? formatCompactPostTimeForHistory(postRaw) || postRaw
+    ? discordTimestampFromOddsOfficialTime(postRaw, {
+        raceId: result.raceId,
+        holdYmd: utilityContext?.flow?.kaisaiDate || result.raceHoldYmd,
+      }) ||
+      formatCompactPostTimeForHistory(postRaw) ||
+      postRaw
     : '';
   const footParts = [
     `全${result.totalHorses}頭${

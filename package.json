@@ -7,14 +7,16 @@
   "scripts": {
     "start": "node --env-file=dev.env src/index.mjs",
     "dev": "nodemon --env-file=dev.env --watch src src/index.mjs",
-    "dev:netkeiba-test": "node --env-file=dev.env scripts/dev/netkeiba-scraper-test.mjs",
-    "dev:netkeiba-payout": "node scripts/dev/netkeiba-parse-payout.mjs"
+    "dev:netkeiba-test": "node --env-file=dev.env scripts/dev/netkeibaScraperTest.mjs",
+    "dev:netkeiba-payout": "node scripts/dev/netkeibaParsePayout.mjs"
   },
   "devDependencies": {
     "nodemon": "^3.0.1"
   },
   "dependencies": {
     "axios": "^1.13.6",
+    "chart.js": "^4.5.1",
+    "chartjs-node-canvas": "^5.0.0",
     "cheerio": "^1.2.0",
     "discord.js": "^14.25.1",
     "iconv-lite": "^0.6.3",

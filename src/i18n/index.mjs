@@ -14,6 +14,23 @@ const SUPPORTED = new Set(['ja', 'en']);
 
 const bundleCache = new Map();
 
+const NAMESPACE_ALIASES = new Map([
+  ['betFlow', 'bet_flow'],
+  ['betSession', 'bet_session'],
+  ['betSlip', 'bet_slip'],
+  ['betSlipReview', 'bet_slip_review'],
+  ['botingHelp', 'boting_help'],
+  ['botingHub', 'boting_hub'],
+  ['botingStats', 'boting_stats'],
+  ['bpRank', 'bp_rank'],
+  ['bpRankProfileDetail', 'bp_rank.profile_detail'],
+  ['debugHub', 'debug_hub'],
+  ['raceCard', 'race_card'],
+  ['racePurchaseHistory', 'race_purchase_history'],
+  ['raceSchedule', 'race_schedule'],
+  ['slashCommands', 'slash_commands'],
+]);
+
 /**
  * @param {string | null | undefined} code
  * @returns {'ja' | 'en'}
@@ -68,6 +85,8 @@ function readBundle(locale) {
       const parsed = YAML.parse(text);
       if (parsed && typeof parsed === 'object' && !Array.isArray(parsed)) {
         merged[ns] = parsed;
+        const alias = NAMESPACE_ALIASES.get(ns);
+        if (alias && merged[alias] == null) merged[alias] = parsed;
       }
     } catch (e) {
       console.error(`[i18n] skip broken locale file ${path}:`, e?.message ?? e);

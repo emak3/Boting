@@ -1,6 +1,7 @@
 import { wakuUmaEmoji, jogaiEmoji } from './raceNumberEmoji.mjs';
 import { netkeibaResultUrl } from '../netkeiba/netkeibaUrls.mjs';
 import { formatCompactPostTimeForHistory } from '../bet/betPurchaseEmbed.mjs';
+import { discordTimestampFromOddsOfficialTime } from '../shared/discordTimestamp.mjs';
 
 /** @param {{ raceInfo?: object, horses: object[], totalHorses: number, oddsOfficialTime?: string }} result */
 export function buildRaceCardEmbed(result) {
@@ -26,7 +27,12 @@ export function buildRaceCardEmbed(result) {
     ? String(result.oddsOfficialTime).trim()
     : '';
   const postDisp = postRaw
-    ? formatCompactPostTimeForHistory(postRaw) || postRaw
+    ? discordTimestampFromOddsOfficialTime(postRaw, {
+        raceId: result.raceId,
+        holdYmd: result.raceHoldYmd,
+      }) ||
+      formatCompactPostTimeForHistory(postRaw) ||
+      postRaw
     : '';
   const embed = {
     color: isResult ? 0xed4245 : 0x0099ff,

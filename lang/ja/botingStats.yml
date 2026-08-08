@@ -10,6 +10,10 @@ annual:
   top_bet_types_heading: "**最多購入券種（上位3）**"
   top_bet_type_line: "{{i}}. {{label}}（{{count}}件）"
   top_bet_types_empty: "—（購入なし）"
+  chart_alt: "{{year}}年の月別推移グラフ。購入BP、払戻BP、月次差額、回収率、的中率を表示。"
+  nav_prev: "前年"
+  nav_next: "翌年"
+  nav_year: "{{year}}年"
   max_miss_streak: "**連続不的中（精算済の連続で払戻0）最大**: **{{n}}** 回"
 
 weekly:

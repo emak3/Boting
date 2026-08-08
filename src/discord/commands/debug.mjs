@@ -24,8 +24,8 @@ const commandObject = {
     .setContexts(InteractionContextType.Guild),
 
   async execute(interaction) {
+    const loc = resolveLocaleFromInteraction(interaction);
     if (!canUseDebugCommands(interaction.user.id)) {
-      const loc = resolveLocaleFromInteraction(interaction);
       await interaction.reply({
         content: t('slash_commands.debug_forbidden', null, loc),
         flags: MessageFlags.Ephemeral,
@@ -35,7 +35,7 @@ const commandObject = {
 
     await deferEphemeralThenEditReply(
       interaction,
-      buildDebugPanelPayload({ extraFlags: MessageFlags.Ephemeral }),
+      buildDebugPanelPayload({ extraFlags: MessageFlags.Ephemeral, locale: loc }),
     );
     await saveDebugPanelFromSlashInteraction(interaction);
   },

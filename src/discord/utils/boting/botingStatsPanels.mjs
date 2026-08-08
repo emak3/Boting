@@ -1,7 +1,9 @@
 import {
   ActionRowBuilder,
+  AttachmentBuilder,
   ButtonBuilder,
   ButtonStyle,
+  MediaGalleryBuilder,
 } from 'discord.js';
 import { buildTextAndRowsV2Payload } from '../race/raceCardDisplay.mjs';
 import { buildBotingMenuBackRow } from './botingBackButton.mjs';
@@ -26,6 +28,11 @@ import { betTypeDisplayLabel } from '../bet/betTypeLabels.mjs';
 import { formatBpAmount } from '../bp/bpFormat.mjs';
 import { buildBpRankLbAnnualViewFooterRow } from '../bp/bpRankUiButtons.mjs';
 import { t, normalizeLocale } from '../../../i18n/index.mjs';
+import { renderAnnualStatsChartPng } from './annualStatsChart.mjs';
+import { getJstCalendarYear } from '../challenge/jstCalendar.mjs';
+import { botingEmoji } from './botingEmojis.mjs';
+
+export const BOTING_ANNUAL_STATS_NAV_PREFIX = 'boting_annual_nav';
 
 function pct1(x) {
   if (x == null || !Number.isFinite(x)) return '—';
@@ -54,6 +61,39 @@ function fmtTop3(top, locale) {
         ),
     )
     .join('\n');
+}
+
+function buildAnnualStatsNavRow({ userId, year, rankLeaderboardReturn = null, locale = null }) {
+  const currentYear = getJstCalendarYear();
+  const y = Math.trunc(Number(year)) || currentYear;
+  const uid = String(userId || '');
+  const base = `${BOTING_ANNUAL_STATS_NAV_PREFIX}|`;
+  const subject = /^\d{17,20}$/.test(uid) ? uid : '_';
+  const suffix =
+    rankLeaderboardReturn?.limit != null && rankLeaderboardReturn?.mode
+      ? `|lb|${rankLeaderboardReturn.limit}|${rankLeaderboardReturn.mode}`
+      : '';
+  const idForYear = (targetYear) => `${base}${targetYear}|${subject}${suffix}`;
+
+  return new ActionRowBuilder().addComponents(
+    new ButtonBuilder()
+      .setCustomId(idForYear(y - 1))
+      .setLabel(t('boting_stats.annual.nav_prev', null, locale))
+      .setEmoji(botingEmoji('mae'))
+      .setStyle(ButtonStyle.Secondary),
+    new ButtonBuilder()
+      .setCustomId(`${base}noop|${subject}`)
+      .setLabel(t('boting_stats.annual.nav_year', { year: y }, locale))
+      .setEmoji(BOTING_HUB_BUTTON_EMOJI.annualStats)
+      .setStyle(ButtonStyle.Secondary)
+      .setDisabled(true),
+    new ButtonBuilder()
+      .setCustomId(idForYear(y + 1))
+      .setLabel(t('boting_stats.annual.nav_next', null, locale))
+      .setEmoji(botingEmoji('tsugi'))
+      .setStyle(ButtonStyle.Secondary)
+      .setDisabled(y >= currentYear),
+  );
 }
 
 /**
@@ -151,13 +191,45 @@ export async function buildAnnualStatsPanelPayload(opts) {
   const footer = fromRankLb
     ? buildBpRankLbAnnualViewFooterRow(rk.limit, rk.mode, uid, loc)
     : buildBotingMenuBackRow({ locale: loc });
+  const navRow = buildAnnualStatsNavRow({
+    userId: uid,
+    year: s.year,
+    rankLeaderboardReturn: fromRankLb ? rk : null,
+    locale: loc,
+  });
 
-  return buildTextAndRowsV2Payload({
+  const payload = buildTextAndRowsV2Payload({
     headline: lines.join('\n'),
-    actionRows: [footer],
+    actionRows: [navRow, footer],
     extraFlags,
     locale: loc,
   });
+
+  if (s.monthly?.some((m) => (m?.purchaseCount || 0) > 0)) {
+    try {
+      const filename = `annualStats-${uid || 'user'}-${s.year}.png`;
+      const chart = await renderAnnualStatsChartPng(s, loc);
+      payload.files = [
+        new AttachmentBuilder(chart, {
+          name: filename,
+          description: t('boting_stats.annual.chart_alt', { year: s.year }, loc),
+        }),
+      ];
+      payload.components[0]
+        .addSeparatorComponents((separator) => separator)
+        .addMediaGalleryComponents(
+          new MediaGalleryBuilder().addItems((item) =>
+            item
+              .setURL(`attachment://${filename}`)
+              .setDescription(t('boting_stats.annual.chart_alt', { year: s.year }, loc)),
+          ),
+        );
+    } catch (e) {
+      console.warn('annual stats chart:', e?.message ?? e);
+    }
+  }
+
+  return payload;
 }
 
 /**

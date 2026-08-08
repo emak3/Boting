@@ -27,6 +27,7 @@ export default async function debugHubRaceModal(interaction) {
   const kind = customId.split('|')[1];
   if (kind !== 'jra' && kind !== 'nar') return;
 
+  const loc = resolveLocaleFromInteraction(interaction);
   const raceId = (interaction.fields.getTextInputValue('race_id') || '').trim();
   if (!/^\d{12}$/.test(raceId)) {
     await interaction.reply({

@@ -44,6 +44,7 @@ import {
   historyMeetingFilterRow,
   historyMeetingSelectMaxVenues,
 } from '../../components/racePurchaseHistory/nav.mjs';
+import { discordTimestampFromOddsOfficialTime } from '../shared/discordTimestamp.mjs';
 
 export {
   stripRaceHistoryBpCtx,
@@ -523,6 +524,22 @@ function historyPostTimeCompactHm(bet, timeByRaceId) {
   return formatCompactPostTimeForHistory(raw);
 }
 
+function historyPostTimeDisplay(bet, timeByRaceId) {
+  const rid = String(bet.raceId || '');
+  const raw =
+    (bet.oddsOfficialTime && String(bet.oddsOfficialTime).trim()) ||
+    (rid && timeByRaceId?.get(rid)) ||
+    '';
+  if (!raw) return '';
+  return (
+    discordTimestampFromOddsOfficialTime(raw, {
+      raceId: rid,
+      holdYmd: bet.raceHoldYmd,
+      style: 't',
+    }) || formatCompactPostTimeForHistory(raw)
+  );
+}
+
 /**
  * ページ内レースの時刻表示用（DB の oddsOfficialTime のみ。netkeiba は叩かない＝履歴表示を速く保つ）
  * @param {{ rid: string, bet: object }[]} slice
@@ -609,12 +626,12 @@ function buildHistoryRaceTextChunks(slice, timeByRaceId, locale) {
       currentRid = rid;
       const base = historyRaceHeadingLine(bet);
       const settled = String(bet.status || 'open') === 'settled';
-      const hm = historyPostTimeCompactHm(bet, timeByRaceId);
+      const postTime = historyPostTimeDisplay(bet, timeByRaceId);
       const postSuffix = t('race_purchase_history.post_time_label', null, locale);
       raceHead = settled
         ? `${botingEmojiMarkdown('kaku')}${botingEmojiMarkdown('tei')} **${base}**`
-        : hm
-          ? `**${base}**  \`${hm}${postSuffix}\``
+        : postTime
+          ? `**${base}**  ${postTime}${postSuffix}`
           : `**${base}**`;
     }
     entries.push(formatBetEntryForHistory(bet));

@@ -1,11 +1,9 @@
 import {
   findRaceMetaForToday,
-  fetchRaceListSub,
-  parseRaceListSub,
   filterVenueRaces,
   getRaceSalesStatus,
-  fetchNarRaceListSub,
-  parseNarRaceListSubToVenue,
+  fetchVenuesAndRacesForJstYmd,
+  fetchNarVenuesForDate,
 } from '../../../scrapers/netkeiba/netkeibaSchedule.mjs';
 
 import {
@@ -53,13 +51,12 @@ export async function resolveSalesClosedForRace(raceId, flow) {
     }
     if (flow?.kaisaiDate && flow?.kaisaiId) {
       if (flow.source === 'nar') {
-        const html = await fetchNarRaceListSub(flow.kaisaiDate, flow.kaisaiId);
-        const venue = parseNarRaceListSubToVenue(html, flow.kaisaiDate);
+        const { venues } = await fetchNarVenuesForDate(flow.kaisaiDate);
+        const venue = venues.find((x) => x.kaisaiId === flow.kaisaiId);
         const r = venue?.races.find((x) => x.raceId === raceId);
         if (r) return getRaceSalesStatus(r, flow.kaisaiDate).closed;
       } else if (flow.currentGroup) {
-        const html = await fetchRaceListSub(flow.kaisaiDate, flow.currentGroup);
-        const { venues } = parseRaceListSub(html, flow.kaisaiDate);
+        const { venues } = await fetchVenuesAndRacesForJstYmd(flow.kaisaiDate);
         const races = filterVenueRaces(venues, flow.kaisaiId);
         const r = races.find((x) => x.raceId === raceId);
         if (r) return getRaceSalesStatus(r, flow.kaisaiDate).closed;

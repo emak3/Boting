@@ -11,6 +11,7 @@ import {
 } from '../race/raceNumberEmoji.mjs';
 import { formatBpAmount } from '../bp/bpFormat.mjs';
 import { t } from '../../../i18n/index.mjs';
+import { discordTimestampFromOddsOfficialTime } from '../shared/discordTimestamp.mjs';
 
 const BET_TYPE_LABEL = {
   win: '単勝',
@@ -56,7 +57,10 @@ function betFlowPurchaseCoreLines(flow) {
   const raceTitle = flow?.result?.raceInfo?.title || 'レース';
   const oddsTimeRaw = flow?.result?.oddsOfficialTime;
   const oddsTime = oddsTimeRaw
-    ? oddsOfficialTimeForPurchaseDisplay(oddsTimeRaw)
+    ? oddsOfficialTimeForPurchaseDisplay(oddsTimeRaw, {
+        raceId: flow?.result?.raceId,
+        holdYmd: flow?.kaisaiDate,
+      })
     : null;
   const raceId = flow?.result?.raceId;
   const isResult = !!flow?.result?.isResult;
@@ -125,7 +129,10 @@ export function buildBetSlipBatchV2Headline({ items, locale = null }) {
       lines.push(t('bet_slip_review.line_jra_multi', null, locale));
     }
     const postDisp = it.oddsOfficialTime
-      ? oddsOfficialTimeForPurchaseDisplay(it.oddsOfficialTime)
+      ? oddsOfficialTimeForPurchaseDisplay(it.oddsOfficialTime, {
+          raceId: it.raceId,
+          holdYmd: it.raceHoldYmd || it.kaisaiDate,
+        })
       : '';
     if (postDisp) lines.push(`発走時刻: ${postDisp}`);
     if (resultUrl) lines.push(`結果: ${resultUrl}`);
@@ -371,9 +378,11 @@ export function postTimeMinutesFromOddsOfficialForHistory(raw) {
 }
 
 /** 購入確認・まとめ購入の「発走時刻」行用（JST の HH:MM に寄せ、無理なら生文字列） */
-function oddsOfficialTimeForPurchaseDisplay(raw) {
+function oddsOfficialTimeForPurchaseDisplay(raw, opts = {}) {
   const s = String(raw ?? '').trim();
   if (!s) return '';
+  const ts = discordTimestampFromOddsOfficialTime(s, opts);
+  if (ts) return ts;
   return formatCompactPostTimeForHistory(s) || s;
 }
 
@@ -1175,7 +1184,10 @@ export function formatBetSlipItemBlock(it, i, locale = null) {
     pickBlock || `${label}：（チケット情報がありません）`,
   );
   const postDisp = it.oddsOfficialTime
-    ? oddsOfficialTimeForPurchaseDisplay(it.oddsOfficialTime)
+    ? oddsOfficialTimeForPurchaseDisplay(it.oddsOfficialTime, {
+        raceId: it.raceId,
+        holdYmd: it.raceHoldYmd || it.kaisaiDate,
+      })
     : '';
   if (postDisp) lines.push(`発走時刻: ${postDisp}`);
   if (resultUrl) lines.push(`結果: ${resultUrl}`);
@@ -1193,4 +1205,3 @@ export function buildBetPurchaseEmbed({ flow }) {
 }
 
 export { BET_TYPE_LABEL };
-

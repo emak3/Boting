@@ -8,13 +8,9 @@ import {
 } from 'discord.js';
 import NetkeibaScraper from '../../../scrapers/netkeiba/netkeibaScraper.mjs';
 import {
-  fetchRaceListSub,
-  parseRaceListSub,
   filterVenueRaces,
   getRaceSalesStatus,
   findRaceMetaForToday,
-  fetchNarRaceListSub,
-  parseNarRaceListSubToVenue,
   fetchVenuesAndRacesForJstYmd,
   fetchNarVenuesForDate,
   jstYmd,
@@ -41,7 +37,6 @@ import {
   DISCORD_SELECT_OPTION_LABEL_RESERVE_POST_SELECTION,
 } from '../../utils/race/raceNumberEmoji.mjs';
 import {
-  raceSalesStatusShortLabel,
   raceSalesStatusDetailLabel,
 } from '../../utils/race/raceSalesStatusLabels.mjs';
 import { msgRaceBetFlowSessionInvalid } from '../../utils/bet/betFlowSessionCopy.mjs';
@@ -102,9 +97,13 @@ import {
 } from '../../utils/race/raceHubQuickPick.mjs';
 import { formatBpAmount } from '../../utils/bp/bpFormat.mjs';
 import { v2ExtraFlags } from '../../utils/shared/interactionResponse.mjs';
-
-const VENUE_MENU_ID = 'race_menu_venue';
-const RACE_MENU_ID = 'race_menu_race';
+import {
+  RACE_MENU_ID,
+  VENUE_MENU_ID,
+  buildScheduleRaceSelectRow,
+  buildScheduleVenueSelectRow,
+} from '../../utils/race/scheduleRows.mjs';
+import { scheduleRaceTimeDisplay } from '../../utils/race/raceScheduleTimeDisplay.mjs';
 
 function raceCardPayload(interaction, opts) {
   const rid = opts.result?.raceId;
@@ -275,58 +274,6 @@ function countOrderedTriplesDistinct(a, b, c) {
   return count;
 }
 
-function raceSelectRow(kaisaiDateYmd, races, locale = null) {
-  const menu = new StringSelectMenuBuilder()
-    .setCustomId(RACE_MENU_ID)
-    .setPlaceholder(t('race_schedule.placeholders.pick_race', null, locale))
-    .addOptions(
-      races.slice(0, 25).map((r) => {
-        const st = getRaceSalesStatus(r, kaisaiDateYmd);
-        const label = `${r.roundLabel} ${r.timeText}`.replace(/\s+/g, ' ').trim().slice(0, 100);
-        const desc = `${raceSalesStatusShortLabel(st, locale)} · ${r.title}`.slice(0, 100);
-        return new StringSelectMenuOptionBuilder()
-          .setLabel(label || r.raceId)
-          // RACE_MENU_ID 側で「確定/発売前」を判定するため、isResult を一緒に渡す
-          .setValue(`${r.raceId}|${r.isResult ? 1 : 0}`)
-          .setDescription(desc);
-      }),
-    );
-  return new ActionRowBuilder().addComponents(menu);
-}
-
-function scheduleBackToVenueButtonRow(kaisaiDateYmd, currentGroup, scheduleKind = 'jra', locale = null) {
-  const pad = scheduleKind === 'nar' ? '_' : currentGroup;
-  return new ActionRowBuilder().addComponents(
-    new ButtonBuilder()
-      .setCustomId(`race_sched_back_to_venue|${scheduleKind}|${kaisaiDateYmd}|${pad}`)
-      .setLabel(t('race_schedule.buttons.to_venue', null, locale))
-      .setStyle(ButtonStyle.Secondary),
-  );
-}
-
-function venueSelectRowFromSchedule(scheduleKind, kaisaiDate, currentGroup, venues, locale = null) {
-  const menu = new StringSelectMenuBuilder()
-    .setCustomId(VENUE_MENU_ID)
-    .setPlaceholder(t('race_schedule.placeholders.pick_venue', null, locale))
-    .addOptions(
-      venues.slice(0, 25).map((v) => {
-        const value =
-          scheduleKind === 'nar'
-            ? `nar|${kaisaiDate}|${v.kaisaiId}`
-            : `jra|${kaisaiDate}|${currentGroup}|${v.kaisaiId}`;
-        const prefix =
-          scheduleKind === 'nar' ? t('race_schedule.venue.nar_prefix', null, locale) : '';
-        return new StringSelectMenuOptionBuilder()
-          .setLabel(`${prefix}${v.title}`.slice(0, 100))
-          .setValue(value)
-          .setDescription(
-            t('race_schedule.venue.race_count', { n: v.races.length }, locale).slice(0, 100),
-          );
-      }),
-    );
-  return new ActionRowBuilder().addComponents(menu);
-}
-
 function scheduleBackToRaceListButtonRow(raceId, locale = null) {
   return new ActionRowBuilder().addComponents(
     new ButtonBuilder()
@@ -432,7 +379,8 @@ function summaryPurchaseButtonRows(raceId, userId, backMenuIndex, flow = null, l
         : t('race_schedule.buttons.cart', null, locale),
     )
     .setEmoji(botingEmoji('cart'))
-    .setStyle(ButtonStyle.Primary);
+    .setStyle(ButtonStyle.Primary)
+    .setDisabled(batchTotal === 0);
 
   const multiBtn = new ButtonBuilder()
     .setCustomId(`race_bet_jra_multi_toggle|${raceId}`)
@@ -995,21 +943,14 @@ async function resolveScheduleMetaForRaceSelection({
   ) {
     try {
       if (lastVenue.source === 'nar') {
-        const html = await fetchNarRaceListSub(
-          lastVenue.kaisaiDate,
-          lastVenue.kaisaiId,
-        );
-        const venue = parseNarRaceListSubToVenue(html, lastVenue.kaisaiDate);
+        const { venues } = await fetchNarVenuesForDate(lastVenue.kaisaiDate);
+        const venue = venues.find((x) => x.kaisaiId === lastVenue.kaisaiId);
         raceMeta = venue?.races.find((x) => x.raceId === raceId) || null;
         scheduleVenueTitle = normalizeScheduleVenueDisplayName(
           (venue?.title || '').replace(/\s+/g, ' ').trim(),
         );
       } else {
-        const html = await fetchRaceListSub(
-          lastVenue.kaisaiDate,
-          lastVenue.currentGroup,
-        );
-        const { venues } = parseRaceListSub(html, lastVenue.kaisaiDate);
+        const { venues } = await fetchVenuesAndRacesForJstYmd(lastVenue.kaisaiDate);
         scheduleVenueTitle = normalizeScheduleVenueDisplayName(
           (
             venues.find((x) => x.kaisaiId === lastVenue.kaisaiId)?.title || ''
@@ -1332,7 +1273,7 @@ export default async function raceScheduleMenu(interaction) {
             locale: loc,
             introBodySuffix: jraQuickItems.length ? venueQuickPickBodySuffix(loc) : '',
             actionRows: [
-              venueSelectRowFromSchedule('jra', kaisaiDateYmd, currentGroup, venuesDay, loc),
+              buildScheduleVenueSelectRow('jra', kaisaiDateYmd, currentGroup, venuesDay, loc),
               ...(jraQuickRow ? [jraQuickRow] : []),
               scheduleBackToKindSelectButtonRow(loc),
               betSlipOpenReviewButtonRowForSchedule(
@@ -1378,7 +1319,7 @@ export default async function raceScheduleMenu(interaction) {
             locale: loc,
             introBodySuffix: narQuickItems.length ? venueQuickPickBodySuffix(loc) : '',
             actionRows: [
-              venueSelectRowFromSchedule('nar', kaisaiDateYmd, null, venuesDay, loc),
+              buildScheduleVenueSelectRow('nar', kaisaiDateYmd, null, venuesDay, loc),
               ...(narQuickRow ? [narQuickRow] : []),
               scheduleBackToKindSelectButtonRow(loc),
               betSlipOpenReviewButtonRowForSchedule(
@@ -1470,13 +1411,25 @@ export default async function raceScheduleMenu(interaction) {
     try {
       const interactionYmd = jstYmd();
       let races = [];
+      let venuesDay = [];
       if (scheduleKind === 'jra') {
-        const html = await fetchRaceListSub(kaisaiDate, currentGroup);
-        const { venues } = parseRaceListSub(html, kaisaiDate);
+        const { venues } = await fetchVenuesAndRacesForJstYmd(kaisaiDate);
+        venuesDay = filterVenuesForInteractionPostDate(
+          venues,
+          kaisaiDate,
+          interactionYmd,
+          { source: 'jra' },
+        );
         races = filterVenueRaces(venues, kaisaiId);
       } else {
-        const html = await fetchNarRaceListSub(kaisaiDate, kaisaiId);
-        const venue = parseNarRaceListSubToVenue(html, kaisaiDate);
+        const { venues } = await fetchNarVenuesForDate(kaisaiDate);
+        venuesDay = filterVenuesForInteractionPostDate(
+          venues,
+          kaisaiDate,
+          interactionYmd,
+          { source: 'nar' },
+        );
+        const venue = venues.find((x) => x.kaisaiId === kaisaiId);
         races = venue?.races || [];
       }
       races = filterRacesByInteractionPostDateYmd(
@@ -1503,7 +1456,7 @@ export default async function raceScheduleMenu(interaction) {
       const lines = races.map((r) => {
         const st = getRaceSalesStatus(r, kaisaiDate);
         const detail = raceSalesStatusDetailLabel(st, loc);
-        return `**${r.roundLabel}** ${r.timeText} — ${r.title}\n└ ${detail}`;
+        return `**${r.roundLabel}** ${scheduleRaceTimeDisplay(kaisaiDate, r)} — ${r.title}\n└ ${detail}`;
       });
       let description = lines.join('\n\n');
       if (description.length > 4090) description = `${description.slice(0, 4087)}…`;
@@ -1518,14 +1471,19 @@ export default async function raceScheduleMenu(interaction) {
 
       const vs = venueSelectionStore.get(userId);
       const backKind = vs?.source || scheduleKind;
-      const backGroup = backKind === 'nar' ? '_' : currentGroup;
 
       await interaction.editReply(
         buildTextAndRowsV2Payload({
           headline,
           actionRows: [
-            raceSelectRow(kaisaiDate, races, loc),
-            scheduleBackToVenueButtonRow(kaisaiDate, backGroup, backKind, loc),
+            buildScheduleVenueSelectRow(
+              backKind,
+              kaisaiDate,
+              backKind === 'nar' ? null : currentGroup,
+              venuesDay,
+              loc,
+            ),
+            buildScheduleRaceSelectRow(kaisaiDate, races, loc),
             scheduleBackToKindSelectButtonRow(loc),
             betSlipOpenReviewButtonRowForSchedule(
               userId,

@@ -77,6 +77,13 @@ function scoreScrapedRaceQuality(parsed) {
   return score;
 }
 
+function likelyOriginFromRaceId(raceId) {
+  const venueCode = String(raceId || '').slice(8, 10);
+  const code = Number(venueCode);
+  if (!Number.isInteger(code)) return null;
+  return code >= 1 && code <= 10 ? 'jra' : 'nar';
+}
+
 class NetkeibaScraper {
   constructor() {
     this.baseUrl = 'https://race.netkeiba.com';
@@ -336,6 +343,8 @@ class NetkeibaScraper {
       { origin: 'jra', base: this.baseUrl },
       { origin: 'nar', base: NAR_BASE_URL },
     ];
+    const likelyOrigin = likelyOriginFromRaceId(raceId);
+    if (likelyOrigin === 'nar') bases.reverse();
     let best = null;
     let bestScore = -1;
     for (const { origin, base } of bases) {
@@ -383,6 +392,15 @@ class NetkeibaScraper {
           origin === 'jra' &&
           candidate.payoutReady &&
           horses.length >= RESULT_JRA_STRONG_MIN_HORSES &&
+          payouts.length >= RESULT_JRA_STRONG_MIN_PAYOUT_ROWS
+        ) {
+          return candidate;
+        }
+        if (
+          origin === likelyOrigin &&
+          likelyOrigin === 'nar' &&
+          candidate.payoutReady &&
+          horses.length >= 5 &&
           payouts.length >= RESULT_JRA_STRONG_MIN_PAYOUT_ROWS
         ) {
           return candidate;

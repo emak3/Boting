@@ -11,3 +11,15 @@ weekly:
   saved_banner: ✅ 週間チャレンジの設定を保存しました。
   saved_no_panel: ✅ 保存しました。`/debug` でパネルを開き直すと反映されます（編集用の記録がないか期限切れです）。
   save_failed: "❌ 保存またはパネル更新に失敗しました: {{message}}"
+schedule_cache:
+  status_line: "レース一覧キャッシュ更新頻度: **{{interval}}**"
+  button_label: レース一覧更新頻度
+  modal_title: レース一覧キャッシュ更新頻度
+  modal_label: 更新間隔（秒、デフォルト120）
+  interval_minutes: "{{n}}分"
+  interval_seconds: "{{n}}秒"
+  interval_ms: "{{n}}ms"
+  invalid_seconds: 更新間隔は1以上の秒数で入力してください。
+  saved_banner: "レース一覧キャッシュ更新頻度を **{{interval}}** に保存しました。"
+  saved_no_panel: "レース一覧キャッシュ更新頻度を {{interval}} に保存しました。"
+  save_failed: "保存に失敗しました: {{message}}"

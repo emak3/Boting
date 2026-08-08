@@ -11,7 +11,7 @@ import {
   LEDGER_PAGE_MAX_FETCH,
 } from '../user/userPointsStore.mjs';
 import { ledgerKindLabel } from './ledgerKindLabel.mjs';
-import { normalizeLocale, t } from '../../../i18n/index.mjs';
+import { t } from '../../../i18n/index.mjs';
 import { BOTING_HUB_BUTTON_EMOJI, BOTING_HUB_PREFIX } from './botingHubConstants.mjs';
 import { botingEmoji } from './botingEmojis.mjs';
 import { BP_RANK_DISPLAY_MAX } from '../bp/bpRankLeaderboardEmbed.mjs';
@@ -21,6 +21,7 @@ import {
   buildBpRankLeaderboardBackButtonRow,
 } from '../bp/bpRankUiButtons.mjs';
 import { formatBpAmount } from '../bp/bpFormat.mjs';
+import { discordTimestamp } from '../shared/discordTimestamp.mjs';
 
 export const BOTING_LEDGER_NAV_PREFIX = 'boting_ledger_nav';
 export const BOTING_LEDGER_OPEN_LIM_PREFIX = 'boting_ledger_open_lim';
@@ -29,21 +30,12 @@ const ACCENT = 0x3498db;
 const V2_TEXT_TOTAL_MAX = 3900;
 const V2_SINGLE_CHUNK = 3500;
 
-function formatJst(d, locale = null) {
-  const tag = normalizeLocale(locale) === 'en' ? 'en-US' : 'ja-JP';
-  return d.toLocaleString(tag, {
-    timeZone: 'Asia/Tokyo',
-    dateStyle: 'medium',
-    timeStyle: 'short',
-  });
-}
-
 function formatLedgerLines(entries, locale = null) {
   if (!entries.length) {
     return t('boting_hub.ledger.empty_page', null, locale);
   }
   const lines = entries.map((e) => {
-    const timeStr = e.at ? formatJst(e.at, locale) : '—';
+    const timeStr = e.at ? discordTimestamp(e.at, 'f') || '—' : '—';
     const sign = e.delta >= 0 ? `+${formatBpAmount(e.delta)}` : formatBpAmount(e.delta);
     return `\`${timeStr}\` **${sign}** bp → **${formatBpAmount(e.balanceAfter)}** bp（${ledgerKindLabel(e.kind, e.streakDay, locale)}）`;
   });

@@ -12,3 +12,15 @@ weekly:
   saved_no_panel: >-
     ✅ Saved. Reopen `/debug` to see changes (no panel edit token or it expired).
   save_failed: "❌ Save or panel update failed: {{message}}"
+schedule_cache:
+  status_line: "Race-list cache refresh interval: **{{interval}}**"
+  button_label: Race-list refresh
+  modal_title: Race-list cache refresh interval
+  modal_label: Refresh interval (seconds, default 120)
+  interval_minutes: "{{n}} min"
+  interval_seconds: "{{n}} sec"
+  interval_ms: "{{n}} ms"
+  invalid_seconds: Enter a refresh interval of at least 1 second.
+  saved_banner: "Race-list cache refresh interval saved as **{{interval}}**."
+  saved_no_panel: "Race-list cache refresh interval saved as {{interval}}."
+  save_failed: "Save failed: {{message}}"

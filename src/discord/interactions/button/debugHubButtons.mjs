@@ -37,9 +37,12 @@ import {
   buildDebugResultPayload,
   buildDebugUserPickPayload,
   buildRaceIdModal,
+  buildScheduleCacheRefreshModal,
   buildWeeklyChallengeRewardsModal,
   buildWeeklyChallengeThresholdsModal,
 } from '../../utils/debug/debugHubPanel.mjs';
+import { getScheduleCacheConfig } from '../../../scrapers/netkeiba/cache/netkeibaScheduleCache.mjs';
+import { resolveLocaleFromInteraction } from '../../../i18n/index.mjs';
 import {
   getWeeklyChallengeConfig,
   setWeeklyChallengeConfig,
@@ -140,13 +143,14 @@ export default async function debugHubButtons(interaction) {
   }
 
   const extraFlags = v2ExtraFlags(interaction);
+  const loc = resolveLocaleFromInteraction(interaction);
   const parts = customId.split('|');
   const action = parts[1];
 
   if (action === 'toggle') {
     clearDebugRaceKindDraft(userId);
     setDebugSalesBypass(!isDebugSalesBypassEnabled());
-    await interaction.update(await buildDebugPanelPayload({ extraFlags }));
+    await interaction.update(await buildDebugPanelPayload({ extraFlags, locale: loc }));
     saveDebugPanelFromComponentInteraction(interaction);
     return;
   }
@@ -167,7 +171,7 @@ export default async function debugHubButtons(interaction) {
     clearDebugRaceKindDraft(userId);
     const cur = await getWeeklyChallengeConfig();
     await setWeeklyChallengeConfig({ ...cur, enabled: !cur.enabled });
-    await interaction.update(await buildDebugPanelPayload({ extraFlags }));
+    await interaction.update(await buildDebugPanelPayload({ extraFlags, locale: loc }));
     saveDebugPanelFromComponentInteraction(interaction);
     return;
   }
@@ -186,11 +190,20 @@ export default async function debugHubButtons(interaction) {
     return;
   }
 
+  if (action === 'schedule_cache_refresh') {
+    clearDebugRaceKindDraft(userId);
+    const cfg = await getScheduleCacheConfig();
+    await interaction.showModal(
+      buildScheduleCacheRefreshModal(cfg, resolveLocaleFromInteraction(interaction)),
+    );
+    return;
+  }
+
   if (action === 'back') {
     clearDebugBpDraft(userId);
     clearDebugAclDraft(userId);
     clearDebugRaceKindDraft(userId);
-    await interaction.update(await buildDebugPanelPayload({ extraFlags }));
+    await interaction.update(await buildDebugPanelPayload({ extraFlags, locale: loc }));
     saveDebugPanelFromComponentInteraction(interaction);
     return;
   }
@@ -348,6 +361,7 @@ async function handleConfirm(interaction) {
   const userId = interaction.user.id;
   const draft = getDebugBpDraft(userId);
   const extraFlags = v2ExtraFlags(interaction);
+  const loc = resolveLocaleFromInteraction(interaction);
 
   if (!draft?.targetUserId) {
     await interaction.reply({
@@ -360,7 +374,7 @@ async function handleConfirm(interaction) {
   const buf = String(draft.buffer || '').trim();
   if (!buf) {
     clearDebugBpDraft(userId);
-    await interaction.update(await buildDebugPanelPayload({ extraFlags }));
+    await interaction.update(await buildDebugPanelPayload({ extraFlags, locale: loc }));
     saveDebugPanelFromComponentInteraction(interaction);
     return;
   }

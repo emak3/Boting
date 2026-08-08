@@ -17,6 +17,7 @@ import {
 import { buildBotingMenuBackRow } from '../boting/botingBackButton.mjs';
 import { botingEmoji } from '../boting/botingEmojis.mjs';
 import { formatBpWithUnit } from '../bp/bpFormat.mjs';
+import { getSlipSavedCount } from '../bet/betSlipStore.mjs';
 import { t } from '../../../i18n/index.mjs';
 
 export { BOTING_HUB_PREFIX };
@@ -54,6 +55,7 @@ export async function buildBotingPanelPayload({
   const claimed =
     view.lastDailyPeriodKey === view.currentPeriodKey && !!view.lastDailyPeriodKey;
   const dailyDisabled = claimed && !debugBypass;
+  const slipDisabled = getSlipSavedCount(user.id) === 0;
 
   const dailyContainer = buildDailyAccountV2Container(view, {
     claimed,
@@ -94,7 +96,8 @@ export async function buildBotingPanelPayload({
       .setCustomId(`${BOTING_HUB_PREFIX}|slip`)
       .setLabel(t('boting_hub.buttons.slip', null, locale))
       .setEmoji(botingEmoji('cart'))
-      .setStyle(ButtonStyle.Secondary),
+      .setStyle(ButtonStyle.Secondary)
+      .setDisabled(slipDisabled),
   );
 
   const row3 = new ActionRowBuilder().addComponents(

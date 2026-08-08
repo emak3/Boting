@@ -23,7 +23,8 @@ import {
   buildBpRankProfileButtonsRow,
 } from './bpRankUiButtons.mjs';
 import { formatBpAmount } from './bpFormat.mjs';
-import { normalizeLocale, t } from '../../../i18n/index.mjs';
+import { t } from '../../../i18n/index.mjs';
+import { discordTimestamp } from '../shared/discordTimestamp.mjs';
 
 export {
   BP_RANK_USER_HISTORY_PREFIX,
@@ -34,15 +35,6 @@ export {
 };
 
 const DETAIL_ACCENT = 0x5865f2;
-
-function formatJst(d, locale = null) {
-  const locTag = normalizeLocale(locale) === 'en' ? 'en-US' : 'ja-JP';
-  return d.toLocaleString(locTag, {
-    timeZone: 'Asia/Tokyo',
-    dateStyle: 'medium',
-    timeStyle: 'short',
-  });
-}
 
 function pct(r) {
   if (r == null || !Number.isFinite(r)) return '—';
@@ -85,7 +77,7 @@ export async function fetchBpRankUserDetailData(
     try {
       const member = await guild.members.fetch(targetUser.id).catch(() => null);
       if (member?.joinedAt) {
-        guildJoinedLine = formatJst(member.joinedAt, locale);
+        guildJoinedLine = discordTimestamp(member.joinedAt, 'f') || '—';
       }
     } catch {
       /* ignore */
@@ -105,7 +97,7 @@ export async function fetchBpRankUserDetailData(
     balance,
     rankLine,
     guildJoinedLine,
-    firstUseText: firstUse ? formatJst(firstUse, locale) : '—',
+    firstUseText: firstUse ? discordTimestamp(firstUse, 'f') || '—' : '—',
     agg,
   };
 }

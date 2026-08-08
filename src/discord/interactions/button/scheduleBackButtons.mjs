@@ -1,18 +1,8 @@
 import {
-  ActionRowBuilder,
-  ButtonBuilder,
-  ButtonStyle,
-  StringSelectMenuBuilder,
-  StringSelectMenuOptionBuilder,
-} from 'discord.js';
-import {
-  fetchRaceListSub,
-  parseRaceListSub,
   filterVenueRaces,
   getRaceSalesStatus,
+  fetchVenuesAndRacesForJstYmd,
   fetchNarVenuesForDate,
-  fetchNarRaceListSub,
-  parseNarRaceListSubToVenue,
   jstYmd,
   filterRacesByInteractionPostDateYmd,
   filterVenuesForInteractionPostDate,
@@ -39,10 +29,12 @@ import {
 } from '../../utils/race/raceHubQuickPick.mjs';
 import { v2ExtraFlags } from '../../utils/shared/interactionResponse.mjs';
 import { resolveLocaleFromInteraction, t } from '../../../i18n/index.mjs';
+import { raceSalesStatusDetailLabel } from '../../utils/race/raceSalesStatusLabels.mjs';
 import {
-  raceSalesStatusShortLabel,
-  raceSalesStatusDetailLabel,
-} from '../../utils/race/raceSalesStatusLabels.mjs';
+  buildScheduleRaceSelectRow,
+  buildScheduleVenueSelectRow,
+} from '../../utils/race/scheduleRows.mjs';
+import { scheduleRaceTimeDisplay } from '../../utils/race/raceScheduleTimeDisplay.mjs';
 
 const VENUE_BACK_PREFIX = 'race_sched_back_to_venue|';
 const RACE_LIST_BACK_PREFIX = 'race_sched_back_to_race_list|';
@@ -62,57 +54,6 @@ async function safeDeferUpdate(interaction) {
     if (code === 10062) return false;
     throw e;
   }
-}
-
-function venueSelectRow(scheduleKind, kaisaiDateYmd, currentGroup, venues, locale = null) {
-  const menu = new StringSelectMenuBuilder()
-    .setCustomId('race_menu_venue')
-    .setPlaceholder(t('race_schedule.placeholders.pick_venue', null, locale))
-    .addOptions(
-      venues.slice(0, 25).map((v) => {
-        const value =
-          scheduleKind === 'nar'
-            ? `nar|${kaisaiDateYmd}|${v.kaisaiId}`
-            : `jra|${kaisaiDateYmd}|${currentGroup}|${v.kaisaiId}`;
-        const prefix =
-          scheduleKind === 'nar' ? t('race_schedule.venue.nar_prefix', null, locale) : '';
-        return new StringSelectMenuOptionBuilder()
-          .setLabel(`${prefix}${v.title}`.slice(0, 100))
-          .setValue(value)
-          .setDescription(
-            t('race_schedule.venue.race_count', { n: v.races.length }, locale).slice(0, 100),
-          );
-      }),
-    );
-  return new ActionRowBuilder().addComponents(menu);
-}
-
-function scheduleBackRaceSelectRow(kaisaiDateYmd, races, locale = null) {
-  const menu = new StringSelectMenuBuilder()
-    .setCustomId('race_menu_race')
-    .setPlaceholder(t('race_schedule.placeholders.pick_race', null, locale))
-    .addOptions(
-      races.slice(0, 25).map((r) => {
-        const st = getRaceSalesStatus(r, kaisaiDateYmd);
-        const label = `${r.roundLabel} ${r.timeText}`.replace(/\s+/g, ' ').trim().slice(0, 100);
-        const desc = `${raceSalesStatusShortLabel(st, locale)} · ${r.title}`.slice(0, 100);
-        return new StringSelectMenuOptionBuilder()
-          .setLabel(label || r.raceId)
-          .setValue(`${r.raceId}|${r.isResult ? 1 : 0}`)
-          .setDescription(desc);
-      }),
-    );
-  return new ActionRowBuilder().addComponents(menu);
-}
-
-function scheduleBackToVenueButtonRow(kaisaiDateYmd, currentGroup, scheduleKind = 'jra', locale = null) {
-  const pad = scheduleKind === 'nar' ? '_' : currentGroup;
-  return new ActionRowBuilder().addComponents(
-    new ButtonBuilder()
-      .setCustomId(`race_sched_back_to_venue|${scheduleKind}|${kaisaiDateYmd}|${pad}`)
-      .setLabel(t('race_schedule.buttons.to_venue', null, locale))
-      .setStyle(ButtonStyle.Secondary),
-  );
 }
 
 export default async function scheduleBackButtons(interaction) {
@@ -178,7 +119,7 @@ export default async function scheduleBackButtons(interaction) {
           );
           return;
         }
-        const row = venueSelectRow('nar', kaisaiDateYmd, null, venuesDay, loc);
+        const row = buildScheduleVenueSelectRow('nar', kaisaiDateYmd, null, venuesDay, loc);
         const narQuickItems = buildQuickPickItemsFromScheduleVenues({
           venuesDay,
           kaisaiDateYmd,
@@ -206,8 +147,7 @@ export default async function scheduleBackButtons(interaction) {
         return;
       }
 
-      const html = await fetchRaceListSub(kaisaiDateYmd, currentGroup);
-      const { venues } = parseRaceListSub(html, kaisaiDateYmd);
+      const { venues } = await fetchVenuesAndRacesForJstYmd(kaisaiDateYmd);
       const venuesDay = filterVenuesForInteractionPostDate(
         venues,
         kaisaiDateYmd,
@@ -226,7 +166,7 @@ export default async function scheduleBackButtons(interaction) {
         );
         return;
       }
-      const row = venueSelectRow('jra', kaisaiDateYmd, currentGroup, venuesDay, loc);
+      const row = buildScheduleVenueSelectRow('jra', kaisaiDateYmd, currentGroup, venuesDay, loc);
       const jraQuickItems = buildQuickPickItemsFromScheduleVenues({
         venuesDay,
         kaisaiDateYmd,
@@ -290,8 +230,14 @@ export default async function scheduleBackButtons(interaction) {
     }
 
     if (scheduleKind === 'nar') {
-      const html = await fetchNarRaceListSub(kaisaiDateYmd, kaisaiId);
-      const venue = parseNarRaceListSubToVenue(html, kaisaiDateYmd);
+      const { venues } = await fetchNarVenuesForDate(kaisaiDateYmd);
+      const venuesDay = filterVenuesForInteractionPostDate(
+        venues,
+        kaisaiDateYmd,
+        jstYmd(),
+        { source: 'nar' },
+      );
+      const venue = venues.find((x) => x.kaisaiId === kaisaiId);
       let races = venue?.races || [];
       if (!races.length) {
         await interaction.editReply(
@@ -324,7 +270,7 @@ export default async function scheduleBackButtons(interaction) {
       const lines = races.map((r) => {
         const st = getRaceSalesStatus(r, kaisaiDateYmd);
         const detail = raceSalesStatusDetailLabel(st, loc);
-        return `**${r.roundLabel}** ${r.timeText} — ${r.title}\n└ ${detail}`;
+        return `**${r.roundLabel}** ${scheduleRaceTimeDisplay(kaisaiDateYmd, r)} — ${r.title}\n└ ${detail}`;
       });
 
       let description = lines.join('\n\n');
@@ -342,8 +288,8 @@ export default async function scheduleBackButtons(interaction) {
         buildTextAndRowsV2Payload({
           headline,
           actionRows: [
-            scheduleBackRaceSelectRow(kaisaiDateYmd, races, loc),
-            scheduleBackToVenueButtonRow(kaisaiDateYmd, '_', 'nar', loc),
+            buildScheduleVenueSelectRow('nar', kaisaiDateYmd, null, venuesDay, loc),
+            buildScheduleRaceSelectRow(kaisaiDateYmd, races, loc),
             scheduleBackToKindSelectButtonRow(loc),
             betSlipOpenReviewButtonRowForSchedule(
               interaction.user.id,
@@ -371,8 +317,13 @@ export default async function scheduleBackButtons(interaction) {
       return;
     }
 
-    const html = await fetchRaceListSub(kaisaiDateYmd, currentGroup);
-    const { venues } = parseRaceListSub(html, kaisaiDateYmd);
+    const { venues } = await fetchVenuesAndRacesForJstYmd(kaisaiDateYmd);
+    const venuesDay = filterVenuesForInteractionPostDate(
+      venues,
+      kaisaiDateYmd,
+      jstYmd(),
+      { source: 'jra' },
+    );
     let races = filterVenueRaces(venues, kaisaiId);
     races = filterRacesByInteractionPostDateYmd(races, kaisaiDateYmd, jstYmd(), {
       source: 'jra',
@@ -393,7 +344,7 @@ export default async function scheduleBackButtons(interaction) {
     const lines = races.map((r) => {
       const st = getRaceSalesStatus(r, kaisaiDateYmd);
       const detail = raceSalesStatusDetailLabel(st, loc);
-      return `**${r.roundLabel}** ${r.timeText} — ${r.title}\n└ ${detail}`;
+      return `**${r.roundLabel}** ${scheduleRaceTimeDisplay(kaisaiDateYmd, r)} — ${r.title}\n└ ${detail}`;
     });
 
     let description = lines.join('\n\n');
@@ -411,8 +362,8 @@ export default async function scheduleBackButtons(interaction) {
       buildTextAndRowsV2Payload({
         headline,
         actionRows: [
-          scheduleBackRaceSelectRow(kaisaiDateYmd, races, loc),
-          scheduleBackToVenueButtonRow(kaisaiDateYmd, currentGroup, 'jra', loc),
+          buildScheduleVenueSelectRow('jra', kaisaiDateYmd, currentGroup, venuesDay, loc),
+          buildScheduleRaceSelectRow(kaisaiDateYmd, races, loc),
           scheduleBackToKindSelectButtonRow(loc),
           betSlipOpenReviewButtonRowForSchedule(
             interaction.user.id,

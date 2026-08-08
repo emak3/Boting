@@ -99,7 +99,8 @@ export default async function debugWeeklyChallengeModal(interaction) {
     const extraFlags = v2ExtraFlags(interaction, { assumeEphemeral: true });
     const payload = await buildDebugPanelPayload({
       extraFlags,
-      topBanner: '✅ 週間チャレンジの設定を保存しました。',
+      locale: loc,
+      topBanner: t('debug_hub.weekly.saved_banner', null, loc),
     });
 
     const ctx = getDebugPanelWebhookContext(interaction.user.id);

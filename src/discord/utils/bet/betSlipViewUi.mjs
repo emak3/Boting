@@ -70,7 +70,8 @@ export function raceBetSlipUtilityButtonRow(raceId, userId, flow) {
         .setCustomId(`${BET_SLIP_OPEN_CUSTOM_ID}|${raceId}`)
         .setLabel(n ? `購入予定(${n})` : '購入予定')
         .setEmoji(botingEmoji('cart'))
-        .setStyle(ButtonStyle.Secondary),
+        .setStyle(ButtonStyle.Secondary)
+        .setDisabled(n === 0),
     );
   }
   return new ActionRowBuilder().addComponents(...buttons);

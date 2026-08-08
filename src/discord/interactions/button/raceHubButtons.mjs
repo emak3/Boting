@@ -51,6 +51,7 @@ import {
 import { buildTextAndRowsV2Payload } from '../../utils/race/raceCardDisplay.mjs';
 import { buildBotingHelpPanelPayload } from '../../utils/boting/botingHelpPanel.mjs';
 import {
+  BOTING_ANNUAL_STATS_NAV_PREFIX,
   buildAnnualStatsPanelPayload,
   buildWeeklyChallengePanelPayload,
 } from '../../utils/boting/botingStatsPanels.mjs';
@@ -403,6 +404,51 @@ export default async function raceHubButtons(interaction) {
       components: kpad.components,
       flags: kpad.flags,
     });
+    return;
+  }
+
+  if (id.startsWith(`${BOTING_ANNUAL_STATS_NAV_PREFIX}|`)) {
+    const parts = id.split('|');
+    const year = Math.trunc(Number(parts[1]));
+    if (!Number.isFinite(year) || year < 2000 || year > 2100) return;
+    const rawSubject = parts[2];
+    const subjectUserId =
+      /^\d{17,20}$/.test(String(rawSubject || '')) ? rawSubject : interaction.user.id;
+    let rankLeaderboardReturn = null;
+    if (parts.length >= 6 && parts[3] === 'lb') {
+      rankLeaderboardReturn = {
+        limit: Math.min(BP_RANK_DISPLAY_MAX, Math.max(1, parseInt(parts[4], 10) || 20)),
+        mode: normalizeBpRankMode(parts[5]),
+      };
+    }
+    const extraFlags = ephemeralExtraFromMessage(interaction.message);
+    const locAnnualNav = resolveLocaleFromInteraction(interaction);
+    if (!(await safeDeferUpdate(interaction))) return;
+    try {
+      await runPendingRaceRefundsForUser(subjectUserId);
+      await interaction.editReply(
+        await buildAnnualStatsPanelPayload({
+          userId: subjectUserId,
+          year,
+          extraFlags,
+          rankLeaderboardReturn,
+          locale: locAnnualNav,
+        }),
+      );
+    } catch (e) {
+      console.error('raceHubButtons annual nav', e);
+      await interaction
+        .editReply(
+          buildTextAndRowsV2Payload({
+            headline: t('bp_rank.errors.annual_stats_failed', { message: e.message }, locAnnualNav),
+            actionRows: [],
+            extraFlags,
+            withBotingMenuBack: true,
+            locale: locAnnualNav,
+          }),
+        )
+        .catch(() => {});
+    }
     return;
   }
 

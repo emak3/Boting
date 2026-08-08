@@ -22,6 +22,7 @@ import {
   DEBUG_HUB_PREFIX,
   DEBUG_HUB_SCHEDULE_KIND_ID,
   DEBUG_RACE_MODAL_PREFIX,
+  DEBUG_SCHEDULE_CACHE_MODAL_PREFIX,
   DEBUG_WEEKLY_CFG_MODAL_PREFIX,
 } from './debugHubConstants.mjs';
 import { botingEmoji } from '../boting/botingEmojis.mjs';
@@ -30,8 +31,23 @@ import {
   formatWeeklyChallengeConfigSummary,
   getWeeklyChallengeConfig,
 } from '../challenge/weeklyChallengeConfig.mjs';
+import {
+  getScheduleCacheConfig,
+} from '../../../scrapers/netkeiba/cache/netkeibaScheduleCache.mjs';
+import { t } from '../../../i18n/index.mjs';
 
 const ACCENT = 0xed4245;
+
+export function formatDebugScheduleCacheRefreshInterval(refreshIntervalMs, locale = null) {
+  const ms = Math.max(0, Math.trunc(Number(refreshIntervalMs) || 0));
+  if (ms % 60_000 === 0) {
+    return t('debug_hub.schedule_cache.interval_minutes', { n: ms / 60_000 }, locale);
+  }
+  if (ms % 1000 === 0) {
+    return t('debug_hub.schedule_cache.interval_seconds', { n: ms / 1000 }, locale);
+  }
+  return t('debug_hub.schedule_cache.interval_ms', { n: ms }, locale);
+}
 
 /**
  * @param {'jra' | 'nar'} kind
@@ -64,11 +80,13 @@ function v2(extraFlags) {
  */
 export async function buildDebugPanelPayload(opts = {}) {
   const extraFlags = opts.extraFlags ?? 0;
+  const locale = opts.locale ?? null;
   const topBanner =
     opts.topBanner != null && String(opts.topBanner).trim()
       ? `${String(opts.topBanner).trim()}\n\n`
       : '';
   const on = isDebugSalesBypassEnabled();
+  const cacheConfig = await getScheduleCacheConfig();
   let weeklySummary = '';
   try {
     const wcfg = await getWeeklyChallengeConfig();
@@ -86,6 +104,17 @@ export async function buildDebugPanelPayload(opts = {}) {
     `発売締切バイパス / Daily デバッグ: **${on ? 'ON' : 'OFF'}**`,
     '',
     '**デバッグ利用可能**',
+    t(
+      'debug_hub.schedule_cache.status_line',
+      {
+        interval: formatDebugScheduleCacheRefreshInterval(
+          cacheConfig.refreshIntervalMs,
+          locale,
+        ),
+      },
+      locale,
+    ),
+    '',
     getDebugAuthorizedMentionsLine(),
     weeklySummary,
   ].join('\n');
@@ -138,12 +167,39 @@ export async function buildDebugPanelPayload(opts = {}) {
       .setStyle(ButtonStyle.Secondary),
   );
 
+  const row4 = new ActionRowBuilder().addComponents(
+    new ButtonBuilder()
+      .setCustomId(`${DEBUG_HUB_PREFIX}|schedule_cache_refresh`)
+      .setLabel(t('debug_hub.schedule_cache.button_label', null, locale))
+      .setEmoji(botingEmoji('henko'))
+      .setStyle(ButtonStyle.Secondary),
+  );
+
   return {
     content: null,
     embeds: [],
-    components: [container, row1, row2, row3],
+    components: [container, row1, row2, row3, row4],
     flags: v2(extraFlags),
   };
+}
+
+export function buildScheduleCacheRefreshModal(config, locale = null) {
+  const seconds = Math.round((config?.refreshIntervalMs || 120000) / 1000);
+  return new ModalBuilder()
+    .setCustomId(DEBUG_SCHEDULE_CACHE_MODAL_PREFIX)
+    .setTitle(t('debug_hub.schedule_cache.modal_title', null, locale).slice(0, 45))
+    .addLabelComponents(
+      new LabelBuilder()
+        .setLabel(t('debug_hub.schedule_cache.modal_label', null, locale))
+        .setTextInputComponent(
+          new TextInputBuilder()
+            .setCustomId('refresh_interval_seconds')
+            .setStyle(TextInputStyle.Short)
+            .setRequired(true)
+            .setMaxLength(8)
+            .setValue(String(seconds)),
+        ),
+    );
 }
 
 /**

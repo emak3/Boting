@@ -9,6 +9,10 @@ annual:
   top_bet_types_heading: "**Top bet types (top 3)**"
   top_bet_type_line: "{{i}}. {{label}} ({{count}})"
   top_bet_types_empty: "— (no purchases)"
+  chart_alt: "Monthly trend chart for {{year}} showing staked BP, refund BP, monthly net, recovery rate, and hit rate."
+  nav_prev: "Prev year"
+  nav_next: "Next year"
+  nav_year: "{{year}}"
   max_miss_streak: "**Longest miss streak (settled, refund 0)**: **{{n}}**"
 
 weekly:

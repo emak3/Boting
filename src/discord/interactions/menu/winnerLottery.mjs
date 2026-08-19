@@ -5,13 +5,16 @@ import { buildBotingMenuBackRow } from '../../utils/boting/botingBackButton.mjs'
 import {
   WINNER_MATCH_SELECT_ID,
   WINNER_OUTCOME_SELECT_PREFIX,
+  WINNER_REMOVE_SELECT_PREFIX,
   WINNER_SCORE_SELECT_PREFIX,
   buildWinnerConfirmPayload,
   buildWinnerOutcomePayload,
   buildWinnerScorePayload,
+  buildWinnerSlipPayload,
   scoreDisplay,
   winnerExtraFlagsFromInteraction,
 } from '../../utils/lottery/winnerUi.mjs';
+import { removeWinnerSlipItem } from '../../utils/lottery/winnerSlipStore.mjs';
 
 async function safeDeferUpdate(interaction) {
   if (interaction.deferred || interaction.replied) return false;
@@ -37,8 +40,9 @@ export default async function winnerLotteryMenu(interaction) {
   if (!interaction.isStringSelectMenu()) return;
   const customId = interaction.customId;
   if (
-    customId !== WINNER_MATCH_SELECT_ID &&
+    !customId.startsWith(`${WINNER_MATCH_SELECT_ID}|`) &&
     !customId.startsWith(`${WINNER_OUTCOME_SELECT_PREFIX}|`) &&
+    customId !== WINNER_REMOVE_SELECT_PREFIX &&
     !customId.startsWith(`${WINNER_SCORE_SELECT_PREFIX}|`)
   ) {
     return;
@@ -48,7 +52,7 @@ export default async function winnerLotteryMenu(interaction) {
   if (!(await safeDeferUpdate(interaction))) return;
 
   try {
-    if (customId === WINNER_MATCH_SELECT_ID) {
+    if (customId.startsWith(`${WINNER_MATCH_SELECT_ID}|`)) {
       const matchId = interaction.values[0];
       const match = await findWinnerMatch(matchId);
       if (!match) {
@@ -62,6 +66,24 @@ export default async function winnerLotteryMenu(interaction) {
         return;
       }
       await interaction.editReply(buildWinnerOutcomePayload({ match, extraFlags, locale }));
+      return;
+    }
+
+    if (customId === WINNER_REMOVE_SELECT_PREFIX) {
+      const idx = parseInt(interaction.values[0], 10);
+      const ok = removeWinnerSlipItem(interaction.user.id, idx);
+      await interaction.editReply(
+        await buildWinnerSlipPayload({
+          userId: interaction.user.id,
+          extraFlags,
+          locale,
+          notice: t(
+            ok ? 'winnerLottery.notice.removed' : 'winnerLottery.notice.remove_failed',
+            null,
+            locale,
+          ),
+        }),
+      );
       return;
     }
 

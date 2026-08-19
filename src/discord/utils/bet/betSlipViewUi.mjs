@@ -5,6 +5,7 @@ import {
 } from 'discord.js';
 import { getBetFlow } from './betFlowStore.mjs';
 import { getSlipSavedCount } from './betSlipStore.mjs';
+import { getWinnerSlipCount } from '../lottery/winnerSlipStore.mjs';
 import { botingEmoji } from '../boting/botingEmojis.mjs';
 
 export const BET_SLIP_OPEN_CUSTOM_ID = 'race_bet_slip_open_review';
@@ -60,7 +61,7 @@ export function raceBetSlipUtilityButtonRow(raceId, userId, flow) {
     .setEmoji(botingEmoji('history'))
     .setStyle(ButtonStyle.Secondary);
   const slipShown = shouldShowBetSlipViewButton(flow);
-  const savedN = getSlipSavedCount(userId);
+  const savedN = getSlipSavedCount(userId) + getWinnerSlipCount(userId);
   const hasCurrent = !!(flow?.purchase?.selectionLine);
   const n = savedN + (hasCurrent ? 1 : 0);
   const buttons = [hist];

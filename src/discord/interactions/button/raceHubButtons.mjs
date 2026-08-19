@@ -48,6 +48,7 @@ import {
   abandonSlipReviewToSavedState,
   editReplyOpenBetSlipReview,
 } from '../../utils/bet/betSlipOpenReview.mjs';
+import { getSlipSavedCount } from '../../utils/bet/betSlipStore.mjs';
 import { buildTextAndRowsV2Payload } from '../../utils/race/raceCardDisplay.mjs';
 import { buildBotingHelpPanelPayload } from '../../utils/boting/botingHelpPanel.mjs';
 import {
@@ -57,8 +58,12 @@ import {
 } from '../../utils/boting/botingStatsPanels.mjs';
 import { settleWeeklyChallengesForUser } from '../../utils/challenge/weeklyChallengeSettle.mjs';
 import { fetchWinnerMatches } from '../../../scrapers/winner/winnerSchedule.mjs';
-import { buildWinnerMatchListPayload } from '../../utils/lottery/winnerUi.mjs';
+import {
+  buildWinnerMatchListPayload,
+  buildWinnerSlipPayload,
+} from '../../utils/lottery/winnerUi.mjs';
 import { runPendingWinnerRefundsForUser } from '../../utils/lottery/winnerRefundSweep.mjs';
+import { getWinnerSlipCount } from '../../utils/lottery/winnerSlipStore.mjs';
 
 function normalizeBpRankMode(mode) {
   const m = String(mode || '');
@@ -665,11 +670,17 @@ export default async function raceHubButtons(interaction) {
       return;
     }
     if (part === 'slip') {
-      await editReplyOpenBetSlipReview(interaction, {
-        userId,
-        raceId: '000000000000',
-        extraFlags,
-      });
+      if (getSlipSavedCount(userId) > 0) {
+        await editReplyOpenBetSlipReview(interaction, {
+          userId,
+          raceId: '000000000000',
+          extraFlags,
+        });
+      } else if (getWinnerSlipCount(userId) > 0) {
+        await interaction.editReply(
+          await buildWinnerSlipPayload({ userId, extraFlags, locale: loc }),
+        );
+      }
       return;
     }
     if (part === 'help') {

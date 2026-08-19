@@ -16,6 +16,7 @@ const REQUIRED_KEYS = [
   'syushi',
   'ken',
   'winner',
+  'scoreboard',
   'mae',
   'tsugi',
   'henko',

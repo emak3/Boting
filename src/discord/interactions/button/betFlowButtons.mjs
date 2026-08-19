@@ -15,6 +15,7 @@ import {
 import {
   addSlipSavedItem,
   clearSlipSaved,
+  getSlipSavedCount,
   getSlipPendingReview,
   clearSlipPending,
   replaceSlipPendingItems,
@@ -59,6 +60,8 @@ import { tryConfirmRacePurchase } from '../../utils/race/raceBetRecords.mjs';
 import { deriveRaceHoldYmdFromFlow } from '../../utils/race/raceHoldDate.mjs';
 import { getBalanceAfterPendingRaceRefunds } from '../../utils/race/raceBetRefundSweep.mjs';
 import { formatBpAmount } from '../../utils/bp/bpFormat.mjs';
+import { buildWinnerSlipPayload } from '../../utils/lottery/winnerUi.mjs';
+import { getWinnerSlipCount } from '../../utils/lottery/winnerSlipStore.mjs';
 import {
   buildPayoutTicketsFromFlow,
   jraMultiEligibleLastMenu,
@@ -832,10 +835,7 @@ export default async function betFlowButtons(interaction) {
 
   const raceId = safeParseRaceId(customId);
 
-  if (
-    customId.startsWith('race_bet_cart_checkout|') ||
-    customId.startsWith('race_bet_slip_open_review|')
-  ) {
+  if (customId.startsWith('race_bet_cart_checkout|')) {
     let extraFlags = 0;
     try {
       if (interaction.message?.flags?.has(MessageFlags.Ephemeral)) {
@@ -843,6 +843,28 @@ export default async function betFlowButtons(interaction) {
       }
     } catch (_) {
       /* ignore */
+    }
+    await runOpenBetSlipReviewScreen(interaction, { userId, raceId, extraFlags });
+    return;
+  }
+
+  if (customId.startsWith('race_bet_slip_open_review|')) {
+    let extraFlags = 0;
+    try {
+      if (interaction.message?.flags?.has(MessageFlags.Ephemeral)) {
+        extraFlags |= MessageFlags.Ephemeral;
+      }
+    } catch (_) {
+      /* ignore */
+    }
+    const flowForSlip = getBetFlow(userId, raceId);
+    const hasRaceSlip = getSlipSavedCount(userId) > 0 || !!flowForSlip?.purchase;
+    if (!hasRaceSlip && getWinnerSlipCount(userId) > 0) {
+      await interaction.deferUpdate();
+      await interaction.editReply(
+        await buildWinnerSlipPayload({ userId, extraFlags, locale: loc }),
+      );
+      return;
     }
     await runOpenBetSlipReviewScreen(interaction, { userId, raceId, extraFlags });
     return;
@@ -1700,4 +1722,3 @@ export function buildMenuRowFromCustomId({ menuCustomId, flow, result, locale = 
 
   return null;
 }
-

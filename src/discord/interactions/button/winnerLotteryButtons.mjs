@@ -71,30 +71,38 @@ function buildSlipItem(match, outcome, scorePick, stakeCount, locale) {
 }
 
 async function handleStakeKeypad(interaction, extraFlags, locale) {
-  const [, , op, matchId, outcome, scorePick, stakeRaw, digitRaw] = interaction.customId.split('|');
+  const [, , op, matchId, outcome, scorePick, stakeRaw, digitRaw, baseStakeRaw] = interaction.customId.split('|');
   const match = await findWinnerMatch(matchId);
   if (!match) return replyMissing(interaction, extraFlags, locale);
 
   let stake = normalizeStake(stakeRaw);
-  if (op === 'd') {
-    const digit = String(digitRaw || '').replace(/\D/g, '').slice(0, 1);
-    const next = Number(`${stake}${digit}`);
-    stake = normalizeStake(Number.isFinite(next) ? next : stake);
+  const baseStakeCount = normalizeStake(baseStakeRaw ?? stakeRaw);
+  if (op === 'delta') {
+    stake = normalizeStake(stake + Math.round(Number(digitRaw) || 0));
     await interaction.editReply(
-      buildWinnerStakeKeypadPayload({ match, outcome, scorePick, stakeCount: stake, extraFlags, locale }),
-    );
-    return;
-  }
-  if (op === 'del') {
-    stake = normalizeStake(Math.floor(stake / 10));
-    await interaction.editReply(
-      buildWinnerStakeKeypadPayload({ match, outcome, scorePick, stakeCount: stake, extraFlags, locale }),
+      buildWinnerStakeKeypadPayload({
+        match,
+        outcome,
+        scorePick,
+        stakeCount: stake,
+        baseStakeCount,
+        extraFlags,
+        locale,
+      }),
     );
     return;
   }
   if (op === 'open') {
     await interaction.editReply(
-      buildWinnerStakeKeypadPayload({ match, outcome, scorePick, stakeCount: stake, extraFlags, locale }),
+      buildWinnerStakeKeypadPayload({
+        match,
+        outcome,
+        scorePick,
+        stakeCount: stake,
+        baseStakeCount,
+        extraFlags,
+        locale,
+      }),
     );
     return;
   }
@@ -130,22 +138,24 @@ export default async function winnerLotteryButtons(interaction) {
       return;
     }
 
-    if (action === 'slip') {
+    if (action === 'list_page') {
+      const pageIndex = Math.max(0, Math.trunc(Number(parts[2]) || 0));
+      const matches = await fetchWinnerMatches({ force: true });
       await interaction.editReply(
-        await buildWinnerSlipPayload({ userId: interaction.user.id, extraFlags, locale }),
+        await buildWinnerMatchListPayload({
+          matches,
+          userId: interaction.user.id,
+          extraFlags,
+          locale,
+          pageIndex,
+        }),
       );
       return;
     }
 
-    if (action === 'clear') {
-      clearWinnerSlip(interaction.user.id);
+    if (action === 'slip') {
       await interaction.editReply(
-        await buildWinnerSlipPayload({
-          userId: interaction.user.id,
-          extraFlags,
-          locale,
-          notice: t('winnerLottery.notice.cleared', null, locale),
-        }),
+        await buildWinnerSlipPayload({ userId: interaction.user.id, extraFlags, locale }),
       );
       return;
     }

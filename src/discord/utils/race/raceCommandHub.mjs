@@ -18,6 +18,7 @@ import { buildBotingMenuBackRow } from '../boting/botingBackButton.mjs';
 import { botingEmoji } from '../boting/botingEmojis.mjs';
 import { formatBpWithUnit } from '../bp/bpFormat.mjs';
 import { getSlipSavedCount } from '../bet/betSlipStore.mjs';
+import { getWinnerSlipCount } from '../lottery/winnerSlipStore.mjs';
 import { t } from '../../../i18n/index.mjs';
 
 export { BOTING_HUB_PREFIX };
@@ -55,7 +56,7 @@ export async function buildBotingPanelPayload({
   const claimed =
     view.lastDailyPeriodKey === view.currentPeriodKey && !!view.lastDailyPeriodKey;
   const dailyDisabled = claimed && !debugBypass;
-  const slipDisabled = getSlipSavedCount(user.id) === 0;
+  const slipDisabled = getSlipSavedCount(user.id) + getWinnerSlipCount(user.id) === 0;
 
   const dailyContainer = buildDailyAccountV2Container(view, {
     claimed,

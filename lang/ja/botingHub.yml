@@ -9,6 +9,7 @@ buttons:
   rank: ランキング
   ledger: 直近の収支
   purchase: 馬券を購入
+  lottery: くじ購入
   history: 購入履歴
   slip: 購入予定
   annual_stats: 年間統計
@@ -32,6 +33,8 @@ ledger_kinds:
   debug_extra: デバッグ
   debug_bp_adjust: デバッグ（BP調整）
   race_bet: 競馬（購入）
+  winner_bet: くじ（WINNER購入）
+  winner_refund: くじ（WINNER払戻）
   race_refund: 競馬（払戻）
   race_refund_adjust: 競馬（払戻調整）
   weekly_challenge: 週間チャレンジ

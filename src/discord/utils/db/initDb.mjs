@@ -45,8 +45,53 @@ async function ensureRaceBetJraColumns() {
 /**
  * 起動時に SQLite のテーブルを作成（存在しなければ）
  */
+async function ensureLotteryBetColumns() {
+  const qi = sequelize.getQueryInterface();
+  let desc;
+  try {
+    desc = await qi.describeTable('lottery_bets');
+  } catch {
+    return;
+  }
+  if (!desc.source) {
+    await qi.addColumn('lottery_bets', 'source', {
+      type: DataTypes.STRING(32),
+      allowNull: false,
+      defaultValue: 'toto_winner',
+    });
+  }
+  if (!desc.commodityId) {
+    await qi.addColumn('lottery_bets', 'commodityId', {
+      type: DataTypes.STRING(16),
+      allowNull: false,
+      defaultValue: '',
+    });
+  }
+  if (!desc.holdCntId) {
+    await qi.addColumn('lottery_bets', 'holdCntId', {
+      type: DataTypes.STRING(16),
+      allowNull: false,
+      defaultValue: '',
+    });
+  }
+  if (!desc.odds) {
+    await qi.addColumn('lottery_bets', 'odds', {
+      type: DataTypes.FLOAT,
+      allowNull: true,
+    });
+  }
+  if (!desc.stakeCount) {
+    await qi.addColumn('lottery_bets', 'stakeCount', {
+      type: DataTypes.INTEGER,
+      allowNull: false,
+      defaultValue: 1,
+    });
+  }
+}
+
 export async function initDatabase() {
   await sequelize.authenticate();
   await sequelize.sync();
   await ensureRaceBetJraColumns();
+  await ensureLotteryBetColumns();
 }

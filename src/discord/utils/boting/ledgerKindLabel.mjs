@@ -12,6 +12,8 @@ export function ledgerKindLabel(kind, streakDay, locale = null) {
   if (k === 'debug_extra') return t('boting_hub.ledger_kinds.debug_extra', null, locale);
   if (k === 'debug_bp_adjust') return t('boting_hub.ledger_kinds.debug_bp_adjust', null, locale);
   if (k === 'race_bet') return t('boting_hub.ledger_kinds.race_bet', null, locale);
+  if (k === 'winner_bet') return t('boting_hub.ledger_kinds.winner_bet', null, locale);
+  if (k === 'winner_refund') return t('boting_hub.ledger_kinds.winner_refund', null, locale);
   if (k === 'race_refund') return t('boting_hub.ledger_kinds.race_refund', null, locale);
   if (k === 'race_refund_adjust') return t('boting_hub.ledger_kinds.race_refund_adjust', null, locale);
   if (k === 'weekly_challenge') return t('boting_hub.ledger_kinds.weekly_challenge', null, locale);

@@ -2,6 +2,7 @@ import debugHubButtons from './button/debugHubButtons.mjs';
 import raceHubButtons from './button/raceHubButtons.mjs';
 import botingLedgerKeypadButtons from './button/botingLedgerKeypadButtons.mjs';
 import bpRankLimitKeypadButtons from './button/bpRankLimitKeypadButtons.mjs';
+import winnerLotteryButtons from './button/winnerLotteryButtons.mjs';
 import scheduleBackButtons from './button/scheduleBackButtons.mjs';
 import unitYenKeypadButtons from './button/unitYenKeypadButtons.mjs';
 import betFlowButtons from './button/betFlowButtons.mjs';
@@ -14,6 +15,7 @@ const BUTTON_HANDLERS = [
   debugHubButtons,
   botingLedgerKeypadButtons,
   bpRankLimitKeypadButtons,
+  winnerLotteryButtons,
   raceHubButtons,
   scheduleBackButtons,
   unitYenKeypadButtons,

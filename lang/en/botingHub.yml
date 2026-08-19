@@ -8,6 +8,7 @@ buttons:
   rank: Rankings
   ledger: Recent ledger
   purchase: Buy tickets
+  lottery: Buy lottery
   history: Purchase history
   slip: Saved picks
   annual_stats: Yearly stats
@@ -31,6 +32,8 @@ ledger_kinds:
   debug_extra: Debug
   debug_bp_adjust: Debug (BP adjust)
   race_bet: Racing (bet)
+  winner_bet: Lottery (WINNER bet)
+  winner_refund: Lottery (WINNER refund)
   race_refund: Racing (refund)
   race_refund_adjust: Racing (refund adjust)
   weekly_challenge: Weekly challenge

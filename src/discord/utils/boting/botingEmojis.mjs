@@ -15,6 +15,7 @@ const REQUIRED_KEYS = [
   'susumu',
   'syushi',
   'ken',
+  'winner',
   'mae',
   'tsugi',
   'henko',

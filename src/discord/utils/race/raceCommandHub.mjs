@@ -88,6 +88,11 @@ export async function buildBotingPanelPayload({
       .setEmoji(botingEmoji('ken'))
       .setStyle(ButtonStyle.Primary),
     new ButtonBuilder()
+      .setCustomId(`${BOTING_HUB_PREFIX}|lottery`)
+      .setLabel(t('boting_hub.buttons.lottery', null, locale))
+      .setEmoji(botingEmoji('winner'))
+      .setStyle(ButtonStyle.Primary),
+    new ButtonBuilder()
       .setCustomId(`${BOTING_HUB_PREFIX}|history`)
       .setLabel(t('boting_hub.buttons.history', null, locale))
       .setEmoji(botingEmoji('history'))

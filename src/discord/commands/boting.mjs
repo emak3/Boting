@@ -6,6 +6,7 @@ import {
 } from 'discord.js';
 import { buildBotingPanelPayload } from '../utils/race/raceCommandHub.mjs';
 import { runPendingRaceRefundsForUser } from '../utils/race/raceBetRefundSweep.mjs';
+import { runPendingWinnerRefundsForUser } from '../utils/lottery/winnerRefundSweep.mjs';
 import { isDatabaseCapacityError } from '../utils/shared/databaseErrors.mjs';
 import { deferEphemeral } from '../utils/shared/interactionResponse.mjs';
 import { resolveLocaleFromInteraction, t } from '../../i18n/index.mjs';
@@ -27,6 +28,7 @@ const commandObject = {
     const loc = resolveLocaleFromInteraction(interaction);
     try {
       await runPendingRaceRefundsForUser(interaction.user.id);
+      await runPendingWinnerRefundsForUser(interaction.user.id);
       await interaction.editReply(
         await buildBotingPanelPayload({
           user: interaction.user,

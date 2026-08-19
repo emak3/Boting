@@ -103,6 +103,47 @@ export const RaceBet = sequelize.define(
   },
 );
 
+/** WINNER風くじ購入履歴（精算は別実装で扱う） */
+export const LotteryBet = sequelize.define(
+  'LotteryBet',
+  {
+    id: { type: DataTypes.STRING(40), primaryKey: true },
+    userId: { type: DataTypes.STRING(32), allowNull: false },
+    matchId: { type: DataTypes.STRING(40), allowNull: false },
+    commodityId: { type: DataTypes.STRING(16), allowNull: false, defaultValue: '' },
+    holdCntId: { type: DataTypes.STRING(16), allowNull: false, defaultValue: '' },
+    league: { type: DataTypes.STRING(64), allowNull: false, defaultValue: '' },
+    round: { type: DataTypes.STRING(64), allowNull: false, defaultValue: '' },
+    matchDate: { type: DataTypes.STRING(16), allowNull: false, defaultValue: '' },
+    kickOff: { type: DataTypes.STRING(16), allowNull: false, defaultValue: '' },
+    venue: { type: DataTypes.STRING(64), allowNull: false, defaultValue: '' },
+    homeTeam: { type: DataTypes.STRING(80), allowNull: false },
+    awayTeam: { type: DataTypes.STRING(80), allowNull: false },
+    betType: { type: DataTypes.STRING(32), allowNull: false, defaultValue: 'winner_1match' },
+    outcome: { type: DataTypes.STRING(16), allowNull: false },
+    scorePick: { type: DataTypes.STRING(32), allowNull: false },
+    selectionLine: { type: DataTypes.STRING(256), allowNull: false, defaultValue: '' },
+    odds: { type: DataTypes.FLOAT, allowNull: true },
+    stakeCount: { type: DataTypes.INTEGER, allowNull: false, defaultValue: 1 },
+    costBp: { type: DataTypes.INTEGER, allowNull: false },
+    source: { type: DataTypes.STRING(32), allowNull: false, defaultValue: 'toto_winner' },
+    status: { type: DataTypes.STRING(16), allowNull: false, defaultValue: 'open' },
+    refundBp: { type: DataTypes.INTEGER, allowNull: false, defaultValue: 0 },
+    purchasedAt: { type: DataTypes.DATE, allowNull: false },
+    settledAt: { type: DataTypes.DATE, allowNull: true },
+  },
+  {
+    tableName: 'lottery_bets',
+    timestamps: false,
+    indexes: [
+      { fields: ['userId', 'status'] },
+      { fields: ['userId', 'purchasedAt'] },
+      { fields: ['userId', 'matchDate'] },
+      { fields: ['userId', 'matchId'] },
+    ],
+  },
+);
+
 /** デバッグコマンド許可ユーザー（1 行 1 userId） */
 export const DebugAuthorizedUser = sequelize.define(
   'DebugAuthorizedUser',

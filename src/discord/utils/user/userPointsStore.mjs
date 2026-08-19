@@ -109,6 +109,8 @@ export function kindLabelJa(kind, streakDay) {
   if (kind === 'debug_extra') return 'デバッグ';
   if (kind === 'debug_bp_adjust') return 'デバッグ（BP調整）';
   if (kind === 'race_bet') return '競馬（購入）';
+  if (kind === 'winner_bet') return 'くじ（WINNER購入）';
+  if (kind === 'winner_refund') return 'くじ（WINNER払戻）';
   if (kind === 'race_refund') return '競馬（払戻）';
   if (kind === 'race_refund_adjust') return '競馬（払戻調整）';
   if (kind === 'weekly_challenge') return '週間チャレンジ';

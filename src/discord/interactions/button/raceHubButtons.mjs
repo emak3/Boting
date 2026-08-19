@@ -56,6 +56,9 @@ import {
   buildWeeklyChallengePanelPayload,
 } from '../../utils/boting/botingStatsPanels.mjs';
 import { settleWeeklyChallengesForUser } from '../../utils/challenge/weeklyChallengeSettle.mjs';
+import { fetchWinnerMatches } from '../../../scrapers/winner/winnerSchedule.mjs';
+import { buildWinnerMatchListPayload } from '../../utils/lottery/winnerUi.mjs';
+import { runPendingWinnerRefundsForUser } from '../../utils/lottery/winnerRefundSweep.mjs';
 
 function normalizeBpRankMode(mode) {
   const m = String(mode || '');
@@ -535,6 +538,7 @@ export default async function raceHubButtons(interaction) {
     if (part === 'back') {
       abandonSlipReviewToSavedState(userId);
       await runPendingRaceRefundsForUser(userId);
+      await runPendingWinnerRefundsForUser(userId);
       await interaction.editReply(
         await buildBotingPanelPayload({
           user: interaction.user,
@@ -547,6 +551,7 @@ export default async function raceHubButtons(interaction) {
     }
     if (part === 'daily') {
       await runPendingRaceRefundsForUser(userId);
+      await runPendingWinnerRefundsForUser(userId);
       const debugBypass = canBypassDailyCooldown(userId);
       let result;
       try {
@@ -624,6 +629,7 @@ export default async function raceHubButtons(interaction) {
     }
     if (part === 'ledger') {
       await runPendingRaceRefundsForUser(userId);
+      await runPendingWinnerRefundsForUser(userId);
       await interaction.editReply(
         await buildBotingLedgerViewPayload({
           userId,
@@ -638,6 +644,13 @@ export default async function raceHubButtons(interaction) {
     if (part === 'purchase') {
       await interaction.editReply(
         await buildRaceScheduleIntroV2Payload({ userId, extraFlags, locale: loc }),
+      );
+      return;
+    }
+    if (part === 'lottery') {
+      const matches = await fetchWinnerMatches();
+      await interaction.editReply(
+        await buildWinnerMatchListPayload({ matches, userId, extraFlags, locale: loc }),
       );
       return;
     }
@@ -667,6 +680,7 @@ export default async function raceHubButtons(interaction) {
     }
     if (part === 'annual_stats') {
       await runPendingRaceRefundsForUser(userId);
+      await runPendingWinnerRefundsForUser(userId);
       await interaction.editReply(
         await buildAnnualStatsPanelPayload({ userId, extraFlags, locale: loc }),
       );
@@ -674,6 +688,7 @@ export default async function raceHubButtons(interaction) {
     }
     if (part === 'weekly_challenge') {
       await runPendingRaceRefundsForUser(userId);
+      await runPendingWinnerRefundsForUser(userId);
       await interaction.editReply(
         await buildWeeklyChallengePanelPayload({ userId, extraFlags, locale: loc }),
       );
@@ -681,6 +696,7 @@ export default async function raceHubButtons(interaction) {
     }
     if (part === 'weekly_claim') {
       await runPendingRaceRefundsForUser(userId);
+      await runPendingWinnerRefundsForUser(userId);
       const { grants } = await settleWeeklyChallengesForUser(userId);
       await interaction.editReply(
         await buildWeeklyChallengePanelPayload({

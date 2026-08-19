@@ -54,36 +54,49 @@ function findScore(lines) {
   return null;
 }
 
+function scoreLineMatches(line, winningPick) {
+  if (!winningPick?.scorePick) return false;
+  const pick = String(winningPick.scorePick);
+  if (!pick.endsWith('+')) return line === pick.replace('-', ' - ');
+  if (pick === 'draw3+') return /両チーム3点以上/.test(line);
+  return /4得点以上で勝利/.test(line);
+}
+
 function parseWinningMultiplier(lines, winningPick) {
   if (!winningPick) return null;
-  const targetScore = String(winningPick.scorePick || '').replace('-', ' - ');
   for (let i = 0; i < lines.length; i++) {
-    const line = lines[i];
-    const normal = !winningPick.scorePick.endsWith('+') && line === targetScore;
-    const home4 = winningPick.scorePick === 'home4+' && /4得点以上で勝利/.test(line);
-    const away4 = winningPick.scorePick === 'away4+' && /4得点以上で勝利/.test(line);
-    const draw3 = winningPick.scorePick === 'draw3+' && /両チーム3点以上/.test(line);
-    if (!normal && !home4 && !away4 && !draw3) continue;
-    for (let j = i + 1; j < Math.min(lines.length, i + 10); j++) {
+    if (!scoreLineMatches(lines[i], winningPick)) continue;
+    for (let j = i + 1; j < Math.min(lines.length, i + 12); j++) {
       if (!/^払戻倍率/.test(lines[j])) continue;
-      const n = parseNumber(lines[j + 1]);
-      if (Number.isFinite(n)) return n;
+      const inline = lines[j].match(/払戻倍率[:：]?\s*([0-9]+(?:\.[0-9]+)?)/);
+      if (inline) return parseNumber(inline[1]);
+      const next = parseNumber(lines[j + 1]);
+      if (Number.isFinite(next)) return next;
     }
   }
   return null;
 }
 
 export function parseWinnerResultHtml(html) {
-  const $ = cheerio.load(html);
+  const normalizedHtml = String(html || '')
+    .replace(/<br\s*\/?>/gi, '\n')
+    .replace(/<\/(p|div|li|tr|td|th|span|h[1-6]|dt|dd)>/gi, '\n');
+  const $ = cheerio.load(normalizedHtml);
   const lines = $.root()
     .text()
     .split(/\n+/)
     .map(normText)
     .filter(Boolean);
+
+  if (lines.some((line) => line.includes('システムメンテナンス'))) {
+    return { confirmed: false, payoutReady: false, maintenance: true };
+  }
+
   const score = findScore(lines);
   if (!score) {
     return { confirmed: false, payoutReady: false };
   }
+
   const winningPick = resultPickFromScore(score.homeScore, score.awayScore);
   const atariIdx = lines.findIndex((line) => line === '当せん金');
   const payoutYen = atariIdx >= 0 ? yenToNumber(lines[atariIdx + 1]) : null;

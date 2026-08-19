@@ -5,9 +5,7 @@ placeholders:
 schedule_kind:
   placeholder: 中央(JRA) か 地方(NAR) を選択
   jra_label: 中央競馬 (JRA)
-  jra_desc: race.netkeiba.com
   nar_label: 地方競馬 (NAR)
-  nar_desc: nar.netkeiba.com
   back_button: JRA/NARを選び直す
 buttons:
   to_venue: 開催場へ

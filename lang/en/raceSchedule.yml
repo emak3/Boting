@@ -5,9 +5,7 @@ placeholders:
 schedule_kind:
   placeholder: Choose JRA or NAR
   jra_label: JRA (central)
-  jra_desc: race.netkeiba.com
   nar_label: NAR (local)
-  nar_desc: nar.netkeiba.com
   back_button: Change JRA/NAR
 buttons:
   to_venue: Meetings

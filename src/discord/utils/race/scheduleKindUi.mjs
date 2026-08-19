@@ -21,12 +21,10 @@ export function scheduleKindSelectRow(locale = null) {
       .addOptions(
         new StringSelectMenuOptionBuilder()
           .setLabel(t('race_schedule.schedule_kind.jra_label', null, locale))
-          .setValue('jra')
-          .setDescription(t('race_schedule.schedule_kind.jra_desc', null, locale)),
+          .setValue('jra'),
         new StringSelectMenuOptionBuilder()
           .setLabel(t('race_schedule.schedule_kind.nar_label', null, locale))
           .setValue('nar')
-          .setDescription(t('race_schedule.schedule_kind.nar_desc', null, locale)),
       ),
   );
 }

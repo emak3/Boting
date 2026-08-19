@@ -11,6 +11,7 @@ import { formatBpAmount, formatBpWithUnit } from '../bp/bpFormat.mjs';
 import { buildBotingMenuBackRow } from '../boting/botingBackButton.mjs';
 import { botingEmoji } from '../boting/botingEmojis.mjs';
 import { getBalance } from '../user/userPointsStore.mjs';
+import { discordTimestamp } from '../shared/discordTimestamp.mjs';
 import { t } from '../../../i18n/index.mjs';
 import {
   isWinnerMatchClosed,
@@ -69,12 +70,7 @@ export function formatOdds(odds, locale = null) {
 export function formatWinnerCloseAt(match, locale = null) {
   const d = winnerSalesCloseAt(match);
   if (!d) return t('winnerLottery.close_unknown', null, locale);
-  const shifted = new Date(d.getTime() + 9 * 60 * 60 * 1000);
-  const mm = String(shifted.getUTCMonth() + 1).padStart(2, '0');
-  const dd = String(shifted.getUTCDate()).padStart(2, '0');
-  const hh = String(shifted.getUTCHours()).padStart(2, '0');
-  const mi = String(shifted.getUTCMinutes()).padStart(2, '0');
-  return t('winnerLottery.close_at', { time: `${mm}/${dd} ${hh}:${mi}` }, locale);
+  return t('winnerLottery.close_at', { time: discordTimestamp(d, 'f') }, locale);
 }
 
 function extraFlagsFromMessage(message) {

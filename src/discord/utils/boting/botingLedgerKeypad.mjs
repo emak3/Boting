@@ -36,7 +36,7 @@ export function bufferToLedgerLimit(buffer) {
 }
 
 function formatHeadline(buffer) {
-  const part = buffer.length ? buffer : '_';
+  const part = buffer.length ? buffer : '-';
   return ['**1ページあたりの表示件数（1〜50）**', `# \`${part}\` 件`].join('\n');
 }
 

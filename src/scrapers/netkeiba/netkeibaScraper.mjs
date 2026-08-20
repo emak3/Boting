@@ -5,6 +5,17 @@ import { axiosKeepAlive } from './utils/httpAgents.mjs';
 import { createTtlMemo } from '../../utils/cache/ttlMemo.mjs';
 import { scrapWithPuppeteer } from './utils/puppeteerFallback.mjs';
 import {
+  netkeibaBaseUrlForOrigin,
+  orderedRaceCardSources,
+  orderedRaceResultSources,
+  racePageUrl,
+  requestHeadersForNetkeibaBase,
+} from './netkeibaSources.mjs';
+import {
+  raceDataCacheKey,
+  readThroughRaceDataCache,
+} from './cache/netkeibaRaceDataCache.mjs';
+import {
   extractShutubaPostTimeText,
   normalizeRaceScrapedText,
   postTimeHmFromRaceData01PlainText,
@@ -15,8 +26,6 @@ import {
   shutubaPast5HorseRowSelector,
   extractHorseIntervalRestText,
 } from './utils/shutubaDom.mjs';
-
-const NAR_BASE_URL = 'https://nar.netkeiba.com';
 
 /** 出馬表・結果・オッズ API の短時間キャッシュ（連打・同一レースの再取得を抑える） */
 const RACE_CARD_CACHE_TTL_MS = 45_000;
@@ -77,16 +86,9 @@ function scoreScrapedRaceQuality(parsed) {
   return score;
 }
 
-function likelyOriginFromRaceId(raceId) {
-  const venueCode = String(raceId || '').slice(8, 10);
-  const code = Number(venueCode);
-  if (!Number.isInteger(code)) return null;
-  return code >= 1 && code <= 10 ? 'jra' : 'nar';
-}
-
 class NetkeibaScraper {
   constructor() {
-    this.baseUrl = 'https://race.netkeiba.com';
+    this.baseUrl = netkeibaBaseUrlForOrigin('jra');
     this.headers = {
       'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
       'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,*/*;q=0.8',
@@ -94,17 +96,14 @@ class NetkeibaScraper {
       'Accept-Encoding': 'gzip, deflate, br',
       'Connection': 'keep-alive',
       'Upgrade-Insecure-Requests': '1',
-      'Referer': 'https://race.netkeiba.com/top/',
+      'Referer': `${this.baseUrl}/top/`,
     };
   }
 
   static shutubaHorseRowSelector = shutubaHorseRowSelector;
 
   requestHeadersForBase(baseUrl) {
-    return {
-      ...this.headers,
-      Referer: `${baseUrl.replace(/\/$/, '')}/top/`,
-    };
+    return requestHeadersForNetkeibaBase(baseUrl, this.headers);
   }
 
   /**
@@ -117,8 +116,18 @@ class NetkeibaScraper {
    */
   async scrapeRaceCard(raceId, options = {}) {
     const { preferredOrigin = null } = options;
-    return memoRaceCard(`rc:${raceId}`, RACE_CARD_CACHE_TTL_MS, () =>
-      this.scrapeRaceCardUncached(raceId, preferredOrigin),
+    const variant = preferredOrigin ?? 'auto';
+    return readThroughRaceDataCache(
+      {
+        cacheKey: raceDataCacheKey('raceCard', raceId, variant),
+        dataType: 'raceCard',
+        raceId,
+        ttlMs: RACE_CARD_CACHE_TTL_MS,
+      },
+      () =>
+        memoRaceCard(`rc:${raceId}:${variant}`, RACE_CARD_CACHE_TTL_MS, () =>
+          this.scrapeRaceCardUncached(raceId, preferredOrigin),
+        ),
     );
   }
 
@@ -127,10 +136,8 @@ class NetkeibaScraper {
    * @param {'jra' | 'nar' | null} preferredOrigin
    */
   async scrapeRaceCardUncached(raceId, preferredOrigin) {
-    const jraUrl = `${this.baseUrl}/race/shutuba.html?race_id=${raceId}`;
-    const narUrl = `${NAR_BASE_URL}/race/shutuba.html?race_id=${raceId}`;
-    const jraHeaders = this.requestHeadersForBase(this.baseUrl);
-    const narHeaders = this.requestHeadersForBase(NAR_BASE_URL);
+    const sources = orderedRaceCardSources(preferredOrigin);
+    const [primary, fallback] = sources;
 
     let lastErr;
     try {
@@ -139,51 +146,47 @@ class NetkeibaScraper {
 
       if (preferredOrigin === null) {
         [jraCheerio, narCheerio] = await Promise.all([
-          this.scrapeWithCheerio(jraUrl, { headers: jraHeaders }),
-          this.scrapeWithCheerio(narUrl, { headers: narHeaders }),
+          ...sources.map((source) =>
+            this.scrapeRaceCardWithCheerioSource(source, raceId),
+          ),
         ]);
-      } else if (preferredOrigin === 'jra') {
-        jraCheerio = await this.scrapeWithCheerio(jraUrl, { headers: jraHeaders });
-        const jraOkEarly = jraCheerio?.horses?.length ? jraCheerio : null;
+      } else if (primary.origin === 'jra') {
+        jraCheerio = await this.scrapeRaceCardWithCheerioSource(primary, raceId);
+        const jraOkEarly = this.markRaceCardOrigin(jraCheerio, 'jra');
         if (
           jraOkEarly &&
           scoreScrapedRaceQuality(jraOkEarly) >= SHUTUBA_SKIP_SECOND_FETCH_MIN_SCORE
         ) {
-          jraOkEarly.netkeibaOrigin = 'jra';
           await this.mergeJraOddsFromApi(raceId, jraOkEarly);
           return this.returnRaceCardWithShutubaPast(raceId, jraOkEarly);
         }
-        narCheerio = await this.scrapeWithCheerio(narUrl, { headers: narHeaders });
+        narCheerio = await this.scrapeRaceCardWithCheerioSource(fallback, raceId);
       } else {
-        narCheerio = await this.scrapeWithCheerio(narUrl, { headers: narHeaders });
-        const narOkEarly = narCheerio?.horses?.length ? narCheerio : null;
+        narCheerio = await this.scrapeRaceCardWithCheerioSource(primary, raceId);
+        const narOkEarly = this.markRaceCardOrigin(narCheerio, 'nar');
         if (
           narOkEarly &&
           scoreScrapedRaceQuality(narOkEarly) >= SHUTUBA_SKIP_SECOND_FETCH_MIN_SCORE
         ) {
-          narOkEarly.netkeibaOrigin = 'nar';
           return this.returnRaceCardWithShutubaPast(raceId, narOkEarly);
         }
-        jraCheerio = await this.scrapeWithCheerio(jraUrl, { headers: jraHeaders });
+        jraCheerio = await this.scrapeRaceCardWithCheerioSource(fallback, raceId);
       }
 
-      const jraOk = jraCheerio?.horses?.length ? jraCheerio : null;
-      const narOk = narCheerio?.horses?.length ? narCheerio : null;
+      const jraOk = this.markRaceCardOrigin(jraCheerio, 'jra');
+      const narOk = this.markRaceCardOrigin(narCheerio, 'nar');
 
       if (jraOk && narOk) {
         const pickJra = scoreScrapedRaceQuality(jraOk) >= scoreScrapedRaceQuality(narOk);
         const picked = pickJra ? jraOk : narOk;
-        picked.netkeibaOrigin = pickJra ? 'jra' : 'nar';
         if (pickJra) await this.mergeJraOddsFromApi(raceId, picked);
         return this.returnRaceCardWithShutubaPast(raceId, picked);
       }
       if (jraOk) {
-        jraOk.netkeibaOrigin = 'jra';
         await this.mergeJraOddsFromApi(raceId, jraOk);
         return this.returnRaceCardWithShutubaPast(raceId, jraOk);
       }
       if (narOk) {
-        narOk.netkeibaOrigin = 'nar';
         return this.returnRaceCardWithShutubaPast(raceId, narOk);
       }
     } catch (error) {
@@ -191,28 +194,36 @@ class NetkeibaScraper {
       console.warn('scrapeRaceCard cheerio:', error.message);
     }
 
-    const puppeteerBases = [
-      { origin: 'jra', base: this.baseUrl },
-      { origin: 'nar', base: NAR_BASE_URL },
-    ];
-    for (const { origin, base } of puppeteerBases) {
-      const url = `${base}/race/shutuba.html?race_id=${raceId}`;
+    for (const source of sources) {
+      const url = racePageUrl(source, 'shutuba', raceId);
       try {
-        console.log(`Cheerio empty for both sites, Puppeteer: ${origin}...`);
+        console.log(`Cheerio empty for both sites, Puppeteer: ${source.origin}...`);
         const result = await this.scrapeWithPuppeteer(url);
         if (result && result.horses.length > 0) {
-          result.netkeibaOrigin = origin;
-          if (origin === 'jra') await this.mergeJraOddsFromApi(raceId, result);
+          result.netkeibaOrigin = source.origin;
+          if (source.origin === 'jra') await this.mergeJraOddsFromApi(raceId, result);
           return this.returnRaceCardWithShutubaPast(raceId, result);
         }
       } catch (error) {
         lastErr = error;
-        console.warn(`scrapeRaceCard puppeteer ${origin}:`, error.message);
+        console.warn(`scrapeRaceCard puppeteer ${source.origin}:`, error.message);
       }
     }
 
     console.error('Error scraping race card:', lastErr);
     throw new Error(`Failed to scrape race data: ${lastErr?.message || 'no data'}`);
+  }
+
+  scrapeRaceCardWithCheerioSource(source, raceId) {
+    return this.scrapeWithCheerio(racePageUrl(source, 'shutuba', raceId), {
+      headers: this.requestHeadersForBase(source.baseUrl),
+    });
+  }
+
+  markRaceCardOrigin(result, origin) {
+    if (!result?.horses?.length) return null;
+    result.netkeibaOrigin = origin;
+    return result;
   }
 
   /**
@@ -233,7 +244,7 @@ class NetkeibaScraper {
   async enrichWithShutubaPast(raceId, result) {
     if (!result?.horses?.length) return;
     const origin = result.netkeibaOrigin === 'nar' ? 'nar' : 'jra';
-    const base = origin === 'nar' ? NAR_BASE_URL : this.baseUrl;
+    const base = netkeibaBaseUrlForOrigin(origin);
     const headers = this.requestHeadersForBase(base);
     const url = `${base}/race/shutuba_past.html?race_id=${encodeURIComponent(String(raceId))}`;
     try {
@@ -323,15 +334,24 @@ class NetkeibaScraper {
    */
   async scrapeRaceResult(raceId) {
     try {
-      return await memoRaceResult(`rr:${raceId}`, RACE_RESULT_CACHE_TTL_MS, async () => {
-        const r = await this.scrapeRaceResultUncached(raceId);
-        if (r.confirmed === true && r.payoutReady === false) {
-          const err = new Error('netkeiba-result-provisional');
-          err._nkProvisional = r;
-          throw err;
-        }
-        return r;
-      });
+      return await readThroughRaceDataCache(
+        {
+          cacheKey: raceDataCacheKey('raceResult', raceId),
+          dataType: 'raceResult',
+          raceId,
+          ttlMs: RACE_RESULT_CACHE_TTL_MS,
+        },
+        () =>
+          memoRaceResult(`rr:${raceId}`, RACE_RESULT_CACHE_TTL_MS, async () => {
+            const r = await this.scrapeRaceResultUncached(raceId);
+            if (r.confirmed === true && r.payoutReady === false) {
+              const err = new Error('netkeiba-result-provisional');
+              err._nkProvisional = r;
+              throw err;
+            }
+            return r;
+          }),
+      );
     } catch (e) {
       if (e?._nkProvisional) return e._nkProvisional;
       throw e;
@@ -339,17 +359,14 @@ class NetkeibaScraper {
   }
 
   async scrapeRaceResultUncached(raceId) {
-    const bases = [
-      { origin: 'jra', base: this.baseUrl },
-      { origin: 'nar', base: NAR_BASE_URL },
-    ];
-    const likelyOrigin = likelyOriginFromRaceId(raceId);
-    if (likelyOrigin === 'nar') bases.reverse();
+    const sources = orderedRaceResultSources(raceId);
+    const likelyOrigin = sources[0].origin === 'nar' ? 'nar' : null;
     let best = null;
     let bestScore = -1;
-    for (const { origin, base } of bases) {
-      const url = `${base}/race/result.html?race_id=${raceId}`;
-      const headers = this.requestHeadersForBase(base);
+    for (const source of sources) {
+      const { origin } = source;
+      const url = racePageUrl(source, 'result', raceId);
+      const headers = this.requestHeadersForBase(source.baseUrl);
       try {
         const response = await axios.get(url, {
           headers,

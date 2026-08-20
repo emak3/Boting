@@ -48,7 +48,7 @@ export function buildDebugBpKeypadPayload({
   extraFlags = 0,
 }) {
   const verb = mode === 'grant' ? '付与' : '剥奪';
-  const part = buffer.length ? buffer : '_';
+  const part = buffer.length ? buffer : '-';
   const headline = [
     `**BP を${verb}（${targetLabel}）**`,
     `入力中: \`${part}\` bp（1〜${formatBpAmount(Number.MAX_SAFE_INTEGER)} まで）`,
@@ -57,6 +57,11 @@ export function buildDebugBpKeypadPayload({
   const bid = mkId;
   const mk = (label, style, op, arg) =>
     new ButtonBuilder().setCustomId(bid(op, arg)).setLabel(label).setStyle(style);
+  const mkEmoji = (emojiKey, style, op, arg) =>
+    new ButtonBuilder()
+      .setCustomId(bid(op, arg))
+      .setStyle(style)
+      .setEmoji(botingEmoji(emojiKey));
 
   const rows = [
     new ActionRowBuilder().addComponents(

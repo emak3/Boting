@@ -50,7 +50,7 @@ export function bufferToLimit(buffer) {
 }
 
 function formatHeadline(buffer, locale = null) {
-  const part = buffer.length ? buffer : '_';
+  const part = buffer.length ? buffer : '-';
   return [
     t('bp_rank.keypad.headline', { max: MAX_LIMIT }, locale),
     t('bp_rank.keypad.value_line', { part }, locale),

@@ -68,10 +68,12 @@ export function deleteLastDigit(buffer) {
  * @param {{ buffer: string, subtitle?: string | null }} opts
  */
 export function formatUnitKeypadHeadline({ buffer, subtitle }) {
+  const amount = formatBpAmount(bufferToUnitYen(buffer));
+  const variablePart = String(buffer || '').length ? amount.slice(0, -2) : '-';
   const lines = [
     '**1点あたりの金額（100 bp 単位）**',
     subtitle ? String(subtitle) : null,
-    `# **${formatBpAmount(bufferToUnitYen(buffer))}** bp`,
+    `# \`${variablePart}\`00 bp`,
   ].filter(Boolean);
   return lines.join('\n');
 }

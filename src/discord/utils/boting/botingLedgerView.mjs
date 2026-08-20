@@ -37,7 +37,7 @@ function formatLedgerLines(entries, locale = null) {
   const lines = entries.map((e) => {
     const timeStr = e.at ? discordTimestamp(e.at, 'f') || '—' : '—';
     const sign = e.delta >= 0 ? `+${formatBpAmount(e.delta)}` : formatBpAmount(e.delta);
-    return `\`${timeStr}\` **${sign}** bp → **${formatBpAmount(e.balanceAfter)}** bp（${ledgerKindLabel(e.kind, e.streakDay, locale)}）`;
+    return `${timeStr} **${sign}** bp → **${formatBpAmount(e.balanceAfter)}** bp（${ledgerKindLabel(e.kind, e.streakDay, locale)}）`;
   });
   let text = lines.join('\n');
   if (text.length > 3500) {
